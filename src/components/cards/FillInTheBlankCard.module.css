@@ -1,0 +1,81 @@
+.card {
+  background-color: var(--panel-bg);
+  border: 2px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 24px;
+  width: 100%;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.hint {
+  font-size: 13px;
+  color: var(--accent-color);
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin-bottom: 16px;
+}
+
+.sentenceContainer {
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--text-color);
+  line-height: 1.8;
+  margin-bottom: 32px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.inputBlank {
+  font-size: 20px;
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--accent-color);
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid var(--border-color);
+  padding: 0 8px 4px 8px;
+  width: 120px;
+  min-width: 80px;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.inputBlank:focus {
+  border-bottom-color: var(--accent-color);
+}
+
+.inputBlank:disabled {
+  opacity: 0.6;
+}
+
+.submitBtn {
+  width: 100%;
+  padding: 16px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  background-color: var(--success-color);
+  border: none;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.1s ease;
+}
+
+.submitBtn:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.submitBtn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.submitBtn:disabled {
+  background-color: var(--border-color);
+  color: var(--mut);
+  cursor: not-allowed;
+}
