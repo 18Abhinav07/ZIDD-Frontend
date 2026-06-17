@@ -1,0 +1,200 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--panel-bg);
+}
+
+.header h1 {
+  font-size: 16px;
+  margin: 0;
+  font-weight: 600;
+}
+
+.tag {
+  font-size: 11px;
+  color: var(--accent-color);
+  border: 1px solid var(--border-color);
+  padding: 2px 8px;
+  border-radius: 99px;
+  background-color: var(--bg-color);
+}
+
+.main {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.chatArea {
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.messages {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  margin-bottom: 20px;
+}
+
+.message {
+  padding: 12px 16px;
+  border-radius: var(--border-radius);
+  max-width: 85%;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.message.user {
+  align-self: flex-end;
+  background-color: var(--accent-color);
+  color: #fff;
+}
+
+.message.assistant {
+  align-self: flex-start;
+  background-color: var(--panel-bg);
+  border: 1px solid var(--border-color);
+}
+
+.error {
+  background-color: var(--danger-color);
+  color: #fff;
+  padding: 12px;
+  border-radius: var(--border-radius);
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.typingIndicator {
+  align-self: flex-start;
+  color: var(--accent-color);
+  font-weight: bold;
+}
+
+.inputArea {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.inputRow {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.inputRow textarea, .inputRow input {
+  flex: 1;
+  background-color: var(--panel-bg);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 12px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.inputRow button {
+  background-color: var(--accent-color);
+  color: #fff;
+  border: none;
+  border-radius: var(--border-radius);
+  padding: 12px 24px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.inputRow button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.gamePrompt {
+  background-color: var(--panel-bg);
+  border: 2px dashed var(--accent-color);
+  border-radius: var(--border-radius);
+  padding: 16px;
+  width: 100%;
+}
+
+.gamePrompt .hint {
+  font-size: 12px;
+  color: var(--accent-color);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.gamePrompt p {
+  margin-bottom: 12px;
+}
+
+.sidePanel {
+  border-left: 1px solid var(--border-color);
+  background-color: var(--panel-bg);
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.sidePanel h2 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 20px;
+  color: var(--text-color);
+}
+
+.statBlock {
+  margin-bottom: 20px;
+}
+
+.statLabel {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.progressBar {
+  height: 8px;
+  background-color: var(--bg-color);
+  border-radius: 99px;
+  overflow: hidden;
+  margin-top: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.progressFill {
+  height: 100%;
+  background-color: var(--success-color);
+  transition: width 0.4s ease-out;
+}
+
+.stateDetails div {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 14px;
+}
+
+.stateDetails div:last-child {
+  border-bottom: none;
+}
+
+.loadingText {
+  color: var(--text-color);
+  opacity: 0.7;
+}

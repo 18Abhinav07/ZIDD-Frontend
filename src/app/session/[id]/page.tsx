@@ -1,0 +1,317 @@
+"use client";
+
+import { useEffect, useState, useRef, memo } from 'react';
+import { useRouter } from 'next/navigation';
+import { useZiddSession } from '@/hooks/useZiddSession';
+import { MultipleChoiceCard } from '@/components/cards/MultipleChoiceCard';
+import { FillInTheBlankCard } from '@/components/cards/FillInTheBlankCard';
+import { SpokenAnswerCard } from '@/components/cards/SpokenAnswerCard';
+import { SessionRecap } from '@/components/shared/SessionRecap';
+import { TutorShell } from '@/components/tutor/TutorShell';
+import { SessionNotFound } from '@/components/shared/SessionNotFound';
+import { PaperPlaneIcon, ChatBubbleIcon, LoopIcon, TargetIcon } from '@radix-ui/react-icons';
+import { motion, AnimatePresence } from 'framer-motion';
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+import { getAvatarForSeed, AvatarData } from '@/lib/avatars';
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+const SessionMessageSkeleton = memo(function SessionMessageSkeleton({ delay = 0, isUser = false }: { delay?: number, isUser?: boolean }) {
+  return (
+    <div className={cn(
+      "flex flex-col gap-3 max-w-[85%] w-full",
+      isUser ? "ml-auto items-end" : "mr-auto items-start"
+    )}>
+      <div className="flex items-center gap-3">
+         {!isUser && <div className="w-6 h-6 rounded-lg bg-slate-100 animate-pulse" />}
+         <motion.div animate={{ opacity: [0.4, 0.8, 0.4] }} transition={{ duration: 2, repeat: Infinity, delay }} className="h-2 w-12 bg-slate-200 rounded" />
+         {isUser && <div className="w-6 h-6 rounded-lg bg-slate-100 animate-pulse" />}
+      </div>
+      
+      <div className={cn(
+        "p-5 md:p-6 rounded-[2rem] w-full max-w-sm bg-slate-50 border border-slate-100",
+        isUser ? "rounded-tr-none" : "rounded-tl-none"
+      )}>
+        <div className="space-y-3 w-full">
+           <motion.div animate={{ opacity: [0.4, 0.8, 0.4] }} transition={{ duration: 2, repeat: Infinity, delay: delay + 0.1 }} className="h-2.5 bg-slate-200 rounded-sm w-full" />
+           <motion.div animate={{ opacity: [0.4, 0.8, 0.4] }} transition={{ duration: 2, repeat: Infinity, delay: delay + 0.2 }} className="h-2.5 bg-slate-200 rounded-sm w-5/6" />
+           <motion.div animate={{ opacity: [0.4, 0.8, 0.4] }} transition={{ duration: 2, repeat: Infinity, delay: delay + 0.3 }} className="h-2.5 bg-slate-200 rounded-sm w-4/6" />
+        </div>
+      </div>
+    </div>
+  );
+});
+
+export default function SessionPage({ params }: { params: { id: string } }) {
+  const { id } = params;
+  const router = useRouter();
+  const {
+    messages,
+    state,
+    progress,
+    gamePrompt,
+    sessionRecap,
+    nodeAdvance,
+    adaptationCue,
+    avatarEmotion,
+    affect,
+    error,
+    notFound,
+    isStreaming,
+    bootstrap,
+    streamTurn,
+    disconnect
+  } = useZiddSession(id, true);
+
+  const [inputValue, setInputValue] = useState('');
+  const [recapVisible, setRecapVisible] = useState(true);
+  const [avatar, setAvatar] = useState<AvatarData | null>(null);
+  const endOfMessagesRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Deterministic per session id so the coach never reshuffles on reload.
+    setAvatar(getAvatarForSeed(id));
+    // Rehydrate an existing transcript or stream the opening (see hook).
+    bootstrap();
+    return () => disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    endOfMessagesRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isStreaming, gamePrompt]);
+
+  const handleSend = () => {
+    if (!inputValue.trim() || isStreaming) return;
+    streamTurn(inputValue);
+    setInputValue('');
+  };
+
+  const handleGameSubmit = (answer: string) => {
+    streamTurn(answer);
+  };
+
+  const isProfessional = state?.phase === 'Interview' || state?.phase === 'Group Discussion';
+
+  if (notFound) {
+    return <SessionNotFound onBack={() => router.push('/map')} />;
+  }
+
+  return (
+    <TutorShell
+      nodeTitle={state?.node_title}
+      // Bind to the authoritative done-frame mastery (the per-skill EMA the
+      // engine just persisted), falling back to the progress frame. Reading
+      // progress?.mastery alone showed 0% while the backend held a real value.
+      mastery={state?.current_mastery ?? progress?.mastery ?? 0}
+      streak={state?.clean_streak || 0}
+      attempts={state?.attempts || 0}
+      phase={state?.phase}
+      mode={isProfessional ? 'professional' : 'gamified'}
+      characterImg={avatar?.url}
+      characterQuote={avatar?.quote}
+      characterBg={avatar?.bg}
+      emotion={avatarEmotion}
+      affect={affect}
+      onBack={() => {
+        disconnect();
+        router.push('/map');
+      }}
+    >
+      <div className="flex flex-col h-full p-6 lg:p-10">
+        {/* Transcript Area */}
+        <div className="flex-1 flex flex-col gap-8 pb-32">
+          <AnimatePresence mode="popLayout">
+            {messages.length === 0 && !state && !gamePrompt && isStreaming && (
+               <motion.div 
+                 key="sync-session"
+                 initial={{ opacity: 0 }}
+                 animate={{ opacity: 1 }}
+                 exit={{ opacity: 0 }}
+                 className="flex flex-col gap-8 py-8 w-full"
+               >
+                  <SessionMessageSkeleton delay={0} />
+                  <div className="opacity-70"><SessionMessageSkeleton delay={0.4} isUser /></div>
+                  <div className="opacity-40"><SessionMessageSkeleton delay={0.8} /></div>
+               </motion.div>
+            )}
+
+            {messages.map((msg, idx) => (
+              <motion.div 
+                key={msg.id} 
+                layout
+                initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                className={cn(
+                  "flex flex-col gap-3 max-w-[85%]",
+                  msg.role === 'user' ? "ml-auto items-end" : "mr-auto items-start"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                   {msg.role === 'assistant' && <div className="w-6 h-6 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center text-[10px] font-bold uppercase text-accent">AI</div>}
+                   <span className="text-[10px] uppercase tracking-widest font-bold text-slate-400">
+                      {msg.role === 'user' ? 'You' : (msg.speaker_name || 'Coach')}
+                   </span>
+                   {msg.role === 'user' && <div className="w-6 h-6 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] font-bold uppercase text-slate-600">ME</div>}
+                </div>
+                
+                <div className={cn(
+                  "p-5 md:p-6 rounded-[2rem] text-[15px] md:text-base leading-relaxed font-medium",
+                  msg.role === 'user' 
+                    ? "bg-foreground text-background rounded-tr-none shadow-[0_10px_30px_rgba(0,0,0,0.08)]" 
+                    : "bg-slate-50 border border-slate-100 text-slate-700 rounded-tl-none"
+                )}>
+                  {msg.content}
+                </div>
+              </motion.div>
+            ))}
+
+            {nodeAdvance && !isStreaming && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="w-full max-w-2xl mx-auto my-8 bg-accent/5 border border-accent/20 rounded-3xl p-8 text-center"
+              >
+                <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-slate-200">
+                   <TargetIcon className="w-8 h-8 text-accent" />
+                </div>
+                <h3 className="font-display text-2xl mb-2 text-slate-800">Skill Mastered!</h3>
+                <p className="text-slate-500 mb-8">You've successfully completed this level. Ready to move on?</p>
+                {adaptationCue && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="inline-flex flex-col items-center gap-2 max-w-md mx-auto mb-8 px-5 py-4 bg-white/60 border border-accent/15 rounded-2xl"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase tracking-widest font-bold text-accent">Adapting your path</span>
+                      <span className="px-2.5 py-0.5 rounded-full bg-accent/10 border border-accent/20 text-[10px] font-bold uppercase tracking-wide text-accent">
+                        {adaptationCue.band}
+                      </span>
+                    </div>
+                    <p className="text-[13px] text-slate-500 leading-relaxed">{adaptationCue.rationale}</p>
+                  </motion.div>
+                )}
+                <button
+                  onClick={() => streamTurn()}
+                  className="px-8 py-4 bg-accent text-white rounded-full font-bold uppercase tracking-widest text-sm hover:scale-105 transition-transform shadow-lg shadow-accent/20"
+                >
+                  Start Next Skill
+                </button>
+              </motion.div>
+            )}
+
+            {isStreaming && (
+               <motion.div 
+                 key="processing"
+                 initial={{ opacity: 0, y: 10 }}
+                 animate={{ opacity: 1, y: 0 }}
+                 exit={{ opacity: 0, y: 10 }}
+                 className="mt-6 w-full"
+               >
+                  <SessionMessageSkeleton />
+               </motion.div>
+            )}
+            
+          </AnimatePresence>
+          {/* Scroll anchor lives OUTSIDE AnimatePresence: a plain (non-motion)
+              element as a direct child of `mode="popLayout"` makes framer-motion's
+              PopChild attach a ref to it and React warns "ref is not a prop". */}
+          <div ref={endOfMessagesRef} />
+        </div>
+
+        {/* Input / Action Area */}
+        <div className="absolute bottom-0 left-0 right-0 pt-12 pb-6 px-6 lg:px-10 bg-gradient-to-t from-white via-white to-transparent z-20">
+           <div className="relative max-w-3xl mx-auto">
+              <AnimatePresence>
+                {error && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="absolute -top-12 left-0 right-0 text-center text-[10px] font-bold text-red-500 uppercase tracking-widest"
+                  >
+                    {error}
+                  </motion.div>
+                )}
+
+                {nodeAdvance && !isStreaming ? null : gamePrompt ? (
+                  <motion.div 
+                    key="game-prompt"
+                    layoutId="action-card"
+                    initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 20, scale: 0.95 }}
+                    transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                  >
+                    {gamePrompt.type === 'multiple_choice' && gamePrompt.options ? (
+                      <MultipleChoiceCard
+                        sentence={gamePrompt.sentence}
+                        hint={gamePrompt.hint}
+                        options={gamePrompt.options}
+                        onSubmit={handleGameSubmit}
+                        disabled={isStreaming}
+                      />
+                    ) : gamePrompt.type === 'spoken' ? (
+                      <SpokenAnswerCard
+                        sentence={gamePrompt.sentence}
+                        hint={gamePrompt.hint}
+                        onSubmit={handleGameSubmit}
+                        disabled={isStreaming}
+                      />
+                    ) : (
+                      <FillInTheBlankCard
+                        sentence={gamePrompt.sentence}
+                        hint={gamePrompt.hint}
+                        onSubmit={handleGameSubmit}
+                        disabled={isStreaming}
+                      />
+                    )}
+                  </motion.div>
+                ) : (
+                  <motion.div 
+                    key="chat-input"
+                    layoutId="action-card"
+                    className="bg-white rounded-[2.5rem] p-2 shadow-[0_8px_30px_rgba(0,0,0,0.06)] border border-slate-200/60 overflow-hidden group transition-all focus-within:ring-4 focus-within:ring-accent/10 focus-within:border-accent/30"
+                  >
+                    <div className="flex items-center gap-4 px-6 py-3">
+                      <ChatBubbleIcon className="text-slate-300 group-focus-within:text-accent transition-colors w-5 h-5" />
+                      <input
+                        value={inputValue}
+                        onChange={e => setInputValue(e.target.value)}
+                        placeholder="Type your response..."
+                        className="flex-1 bg-transparent border-none focus:ring-0 text-[15px] font-medium placeholder:text-slate-300 py-3 text-slate-800 outline-none"
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSend();
+                          }
+                        }}
+                      />
+                      <motion.button 
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={handleSend} 
+                        disabled={isStreaming || !inputValue.trim()}
+                        className="w-14 h-14 rounded-full bg-accent text-white flex items-center justify-center transition-all disabled:opacity-50 disabled:grayscale"
+                      >
+                        <PaperPlaneIcon className="w-5 h-5 ml-1" />
+                      </motion.button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+           </div>
+        </div>
+        
+        {sessionRecap && recapVisible && (
+          <SessionRecap recap={sessionRecap} onClose={() => setRecapVisible(false)} />
+        )}
+      </div>
+    </TutorShell>
+  );
+}
