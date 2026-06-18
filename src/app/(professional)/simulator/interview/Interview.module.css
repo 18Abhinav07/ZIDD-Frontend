@@ -1,0 +1,174 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: var(--bg-color);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--panel-bg);
+}
+
+.header h1 {
+  font-size: 18px;
+  margin: 0;
+  font-weight: 500;
+  color: var(--text-color);
+  letter-spacing: 0.05em;
+}
+
+.phaseTag {
+  font-size: 12px;
+  color: var(--accent-color);
+  text-transform: uppercase;
+  border: 1px solid var(--border-color);
+  padding: 4px 12px;
+  border-radius: 99px;
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.centerStage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  gap: 40px;
+}
+
+.avatarContainer {
+  margin-bottom: 20px;
+}
+
+.dialogueContainer {
+  width: 100%;
+  max-width: 600px;
+  text-align: center;
+}
+
+.interviewerBubble {
+  background-color: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  padding: 24px 32px;
+  border-radius: var(--border-radius);
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--text-color);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  position: relative;
+}
+
+.interviewerBubble::after {
+  content: '';
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 0 10px 10px 10px;
+  border-style: solid;
+  border-color: transparent transparent var(--border-color) transparent;
+  display: block;
+  width: 0;
+}
+
+.placeholderText {
+  color: var(--mut);
+  font-style: italic;
+}
+
+.userInputContainer {
+  background-color: var(--panel-bg);
+  border-top: 1px solid var(--border-color);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.transcriptLog {
+  width: 100%;
+  max-width: 800px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.miniLog {
+  font-size: 13px;
+  color: var(--mut);
+}
+
+.truncate {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+  max-width: 80%;
+  vertical-align: bottom;
+}
+
+.inputArea {
+  width: 100%;
+  max-width: 800px;
+  display: flex;
+  gap: 12px;
+}
+
+.inputArea textarea {
+  flex: 1;
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 16px;
+  font-family: inherit;
+  font-size: 15px;
+  resize: none;
+  height: 80px;
+}
+
+.inputArea button {
+  background-color: var(--accent-color);
+  color: #fff;
+  border: none;
+  border-radius: var(--border-radius);
+  padding: 0 32px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.inputArea button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.error {
+  position: absolute;
+  top: 0;
+  width: 100%;
+  background-color: var(--danger-color);
+  color: #fff;
+  padding: 12px;
+  text-align: center;
+  z-index: 10;
+}
+
+.typingIndicator {
+  color: var(--accent-color);
+  font-weight: bold;
+}
