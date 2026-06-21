@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiFetch, setToken } from '@/services/api';
+import { apiFetch, setToken, getToken } from '@/services/api';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, Loader2 } from 'lucide-react';
@@ -19,7 +19,10 @@ export default function LoginPage() {
 
   useEffect(() => {
     setAvatar(getRandomAvatar());
-  }, []);
+    // Already signed in? Don't show login again (e.g. landing here via back) —
+    // forward to the app so the session stays alive instead of dead-ending.
+    if (getToken()) router.replace('/dashboard');
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,7 +36,10 @@ export default function LoginPage() {
       });
       
       setToken(data.access_token);
-      router.push('/onboarding');
+      // replace (not push) so login is NOT left in history — otherwise browser
+      // back lands the learner straight back on login. Returning learners land on
+      // their dashboard; onboarding is for new sign-ups (register).
+      router.replace('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Login failed');
     } finally {
@@ -77,15 +83,16 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="group relative">
               <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400 mb-2 transition-colors group-focus-within:text-slate-900">
-                User ID
+                Username
               </label>
-              <input 
-                type="text" 
-                value={userId} 
+              <input
+                type="text"
+                value={userId}
                 onChange={e => setUserId(e.target.value)}
-                placeholder="e.g., demo_user"
-                className="w-full bg-white border border-slate-200 rounded-xl px-5 py-4 text-slate-900 placeholder:text-slate-300 focus:outline-none focus:border-slate-400 focus:shadow-sm transition-all font-mono text-sm"
-                required 
+                placeholder="e.g., asha_r"
+                autoComplete="username"
+                className="w-full bg-white border border-slate-200 rounded-xl px-5 py-4 text-slate-900 placeholder:text-slate-300 focus:outline-none focus:border-slate-400 focus:shadow-sm transition-all text-sm"
+                required
               />
             </div>
             
@@ -112,7 +119,7 @@ export default function LoginPage() {
                 <Loader2 className="w-5 h-5 animate-spin" />
               ) : (
                 <>
-                  Enter Session
+                  Sign in
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </>
               )}
@@ -123,7 +130,7 @@ export default function LoginPage() {
             <p className="text-slate-500 text-sm">
               Don't have an account?{' '}
               <Link href="/auth/register" className="text-slate-900 font-medium hover:underline underline-offset-4 transition-all">
-                Initiate Setup
+                Create one
               </Link>
             </p>
           </div>

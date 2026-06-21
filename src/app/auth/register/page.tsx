@@ -9,11 +9,18 @@ import { ArrowRight, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import { getRandomAvatar, AvatarData } from '@/lib/avatars';
 
+interface FieldErrors {
+  name?: string;
+  userId?: string;
+  password?: string;
+}
+
 export default function RegisterPage() {
   const [userId, setUserId] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [loading, setLoading] = useState(false);
   const [avatar, setAvatar] = useState<AvatarData | null>(null);
   const router = useRouter();
@@ -22,19 +29,44 @@ export default function RegisterPage() {
     setAvatar(getRandomAvatar());
   }, []);
 
+  const validate = (): FieldErrors => {
+    const errs: FieldErrors = {};
+    if (!name.trim()) errs.name = 'Name is required';
+    if (!userId.trim()) {
+      errs.userId = 'Username is required';
+    } else if (userId.trim().length < 3) {
+      errs.userId = 'Username must be at least 3 characters';
+    } else if (!/^[a-zA-Z0-9_]+$/.test(userId.trim())) {
+      errs.userId = 'Only letters, numbers, and underscores allowed';
+    }
+    if (!password) {
+      errs.password = 'Password is required';
+    } else if (password.length < 6) {
+      errs.password = 'Password must be at least 6 characters';
+    }
+    return errs;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const errs = validate();
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs);
+      return;
+    }
+    setFieldErrors({});
     setError('');
     setLoading(true);
 
     try {
       const data = await apiFetch('/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ user_id: userId, password, name: name.trim() }),
+        body: JSON.stringify({ user_id: userId.trim(), password, name: name.trim() }),
       });
-      
+
       setToken(data.access_token);
-      router.push('/onboarding');
+      // replace so register is not left in history (back would re-show it).
+      router.replace('/onboarding');
     } catch (err: any) {
       setError(err.message || 'Registration failed');
     } finally {
@@ -107,9 +139,9 @@ export default function RegisterPage() {
             <Link href="/" className="inline-block mb-16 opacity-90 hover:opacity-100 transition-opacity">
               <span className="font-sans font-black text-3xl tracking-tighter text-slate-900">ZIDD.</span>
             </Link>
-            <h1 className="font-display text-5xl sm:text-6xl tracking-tight mb-4 leading-none text-slate-900">Initialize</h1>
+            <h1 className="font-display text-5xl sm:text-6xl tracking-tight mb-4 leading-none text-slate-900">Create your account</h1>
             <p className="text-slate-500 text-sm tracking-wide uppercase font-semibold">
-              Create your secure identity
+              A few details and your coach is ready
             </p>
           </div>
 
@@ -129,44 +161,47 @@ export default function RegisterPage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="group relative">
               <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400 mb-2 transition-colors group-focus-within:text-slate-900">
-                Your Name <span className="text-slate-300 normal-case tracking-normal font-medium">— so your coach can greet you</span>
+                Your name <span className="text-slate-300 normal-case tracking-normal font-medium">(so your coach can greet you)</span>
               </label>
               <input
                 type="text"
                 value={name}
-                onChange={e => setName(e.target.value)}
+                onChange={e => { setName(e.target.value); setFieldErrors(fe => ({ ...fe, name: undefined })); }}
                 placeholder="e.g., Asha"
                 autoComplete="given-name"
-                className="w-full bg-white border border-slate-200 rounded-xl px-5 py-4 text-slate-900 placeholder:text-slate-300 focus:outline-none focus:border-slate-400 focus:shadow-sm transition-all text-sm"
+                className={`w-full bg-white border rounded-xl px-5 py-4 text-slate-900 placeholder:text-slate-300 focus:outline-none focus:shadow-sm transition-all text-sm ${fieldErrors.name ? 'border-red-400 focus:border-red-400' : 'border-slate-200 focus:border-slate-400'}`}
               />
+              {fieldErrors.name && <p className="mt-1.5 text-xs text-red-500 font-medium">{fieldErrors.name}</p>}
             </div>
 
             <div className="group relative">
               <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400 mb-2 transition-colors group-focus-within:text-slate-900">
-                Desired User ID
+                Username
               </label>
               <input
                 type="text"
                 value={userId}
-                onChange={e => setUserId(e.target.value)}
-                placeholder="e.g., demo_user"
-                className="w-full bg-white border border-slate-200 rounded-xl px-5 py-4 text-slate-900 placeholder:text-slate-300 focus:outline-none focus:border-slate-400 focus:shadow-sm transition-all font-mono text-sm"
-                required
+                onChange={e => { setUserId(e.target.value); setFieldErrors(fe => ({ ...fe, userId: undefined })); }}
+                placeholder="e.g., asha_r"
+                autoComplete="username"
+                className={`w-full bg-white border rounded-xl px-5 py-4 text-slate-900 placeholder:text-slate-300 focus:outline-none focus:shadow-sm transition-all text-sm ${fieldErrors.userId ? 'border-red-400 focus:border-red-400' : 'border-slate-200 focus:border-slate-400'}`}
               />
+              {fieldErrors.userId && <p className="mt-1.5 text-xs text-red-500 font-medium">{fieldErrors.userId}</p>}
             </div>
 
             <div className="group relative">
               <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400 mb-2 transition-colors group-focus-within:text-slate-900">
-                Secure Password
+                Password <span className="text-slate-300 normal-case tracking-normal font-medium">(min. 6 characters)</span>
               </label>
-              <input 
-                type="password" 
-                value={password} 
-                onChange={e => setPassword(e.target.value)}
+              <input
+                type="password"
+                value={password}
+                onChange={e => { setPassword(e.target.value); setFieldErrors(fe => ({ ...fe, password: undefined })); }}
                 placeholder="••••••••"
-                className="w-full bg-white border border-slate-200 rounded-xl px-5 py-4 text-slate-900 placeholder:text-slate-300 focus:outline-none focus:border-slate-400 focus:shadow-sm transition-all font-mono text-sm"
-                required 
+                autoComplete="new-password"
+                className={`w-full bg-white border rounded-xl px-5 py-4 text-slate-900 placeholder:text-slate-300 focus:outline-none focus:shadow-sm transition-all font-mono text-sm ${fieldErrors.password ? 'border-red-400 focus:border-red-400' : 'border-slate-200 focus:border-slate-400'}`}
               />
+              {fieldErrors.password && <p className="mt-1.5 text-xs text-red-500 font-medium">{fieldErrors.password}</p>}
             </div>
             
             <button 
@@ -178,7 +213,7 @@ export default function RegisterPage() {
                 <Loader2 className="w-5 h-5 animate-spin" />
               ) : (
                 <>
-                  Register Identity
+                  Create account
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </>
               )}
@@ -187,9 +222,9 @@ export default function RegisterPage() {
 
           <div className="mt-12 pt-8 border-t border-slate-200">
             <p className="text-slate-500 text-sm">
-              Already have an identity?{' '}
+              Already have an account?{' '}
               <Link href="/auth/login" className="text-slate-900 font-medium hover:underline underline-offset-4 transition-all">
-                Enter Session
+                Sign in
               </Link>
             </p>
           </div>
