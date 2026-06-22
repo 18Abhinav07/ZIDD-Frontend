@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { ChevronLeft } from 'lucide-react';
+import { ExitIcon } from '@radix-ui/react-icons';
+import { getToken, clearToken } from '@/services/api';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { getRandomAvatar, type AvatarData } from '@/lib/avatars';
@@ -19,22 +21,28 @@ export default function ModeSelectionPage() {
   const [avatars, setAvatars] = useState<AvatarData[]>([]);
 
   useEffect(() => {
+    if (!getToken()) {
+      router.replace('/auth/login');
+      return;
+    }
     const a1 = getRandomAvatar();
     let a2 = getRandomAvatar();
-    while (a2.id === a1.id) {
-      a2 = getRandomAvatar();
-    }
+    while (a2.id === a1.id) { a2 = getRandomAvatar(); }
     setAvatars([a1, a2]);
-  }, []);
+  }, [router]);
 
   const handleSelectMode = (mode: 'prep' | 'test') => {
     setSelectedMode(mode);
     if (typeof window !== 'undefined') {
       localStorage.setItem('zidd_test_mode', mode === 'test' ? 'true' : 'false');
+      const pending = localStorage.getItem('zidd_pending_module');
+      if (pending) {
+        localStorage.setItem('zidd_active_module', pending);
+        localStorage.removeItem('zidd_pending_module');
+      }
     }
-    // Give it a split second for the animation, then push to map
     setTimeout(() => {
-      router.push('/map');
+      router.replace('/map');
     }, 600);
   };
 
@@ -42,14 +50,21 @@ export default function ModeSelectionPage() {
     <div className="min-h-[100dvh] bg-[#FCFCFC] text-slate-900 font-body relative overflow-hidden flex flex-col">
       {/* Header */}
       <header className="relative z-50 px-8 py-6 flex items-center justify-between">
-        <button 
-          onClick={() => router.push('/onboarding')}
+        <button
+          onClick={() => router.push('/dashboard')}
           className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400 hover:text-indigo-600 transition-colors"
         >
           <ChevronLeft size={16} />
-          Change Module
+          Switch Module
         </button>
-        <span className="font-sans font-black text-2xl tracking-tighter text-slate-900">ZIDD<span className="text-indigo-600">.</span></span>
+        <button onClick={() => router.push('/dashboard')} className="font-sans font-black text-2xl tracking-tighter text-slate-900">ZIDD<span className="text-indigo-600">.</span></button>
+        <button
+          onClick={() => { clearToken(); router.replace('/auth/login'); }}
+          title="Sign out"
+          className="w-9 h-9 rounded-full bg-slate-50 border border-slate-200 shadow-sm text-slate-500 flex items-center justify-center hover:bg-slate-100 hover:text-red-500 transition-all hover:scale-105 active:scale-95"
+        >
+          <ExitIcon className="w-4 h-4" />
+        </button>
       </header>
 
       {/* Content */}

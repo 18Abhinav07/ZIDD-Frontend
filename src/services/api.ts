@@ -52,3 +52,17 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
 
   return response.json();
 }
+
+export function resolveUserId(fallback: string = 'there'): string {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('zidd_token') : null;
+  if (token) {
+    try {
+      const part = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      const padded = part.padEnd(part.length + ((4 - (part.length % 4)) % 4), '=');
+      return JSON.parse(atob(padded)).sub || fallback;
+    } catch {
+      /* malformed token */
+    }
+  }
+  return fallback;
+}
