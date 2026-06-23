@@ -1,22 +1,24 @@
 "use client";
 
 import React, { memo } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getAvatarScaleClass } from '@/lib/avatarRegistry';
 import { getEmotionTreatment, getAffectSupportNote } from '@/lib/emotion';
 import type { DoneFrame } from '@/types';
-import { 
-  ChevronLeftIcon, 
-  MagicWandIcon, 
-  LightningBoltIcon, 
-  TargetIcon, 
-  StarIcon, 
-  InfoCircledIcon 
+import {
+  ChevronLeftIcon,
+  MagicWandIcon,
+  LightningBoltIcon,
+  StarIcon,
+  InfoCircledIcon,
+  ExitIcon,
 } from '@radix-ui/react-icons';
 import Image from 'next/image';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { CreditsBadge } from '@/components/billing/CreditsBadge';
+import { clearToken } from '@/services/api';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -158,6 +160,13 @@ export const TutorShell: React.FC<TutorShellProps> = ({
   emotion,
   affect
 }) => {
+  const router = useRouter();
+
+  const signOut = () => {
+    clearToken();
+    router.replace('/auth/login');
+  };
+
   return (
     <div className={cn("relative min-h-[100dvh] w-full overflow-hidden flex flex-col font-body bg-background transition-colors duration-500", mode === 'professional' ? 'mode-professional' : 'mode-gamified')}>
       <div className="grain-overlay" />
@@ -165,13 +174,22 @@ export const TutorShell: React.FC<TutorShellProps> = ({
       {/* Header - Minimalist */}
       <header className="relative z-20 px-6 py-5 flex justify-between items-center max-w-[1400px] w-full mx-auto">
         <div className="flex items-center gap-4">
-          <button 
+          <button
+            onClick={onBack}
+            className="font-sans font-black text-xl tracking-tighter text-foreground hover:opacity-70 transition-opacity"
+          >
+            ZIDD<span className="text-indigo-600">.</span>
+          </button>
+
+          <div className="h-5 w-px bg-white/30" />
+
+          <button
             onClick={onBack}
             className="w-10 h-10 rounded-full bg-white/50 backdrop-blur-md border border-slate-200/50 flex items-center justify-center hover:bg-white transition-all active:scale-95 text-slate-700 shadow-sm"
           >
             <ChevronLeftIcon className="w-5 h-5" />
           </button>
-          
+
           <div>
             <div className="flex items-center gap-2 mb-0.5">
                <MagicWandIcon className="text-accent w-4 h-4" />
@@ -183,7 +201,7 @@ export const TutorShell: React.FC<TutorShellProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-3">
            {/* Stats Chips */}
            <div className="flex gap-2">
               <CreditsBadge />
@@ -196,6 +214,13 @@ export const TutorShell: React.FC<TutorShellProps> = ({
                  <span className="text-sm font-bold font-mono">{attempts}</span>
               </div>
            </div>
+           <button
+             onClick={signOut}
+             title="Sign out"
+             className="w-10 h-10 rounded-full bg-white/50 backdrop-blur-md border border-slate-200/50 shadow-sm text-slate-600 flex items-center justify-center hover:bg-white hover:text-red-500 transition-all active:scale-95"
+           >
+             <ExitIcon className="w-4 h-4" />
+           </button>
         </div>
       </header>
 
@@ -237,7 +262,7 @@ export const TutorShell: React.FC<TutorShellProps> = ({
             <div className="bg-white rounded-[2rem] p-6 border border-slate-200/60 shadow-sm flex flex-col gap-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-slate-500 font-bold">
-                  <TargetIcon className="text-accent w-4 h-4" />
+                  <StarIcon className="text-accent w-4 h-4" />
                   Mastery
                 </div>
                 <span className="text-xs font-mono font-bold text-slate-800">{Math.round(mastery * 100)}%</span>
