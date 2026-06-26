@@ -84,6 +84,11 @@ export interface SimulationReport {
   language_score: number;
   clarity_score: number;
   confidence_score: number;
+  assertiveness_score?: number;    // GD only — derived from tension escalation events
+  // One data-driven sentence per rubric dimension, keyed by label (e.g. "Participation")
+  score_explanations?: Record<string, string>;
+  // Three utterance-level observations: [hedging_phrase, strong_moment, structural_change]
+  read_observations?: string[];
 }
 
 export interface EndSessionResponse {
@@ -160,6 +165,8 @@ export interface CreditsBalance {
   user_id: string;
   credits: number;
   demo_unlimited: boolean;
+  name?: string; // profile display name, so the dashboard greets like the coach
+  active_module?: string;
 }
 
 // GET /billing/packs -> { packs: PackInfo[] }
