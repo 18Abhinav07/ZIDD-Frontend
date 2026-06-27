@@ -1,19 +1,23 @@
 "use client";
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, useMemo, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useZiddSession } from '@/hooks/useZiddSession';
+import { useZiddSession, MAX_SIM_ROUNDS } from '@/hooks/useZiddSession';
 import { SimulatorShell } from '@/components/simulator/SimulatorShell';
+import { GDBriefingCard } from '@/components/simulator/GDBriefingCard';
 import { SessionRecap } from '@/components/shared/SessionRecap';
 import { SimulationReportModal } from '@/components/shared/SimulationReportModal';
 import { SessionNotFound } from '@/components/shared/SessionNotFound';
 import { CreditsBadge } from '@/components/billing/CreditsBadge';
 import { SimPersona } from '@/types';
+import { getCoachingNudge } from '@/lib/coachingNudge';
 
 function GDContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const sessionId = searchParams.get('session_id') || 'demo-gd-session';
+  const sessionId = searchParams.get('session_id') || '';
+  const topicHint = searchParams.get('topic') || '';
+
   const {
     messages,
     state,
@@ -34,17 +38,41 @@ function GDContent() {
 
   const [inputValue, setInputValue] = useState('');
   const [recapVisible, setRecapVisible] = useState(true);
+  // Pre-session briefing: show until dismissed, then bootstrap the session
+  const [briefingDismissed, setBriefingDismissed] = useState(false);
+
+  // Tension annotation: track when tension spikes after a user turn
+  const prevTensionRef = useRef(0);
+  const [tensionAnnotations, setTensionAnnotations] = useState<Map<string, string>>(new Map());
+
+  // Coaching nudge: memoized from messages so it re-evaluates on each new message
+  const coachingNudge = useMemo(() => getCoachingNudge(messages), [messages]);
 
   useEffect(() => {
-    // Rehydrate the transcript on reload, else stream the opening (see hook).
+    if (!sessionId) return;
+    if (!briefingDismissed) return; // wait for briefing dismissal before streaming
     bootstrap();
     return () => disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]); // Add sessionId to ensure it reconnects if it changes
+  }, [sessionId, briefingDismissed]);
 
-  // Manual "End & Score": stop streaming, then close + score now. Falls back to
-  // navigating home if scoring yields nothing. The hook's closingRef latch keeps
-  // this safe alongside the auto-close effect below (fires at most once).
+  // Tension spike annotations: when tension jumps by 15+ after a user turn,
+  // attach a small annotation tag to that user message in the transcript.
+  useEffect(() => {
+    const delta = tension - prevTensionRef.current;
+    if (delta >= 15) {
+      const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user');
+      if (lastUserMsg) {
+        const copy =
+          tension > 70
+            ? `Tension +${delta}% — that's assertiveness. Keep it up.`
+            : `Tension +${delta}% — direct engagement. GDs reward this.`;
+        setTensionAnnotations((prev) => new Map(prev).set(lastUserMsg.id, copy));
+      }
+    }
+    prevTensionRef.current = tension;
+  }, [tension, messages]);
+
   const handleEnd = () => {
     disconnect();
     endSession().then((rep) => {
@@ -52,10 +80,6 @@ function GDContent() {
     });
   };
 
-  // The Director signalled the panel is winding down: once the final round has
-  // finished streaming, score the session and surface the report. If scoring
-  // yields nothing (a torn-down session), still move the learner on rather than
-  // leaving them on a locked, dead transcript.
   useEffect(() => {
     if (shouldClose && !isStreaming && !report && !isClosing) {
       endSession().then((rep) => {
@@ -70,11 +94,24 @@ function GDContent() {
     setInputValue('');
   };
 
+  const handleLeave = () => {
+    disconnect();
+    router.push('/mode');
+  };
+
+  const handleSaveLater = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(
+        'zidd_saved_session',
+        JSON.stringify({ session_id: sessionId, type: 'gd', savedAt: Date.now() })
+      );
+    }
+    disconnect();
+    router.push('/mode');
+  };
+
   const latestSpeaker = messages[messages.length - 1]?.speaker_name;
 
-  // The backend roster carries verbose debate stances ("strongly in favour");
-  // map them to the short badge the avatar card shows. Unknown stances pass
-  // through unchanged.
   const STANCE_LABEL: Record<string, string> = {
     'strongly in favour': 'Strongly For',
     'strongly against': 'Strongly Against',
@@ -82,16 +119,12 @@ function GDContent() {
   };
   const prettyStance = (s?: string) => (s ? STANCE_LABEL[s.toLowerCase()] ?? s : undefined);
 
-  // Real roster rides the done frame; fall back to the named debaters before the
-  // first done frame lands so the panel is never empty.
   const rawPersonas: SimPersona[] = state?.personas || [
     { speaker_id: 'gd_a', name: 'Aarav', stance: 'Strongly For' },
     { speaker_id: 'gd_b', name: 'Meera', stance: 'Strongly Against' },
     { speaker_id: 'gd_c', name: 'Kabir', stance: 'Moderate' },
   ];
 
-  // Filter out the moderator from the visual panel — they speak but don't need
-  // an avatar card. Show only the named debaters the learner argues against.
   const participants = rawPersonas
     .filter((p) => p.name?.toLowerCase() !== 'moderator')
     .map((p) => ({
@@ -102,8 +135,19 @@ function GDContent() {
       isActive: latestSpeaker === p.name,
     }));
 
-  if (notFound) {
+  if (!sessionId || notFound) {
     return <SessionNotFound onBack={() => router.push('/mode')} />;
+  }
+
+  // Show the briefing card until the learner dismisses it
+  if (!briefingDismissed) {
+    return (
+      <GDBriefingCard
+        topic={topicHint}
+        onStart={() => setBriefingDismissed(true)}
+        onSkip={() => setBriefingDismissed(true)}
+      />
+    );
   }
 
   return (
@@ -124,17 +168,26 @@ function GDContent() {
         inputValue={inputValue}
         setInputValue={setInputValue}
         onSend={handleSend}
-        // Lock input the moment the panel starts closing, so no turn lands after
-        // the Director has called the session.
         isStreaming={isStreaming || shouldClose}
         tension={tension}
         phase={state?.phase}
         error={error}
         headerExtra={<CreditsBadge />}
+        onLeave={handleLeave}
+        onSaveLater={handleSaveLater}
+        coachingTip={coachingNudge?.text}
+        tensionAnnotations={tensionAnnotations}
       />
 
       {report && (
-        <SimulationReportModal type="gd" report={report} onClose={() => router.push('/mode')} />
+        <SimulationReportModal
+          type="gd"
+          report={report}
+          simTurn={simTurn}
+          maxRounds={MAX_SIM_ROUNDS}
+          onClose={() => router.push('/mode')}
+          onPracticeAgain={() => router.push('/mode')}
+        />
       )}
 
       {!report && sessionRecap && recapVisible && (
