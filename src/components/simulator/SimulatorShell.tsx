@@ -29,6 +29,8 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   speaker_name?: string;
+  // Optional inline annotation rendered below this bubble (e.g. tension spike tag)
+  annotation?: string;
 }
 
 interface SimulatorShellProps {
@@ -44,15 +46,20 @@ interface SimulatorShellProps {
   phase?: string;
   error?: string | null;
   // Optional slot rendered in the header, left of the Live/Ready pill
-  // (e.g. the credits badge). Additive — existing callers are unaffected.
   headerExtra?: React.ReactNode;
-  // Manual "End & Score" control + round indicator. The sim otherwise only
-  // scores on the Director's auto-close, which can strand a learner who wants to
-  // stop early (or if a close signal is missed). onEnd closes + scores now.
+  // Manual "End & Score" control + round indicator
   onEnd?: () => void;
   round?: number;
   maxRounds?: number;
   isClosing?: boolean;
+  // Exit flow — called when learner wants to leave. If not provided, falls back
+  // to hard-navigating to /dashboard (backward-compatible).
+  onLeave?: () => void;
+  onSaveLater?: () => void;
+  // Inline coaching nudge rendered above the input when the student needs a prompt
+  coachingTip?: string;
+  // Per-message tension annotations keyed by message id
+  tensionAnnotations?: Map<string, string>;
 }
 
 const getAvatarConfig = (name: string) => {
@@ -131,10 +138,7 @@ const InterviewAvatar = memo(function InterviewAvatar({
   const latestAIMessage = latestMessage?.role === 'assistant' ? latestMessage : undefined;
 
   return (
-    // Stage: fills the entire left content area
     <div className="relative flex flex-col h-full w-full overflow-hidden select-none">
-
-      {/* Tinted floor that bleeds from the avatar colour — gives depth */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
@@ -142,7 +146,6 @@ const InterviewAvatar = memo(function InterviewAvatar({
         }}
       />
 
-      {/* Avatar — fills the stage, pinned to the bottom edge */}
       <div className="relative flex-1">
         <motion.div
           animate={{ y: isStreaming ? [0, -8, 0] : 0 }}
@@ -161,9 +164,7 @@ const InterviewAvatar = memo(function InterviewAvatar({
         </motion.div>
       </div>
 
-      {/* Bottom bar: name + status + latest message snippet */}
       <div className="relative shrink-0 px-6 pb-6 pt-2">
-        {/* Latest AI message — shown just above the name plate */}
         <AnimatePresence mode="wait">
           {(latestAIMessage || isStreaming) && (
             <motion.div
@@ -191,7 +192,6 @@ const InterviewAvatar = memo(function InterviewAvatar({
           )}
         </AnimatePresence>
 
-        {/* Name plate */}
         <div className="flex items-center gap-3 bg-white/90 backdrop-blur-sm rounded-2xl px-5 py-3.5 shadow-md border border-slate-100">
           <div
             className="w-10 h-10 rounded-xl shrink-0 overflow-hidden relative shadow-inner"
@@ -224,8 +224,112 @@ const InterviewAvatar = memo(function InterviewAvatar({
 
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GD Mobile Avatar Circle Status Badge
+// ─────────────────────────────────────────────────────────────────────────────
+const GDMobileAvatarCircle = memo(function GDMobileAvatarCircle({ participant }: { participant: Participant }) {
+  const config = getAvatarConfig(participant.name);
+  const isActive = participant.isActive;
+
+  return (
+    <div className="flex items-center gap-2 shrink-0 bg-slate-50 border border-slate-100 rounded-2xl px-3 py-1.5 shadow-sm">
+      <div
+        className={cn(
+          "relative w-7 h-7 rounded-full border transition-all duration-300 overflow-hidden shrink-0",
+          isActive
+            ? "ring-2 ring-indigo-500 border-transparent scale-105 shadow-sm"
+            : "border-slate-200 opacity-60 saturate-50"
+        )}
+        style={{ backgroundColor: config.bg }}
+      >
+        <Image
+          src={config.src}
+          alt={participant.name}
+          fill
+          sizes="28px"
+          className="object-cover object-top scale-[1.3] translate-y-[2px]"
+          unoptimized
+        />
+      </div>
+      <div className="flex flex-col min-w-0">
+        <div className="flex items-center gap-1">
+          <span className="text-[11px] font-bold text-slate-800 leading-none truncate max-w-[60px]">{participant.name}</span>
+          {isActive && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />}
+        </div>
+        <span className="text-[8px] text-slate-400 font-black uppercase tracking-wider truncate max-w-[70px] mt-0.5">
+          {isActive ? 'Speaking' : (participant.role || participant.stance || 'Member')}
+        </span>
+      </div>
+    </div>
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Interviewer Mobile Top Bar Preview
+// ─────────────────────────────────────────────────────────────────────────────
+const InterviewAvatarMobile = memo(function InterviewAvatarMobile({
+  participant,
+  isStreaming,
+}: {
+  participant: Participant;
+  isStreaming: boolean;
+}) {
+  const config = getAvatarConfig(participant.name);
+
+  return (
+    <div className="relative h-full w-full overflow-hidden select-none flex items-center justify-between px-6 bg-slate-50">
+      {/* Background radial glow */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: `radial-gradient(circle at 20% 50%, ${config.bg}22 0%, transparent 60%)`,
+        }}
+      />
+      {/* Left side: Info and status */}
+      <div className="relative z-10 flex items-center gap-3">
+        <div
+          className="w-10 h-10 rounded-xl shrink-0 overflow-hidden relative shadow-inner border border-white/40"
+          style={{ backgroundColor: config.bg }}
+        >
+          <Image src={config.src} alt={participant.name} fill sizes="40px" className="object-cover object-top scale-110" unoptimized />
+        </div>
+        <div>
+          <p className="text-[13px] font-bold text-slate-900 tracking-tight leading-tight">{participant.name}</p>
+          <p className="text-[9px] uppercase tracking-[0.2em] text-slate-500 font-black mt-0.5">{participant.role || 'Interviewer'}</p>
+        </div>
+      </div>
+      {/* Right side: Image avatar and active indicator */}
+      <div className="relative h-full w-24 shrink-0 flex items-end">
+        <motion.div
+          animate={{ y: isStreaming ? [0, -3, 0] : 0 }}
+          transition={{ duration: 3, ease: 'easeInOut', repeat: Infinity }}
+          className="relative w-full h-[90%]"
+        >
+          <Image
+            src={config.src}
+            alt={participant.name}
+            fill
+            sizes="96px"
+            className={cn('object-contain object-bottom', getAvatarScaleClass(config.src))}
+            unoptimized
+            priority
+          />
+        </motion.div>
+        {isStreaming && (
+          <div className="absolute top-4 right-4 flex items-center gap-1 px-2 py-0.5 bg-white/95 backdrop-blur-sm rounded-full shadow-sm border border-slate-100">
+            <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_5px_rgba(16,185,129,0.5)]" />
+            <span className="text-[8px] font-bold uppercase tracking-wider text-slate-600">Speaking</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Skeleton loader
 // ─────────────────────────────────────────────────────────────────────────────
+
 const MessageSkeleton = memo(function MessageSkeleton({ delay = 0 }: { delay?: number }) {
   return (
     <div className="flex flex-col gap-3 p-5 bg-slate-50 rounded-[1.5rem] border border-slate-100 opacity-60">
@@ -248,16 +352,18 @@ const TranscriptFeed = memo(function TranscriptFeed({
   phase,
   scrollRef,
   type,
+  tensionAnnotations,
 }: {
   messages: Message[];
   isStreaming: boolean;
   phase?: string;
   scrollRef: React.RefObject<HTMLDivElement>;
   type: 'interview' | 'gd';
+  tensionAnnotations?: Map<string, string>;
 }) {
   return (
     <aside className={cn(
-      "flex flex-col h-full overflow-hidden border-l border-slate-200",
+      "flex flex-col h-full overflow-hidden lg:border-l border-slate-200",
       type === 'interview' ? "w-full lg:w-[380px] xl:w-[440px] bg-white" : "w-full lg:w-[400px] xl:w-[460px] bg-slate-50/60"
     )}>
       <div className="px-7 py-5 border-b border-slate-200 flex items-center justify-between shrink-0">
@@ -290,25 +396,38 @@ const TranscriptFeed = memo(function TranscriptFeed({
           {messages.map((msg) => {
             const isUser = msg.role === 'user';
             const speakerLabel = msg.speaker_name || (isUser ? 'YOU' : 'SYSTEM');
+            const annotation = msg.annotation || tensionAnnotations?.get(msg.id);
             return (
               <motion.div
                 key={msg.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, ease: "easeOut" }}
-                className={cn(
+              >
+                <div className={cn(
                   "rounded-[1.25rem] px-5 py-4",
                   isUser
                     ? "bg-slate-900 text-white ml-6"
                     : type === 'interview'
                       ? "bg-slate-50 text-slate-800 border border-slate-100 mr-6"
                       : "bg-white text-slate-800 border border-slate-100 shadow-sm mr-6"
+                )}>
+                  <p className={cn("text-[9px] uppercase tracking-[0.2em] font-black mb-2", isUser ? "text-white/50" : "text-indigo-600")}>
+                    {speakerLabel}
+                  </p>
+                  <p className="text-[13px] leading-[1.7]">{msg.content}</p>
+                </div>
+                {/* Tension annotation tag below user bubble */}
+                {isUser && annotation && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: 0.15 }}
+                    className="ml-6 mt-1.5 text-[10px] text-orange-500 font-bold uppercase tracking-wide"
+                  >
+                    {annotation}
+                  </motion.div>
                 )}
-              >
-                <p className={cn("text-[9px] uppercase tracking-[0.2em] font-black mb-2", isUser ? "text-white/50" : "text-indigo-600")}>
-                  {speakerLabel}
-                </p>
-                <p className="text-[13px] leading-[1.7]">{msg.content}</p>
               </motion.div>
             );
           })}
@@ -334,6 +453,7 @@ const InputBar = memo(function InputBar({
   isStreaming,
   placeholder,
   type,
+  coachingTip,
 }: {
   inputValue: string;
   setInputValue: (v: string) => void;
@@ -341,6 +461,7 @@ const InputBar = memo(function InputBar({
   isStreaming: boolean;
   placeholder: string;
   type: 'interview' | 'gd';
+  coachingTip?: string;
 }) {
   return (
     <div className={cn(
@@ -349,6 +470,21 @@ const InputBar = memo(function InputBar({
         ? "px-6 py-5 bg-white border-t border-slate-100"
         : "px-5 py-4 bg-white/80 backdrop-blur-xl border-t border-slate-200"
     )}>
+      <AnimatePresence>
+        {coachingTip && (
+          <motion.div
+            key={coachingTip}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+            className="max-w-2xl mx-auto mb-2 px-4 py-2.5 bg-indigo-50 border border-indigo-100 rounded-xl"
+          >
+            <span className="text-[9px] uppercase tracking-widest font-black text-indigo-400 block mb-0.5">Coach</span>
+            <span className="text-[12px] text-indigo-700 font-medium leading-relaxed">{coachingTip}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <div className="flex items-end gap-3 max-w-2xl mx-auto">
         <textarea
           value={inputValue}
@@ -393,6 +529,54 @@ const InputBar = memo(function InputBar({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Leave confirmation panel — slides up from bottom of shell
+// ─────────────────────────────────────────────────────────────────────────────
+const LeaveConfirmPanel = memo(function LeaveConfirmPanel({
+  onStay,
+  onLeave,
+  onSaveLater,
+}: {
+  onStay: () => void;
+  onLeave: () => void;
+  onSaveLater?: () => void;
+}) {
+  return (
+    <motion.div
+      initial={{ y: 80, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      exit={{ y: 80, opacity: 0 }}
+      transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+      className="absolute inset-x-0 bottom-0 z-40 bg-white border-t border-slate-200 px-8 py-6 shadow-[0_-8px_32px_rgba(0,0,0,0.08)]"
+    >
+      <h3 className="text-[15px] font-black text-slate-900 mb-1">Leave the session?</h3>
+      <p className="text-[13px] text-slate-500 mb-5">Your transcript is saved. You can return to this session any time.</p>
+      <div className="flex gap-3">
+        <button
+          onClick={onStay}
+          className="flex-1 py-3 rounded-2xl border-2 border-slate-200 text-slate-700 font-black text-sm hover:border-slate-300 hover:bg-slate-50 transition-all active:scale-95"
+        >
+          Stay
+        </button>
+        {onSaveLater && (
+          <button
+            onClick={onSaveLater}
+            className="flex-1 py-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-700 font-black text-sm hover:bg-amber-100 transition-all active:scale-95"
+          >
+            Save for Later
+          </button>
+        )}
+        <button
+          onClick={onLeave}
+          className="flex-1 py-3 rounded-2xl bg-slate-900 text-white font-black text-sm hover:bg-slate-800 transition-all active:scale-95"
+        >
+          Leave
+        </button>
+      </div>
+    </motion.div>
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main SimulatorShell
 // ─────────────────────────────────────────────────────────────────────────────
 export const SimulatorShell: React.FC<SimulatorShellProps> = ({
@@ -411,9 +595,14 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
   onEnd,
   round = 0,
   maxRounds = 10,
-  isClosing = false
+  isClosing = false,
+  onLeave,
+  onSaveLater,
+  coachingTip,
+  tensionAnnotations,
 }) => {
   const [mounted, setMounted] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setMounted(true); }, []);
@@ -426,8 +615,43 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
 
   if (!mounted) return null;
 
-  // Last assistant message for interview speech bubble
   const latestMsg = messages[messages.length - 1];
+
+  const handleLogoClick = () => {
+    if (onLeave || onSaveLater) {
+      setConfirmLeave(true);
+    } else {
+      window.location.href = '/dashboard';
+    }
+  };
+
+  const handleLeave = () => {
+    setConfirmLeave(false);
+    if (onLeave) {
+      onLeave();
+    } else {
+      window.location.href = '/dashboard';
+    }
+  };
+
+  const handleSaveLater = () => {
+    setConfirmLeave(false);
+    if (onSaveLater) {
+      onSaveLater();
+    } else if (onLeave) {
+      onLeave();
+    } else {
+      window.location.href = '/dashboard';
+    }
+  };
+
+  // Tension copy that surfaces in the tooltip — level-specific
+  const tensionTooltipCopy =
+    tension > 70
+      ? 'Debate is intense — arguments are clashing directly. Stay confident and hold your ground.'
+      : tension > 40
+      ? 'Rising tension — you\'re engaging assertively. Keep challenging ideas with specific points.'
+      : 'Low tension — build your argument. Try making a direct claim or challenging a point.';
 
   return (
     <div className="relative h-[100dvh] overflow-hidden flex flex-col font-body text-slate-900 selection:bg-indigo-100">
@@ -440,9 +664,9 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
           : "bg-white/80 backdrop-blur-xl border-slate-200 shadow-sm"
       )}>
         <div className="flex items-baseline gap-1">
-          <span className="font-sans font-black text-xl tracking-tighter text-slate-900">
+          <button onClick={handleLogoClick} className="font-sans font-black text-xl tracking-tighter text-slate-900 hover:opacity-75 transition-opacity">
             ZIDD<span className={type === 'interview' ? "text-slate-900" : "text-indigo-600"}>.</span>
-          </span>
+          </button>
           <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 ml-4 hidden sm:inline-block">
             Studio / {title}
           </span>
@@ -450,7 +674,8 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
 
         <div className="flex items-center gap-4">
           {type === 'gd' && (
-            <div className="hidden sm:flex items-center gap-3 pr-4 border-r border-slate-200">
+            // Tension meter with tooltip on hover
+            <div className="hidden sm:flex items-center gap-3 pr-4 border-r border-slate-200 group relative">
               <span className="text-[9px] uppercase tracking-[0.2em] text-slate-500 font-black">Tension</span>
               <div className="w-28 h-1 bg-slate-100 rounded-full overflow-hidden">
                 <motion.div
@@ -459,6 +684,16 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
                   animate={{ width: `${tension}%` }}
                   transition={{ duration: 1 }}
                 />
+              </div>
+              {/* Hover tooltip */}
+              <div className="absolute top-full left-0 mt-2 w-60 bg-slate-900 text-white text-[11px] rounded-xl px-3.5 py-3 leading-relaxed opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-xl">
+                <span className="font-black block mb-1 text-indigo-300">
+                  Tension = debate intensity
+                </span>
+                {tensionTooltipCopy}
+                <span className="block mt-2 text-slate-400 text-[10px]">
+                  Higher tension = more assertive engagement. GDs reward this.
+                </span>
               </div>
             </div>
           )}
@@ -490,20 +725,61 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
             </span>
           </div>
         </div>
-      </header>
-
-      {/* ── GD Layout ── */}
+      </header>      {/* ── GD Layout ── */}
       {type === 'gd' && (
-        <div className="flex-1 flex flex-col lg:flex-row overflow-hidden bg-[#F7F7F8]">
-          {/* Left: avatar area is flex-1 — fills all height between header and input */}
-          <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Cards live in the flex-1 zone and grow to fill it */}
-            <div className="flex-1 flex gap-3 px-5 pt-5 pb-3 overflow-hidden">
+        <>
+          {/* Desktop GD Layout */}
+          <div className="hidden lg:flex flex-1 flex-row overflow-hidden bg-[#F7F7F8]">
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex-1 flex gap-3 px-5 pt-5 pb-3 overflow-hidden">
+                {participants.map((p) => (
+                  <GDAvatarCard key={p.id} participant={p} />
+                ))}
+              </div>
+
+              <InputBar
+                inputValue={inputValue}
+                setInputValue={setInputValue}
+                onSend={onSend}
+                isStreaming={isStreaming}
+                placeholder="Contribute to the discussion..."
+                type="gd"
+                coachingTip={coachingTip}
+              />
+            </div>
+
+            <TranscriptFeed
+              messages={messages}
+              isStreaming={isStreaming}
+              phase={phase}
+              scrollRef={scrollRef}
+              type="gd"
+              tensionAnnotations={tensionAnnotations}
+            />
+          </div>
+
+          {/* Mobile GD Layout */}
+          <div className="flex lg:hidden flex-col flex-1 overflow-hidden bg-[#F7F7F8]">
+            {/* 1. Top row of compact circular avatars */}
+            <div className="shrink-0 flex gap-3 px-5 py-3 overflow-x-auto bg-white border-b border-slate-100 scrollbar-hide">
               {participants.map((p) => (
-                <GDAvatarCard key={p.id} participant={p} />
+                <GDMobileAvatarCircle key={p.id} participant={p} />
               ))}
             </div>
 
+            {/* 2. Chat feed in the middle */}
+            <div className="flex-grow overflow-hidden relative">
+              <TranscriptFeed
+                messages={messages}
+                isStreaming={isStreaming}
+                phase={phase}
+                scrollRef={scrollRef}
+                type="gd"
+                tensionAnnotations={tensionAnnotations}
+              />
+            </div>
+
+            {/* 3. Input bar at the bottom */}
             <InputBar
               inputValue={inputValue}
               setInputValue={setInputValue}
@@ -511,59 +787,84 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
               isStreaming={isStreaming}
               placeholder="Contribute to the discussion..."
               type="gd"
+              coachingTip={coachingTip}
+            />
+          </div>
+        </>
+      )}
+      {/* ── Interview Layout ── */}
+      {type === 'interview' && (
+        <>
+          {/* Desktop Interview Layout */}
+          <div className="hidden lg:flex flex-grow flex-row overflow-hidden bg-slate-50">
+            <div className="flex-1 flex flex-col overflow-hidden bg-[#F5F5F7]">
+              <div className="flex-1 overflow-hidden">
+                {participants[0] && (
+                  <InterviewAvatar
+                    participant={participants[0]}
+                    latestMessage={latestMsg}
+                    isStreaming={isStreaming}
+                  />
+                )}
+              </div>
+
+              <div className="shrink-0 bg-white border-t border-slate-100">
+                <InputBar
+                  inputValue={inputValue}
+                  setInputValue={setInputValue}
+                  onSend={onSend}
+                  isStreaming={isStreaming}
+                  placeholder="Speak your response..."
+                  type="interview"
+                  coachingTip={coachingTip}
+                />
+              </div>
+            </div>
+
+            <TranscriptFeed
+              messages={messages}
+              isStreaming={isStreaming}
+              phase={phase}
+              scrollRef={scrollRef}
+              type="interview"
             />
           </div>
 
-          {/* Right: Scrollable transcript */}
-          <TranscriptFeed
-            messages={messages}
-            isStreaming={isStreaming}
-            phase={phase}
-            scrollRef={scrollRef}
-            type="gd"
-          />
-        </div>
-      )}
-
-
-      {/* ── Interview Layout ── */}
-      {type === 'interview' && (
-        <div className="flex-1 flex overflow-hidden">
-          {/* Left: Interview stage — avatar fills the column, input docked below */}
-          <div className="flex-1 flex flex-col overflow-hidden bg-[#F5F5F7]">
-            {/* Stage takes all remaining height */}
-            <div className="flex-1 overflow-hidden">
+          {/* Mobile Interview Layout */}
+          <div className="flex lg:hidden flex-col flex-1 overflow-hidden bg-slate-50">
+            {/* 1. Interviewer Stage (reduced height) */}
+            <div className="h-[28vh] shrink-0 bg-[#F5F5F7] border-b border-slate-200">
               {participants[0] && (
-                <InterviewAvatar
+                <InterviewAvatarMobile
                   participant={participants[0]}
-                  latestMessage={latestMsg}
                   isStreaming={isStreaming}
                 />
               )}
             </div>
 
-            {/* Input docked to bottom */}
-            <div className="shrink-0 bg-white border-t border-slate-100">
-              <InputBar
-                inputValue={inputValue}
-                setInputValue={setInputValue}
-                onSend={onSend}
+            {/* 2. Chat feed in the middle */}
+            <div className="flex-grow overflow-hidden relative">
+              <TranscriptFeed
+                messages={messages}
                 isStreaming={isStreaming}
-                placeholder="Speak your response..."
+                phase={phase}
+                scrollRef={scrollRef}
                 type="interview"
               />
             </div>
-          </div>
 
-          {/* Right: Transcript log */}
-          <TranscriptFeed
-            messages={messages}
-            isStreaming={isStreaming}
-            phase={phase}
-            scrollRef={scrollRef}
-            type="interview"
-          />
-        </div>
+            {/* 3. Input bar at the bottom */}
+            <InputBar
+              inputValue={inputValue}
+              setInputValue={setInputValue}
+              onSend={onSend}
+              isStreaming={isStreaming}
+              placeholder="Speak your response..."
+              type="interview"
+              coachingTip={coachingTip}
+            />
+          </div>
+        </>
       )}
 
       {/* ── Error overlay ──────────────────────────────────────────────── */}
@@ -580,6 +881,17 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
               <span className="text-[13px] font-medium">{error}</span>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Leave confirmation panel ───────────────────────────────────── */}
+      <AnimatePresence>
+        {confirmLeave && (
+          <LeaveConfirmPanel
+            onStay={() => setConfirmLeave(false)}
+            onLeave={handleLeave}
+            onSaveLater={onSaveLater ? handleSaveLater : undefined}
+          />
         )}
       </AnimatePresence>
     </div>
