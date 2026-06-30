@@ -3,7 +3,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
-import { LockClosedIcon } from '@radix-ui/react-icons';
+import { LockClosedIcon, CheckIcon } from '@radix-ui/react-icons';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { AVATAR_PATHS, getAvatarScaleClass } from '@/lib/avatarRegistry';
@@ -56,16 +56,25 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
     <div className="relative flex flex-col items-center py-20 px-4 w-full max-w-5xl mx-auto min-h-[1200px]">
       
       {/* Dynamic Background Winding Path */}
-      <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[300px] pointer-events-none opacity-20">
+      <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[300px] pointer-events-none opacity-30">
         <svg width="100%" height="100%" preserveAspectRatio="none">
-           {/* Base faded path */}
-          <path 
-            d="M150,0 C300,300 0,600 150,900 C300,1200 0,1500 150,1800" 
-            fill="none" 
-            stroke="currentColor" 
-            strokeWidth="8" 
-            className="text-slate-300 stroke-dashed"
-            strokeDasharray="16 16"
+           {/* Soft solid underlay so the route reads even before any progress */}
+          <path
+            d="M150,0 C300,300 0,600 150,900 C300,1200 0,1500 150,1800"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="14"
+            className="text-slate-200/70"
+          />
+           {/* Dashed travel line on top */}
+          <path
+            d="M150,0 C300,300 0,600 150,900 C300,1200 0,1500 150,1800"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="4"
+            className="text-slate-300"
+            strokeDasharray="2 18"
+            strokeLinecap="round"
           />
         </svg>
       </div>
@@ -87,6 +96,18 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
       </div>
 
       <div className="relative z-10 flex flex-col gap-40 w-full items-center">
+
+        {/* Journey start */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+          className="flex flex-col items-center gap-2 -mb-24 select-none"
+        >
+          <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-400">Your journey begins</span>
+          <div className="w-3 h-3 rounded-full bg-white border-2 border-slate-300 shadow-[0_0_0_4px_rgba(148,163,184,0.12)]" />
+        </motion.div>
+
         {nodes.map((node, index) => {
           const isEven = index % 2 === 0;
           const status = node.status;
@@ -115,19 +136,37 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
               
               {/* 3D Avatar Area */}
               <div className={cn(
-                 "relative z-20 flex-shrink-0 transition-all duration-500",
+                 "relative z-20 flex-shrink-0 transition-all duration-500 w-48 h-56 md:w-64 md:h-72",
                  isEven ? "ml-auto md:ml-[50%] md:-translate-x-1/2" : "mr-auto md:mr-[50%] md:translate-x-1/2"
               )}>
-                 <motion.div 
+                 {/* Ghost step numeral — echoes the onboarding cards, gives the path a count */}
+                 <span className={cn(
+                    "absolute -top-8 left-1/2 -translate-x-1/2 z-0 font-anton leading-none select-none pointer-events-none text-[7rem] md:text-[9rem] tracking-tighter transition-colors duration-700",
+                    status === 'active' ? "text-indigo-500/10" : status === 'mastered' ? "text-emerald-500/10" : "text-slate-900/[0.04]"
+                 )}>{String(index + 1).padStart(2, '0')}</span>
+
+                 {/* Station: a station ring + soft ground shadow so the figure stands ON the path */}
+                 <div className="absolute left-1/2 bottom-4 -translate-x-1/2 z-0 pointer-events-none">
+                    <div className={cn(
+                       "w-28 md:w-36 h-5 rounded-[100%] blur-md transition-colors duration-700",
+                       status === 'active' ? "bg-indigo-900/15" : status === 'locked' ? "bg-slate-900/[0.06]" : "bg-slate-900/10"
+                    )} />
+                    <div className={cn(
+                       "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-16 md:w-20 h-16 md:h-20 rounded-full border transition-all duration-700",
+                       status === 'active' ? "border-indigo-300/60 bg-indigo-50/40" : status === 'mastered' ? "border-emerald-300/50 bg-emerald-50/30" : "border-slate-200/70 bg-white/30"
+                    )} />
+                 </div>
+
+                 <motion.div
                     animate={status !== 'locked' ? { y: [0, -12, 0] } : {}}
                     transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: index * 0.2 }}
                     whileHover={status !== 'locked' ? { scale: 1.08, rotate: isEven ? 2 : -2 } : {}}
                     whileTap={status !== 'locked' ? { scale: 0.95 } : {}}
                     className={cn(
-                      "relative w-48 h-56 md:w-64 md:h-72 flex items-center justify-center transition-all duration-700",
-                      status === 'mastered' && "opacity-80 scale-90",
+                      "relative w-48 h-56 md:w-64 md:h-72 flex items-center justify-center transition-all duration-700 z-10",
+                      status === 'mastered' && "opacity-90 scale-90",
                       status === 'active' && "drop-shadow-[0_30px_40px_rgba(99,102,241,0.4)] z-30",
-                      status === 'locked' && "opacity-30 grayscale blur-[2px]"
+                      status === 'locked' && "opacity-45 grayscale-[85%] blur-[1px]"
                     )}
                  >
                     {/* Active Halo */}
@@ -154,42 +193,64 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
                           </div>
                        </div>
                     )}
+
+                    {status === 'mastered' && (
+                       <div className="absolute top-2 right-2 z-30 w-9 h-9 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/30 ring-4 ring-white">
+                          <CheckIcon className="w-5 h-5" />
+                       </div>
+                    )}
                  </motion.div>
               </div>
 
               {/* Speech Bubble / Info Panel */}
               <div className={cn(
-                 "absolute z-30 transition-all duration-500",
-                 isEven ? "left-4 md:left-[calc(50%+100px)]" : "right-4 md:right-[calc(50%+100px)]",
-                 status === 'locked' ? "opacity-0 translate-y-4 pointer-events-none" : "opacity-100 translate-y-0"
+                 "absolute z-30 transition-all duration-500 opacity-100 translate-y-0",
+                 isEven ? "left-4 md:left-[calc(50%+100px)]" : "right-4 md:right-[calc(50%+100px)]"
               )}>
-                 <div className={cn(
-                    "bg-white/95 backdrop-blur-xl border rounded-[2rem] p-6 shadow-2xl max-w-[280px]",
-                    status === 'active' ? "border-indigo-200 shadow-indigo-500/10 ring-4 ring-indigo-50/50" : "border-slate-200/60 shadow-slate-900/5"
-                 )}>
-                    {/* The Tail */}
+                 {status === 'locked' ? (
+                    /* Muted name tag: the upcoming skill is NAMED, not an anonymous ghost */
                     <div className={cn(
-                       "absolute top-1/2 -translate-y-1/2 w-6 h-6 bg-white/95 border-b border-l border-slate-200/60 backdrop-blur-xl rotate-45 -z-10",
-                       isEven ? "-left-3" : "-right-3 border-t border-r border-b-0 border-l-0"
-                    )} />
+                       "flex items-center gap-2 bg-white/70 backdrop-blur-sm border border-slate-200/70 rounded-full pl-2 pr-4 py-1.5 shadow-sm max-w-[240px]",
+                       index === activeIndex + 1 && "ring-1 ring-slate-200"
+                    )}>
+                       <span className="flex-shrink-0 w-5 h-5 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center">
+                          <LockClosedIcon className="w-3 h-3" />
+                       </span>
+                       <span className="text-[13px] font-semibold text-slate-400 truncate">{node.title}</span>
+                    </div>
+                 ) : (
+                    <div className={cn(
+                       "relative bg-white/95 backdrop-blur-xl border rounded-[2rem] p-6 shadow-2xl max-w-[280px]",
+                       status === 'active' ? "border-indigo-200 shadow-indigo-500/10 ring-4 ring-indigo-50/50" : "border-slate-200/60 shadow-slate-900/5"
+                    )}>
+                       {/* The Tail */}
+                       <div className={cn(
+                          "absolute top-1/2 -translate-y-1/2 w-6 h-6 bg-white/95 border-b border-l border-slate-200/60 backdrop-blur-xl rotate-45 -z-10",
+                          isEven ? "-left-3" : "-right-3 border-t border-r border-b-0 border-l-0"
+                       )} />
 
-                    {status === 'active' && (
-                       <div className="mb-4">
-                          <p className="text-indigo-600 font-display text-xl leading-tight tracking-tight italic">
+                       {status === 'active' ? (
+                          <span className="inline-block mb-3 text-[9px] font-bold uppercase tracking-[0.25em] text-indigo-500 bg-indigo-50 rounded-full px-2.5 py-1">You are here</span>
+                       ) : (
+                          <span className="inline-flex items-center gap-1.5 mb-3 text-[9px] font-bold uppercase tracking-[0.25em] text-emerald-600">
+                             <CheckIcon className="w-3 h-3" /> Mastered
+                          </span>
+                       )}
+
+                       {status === 'active' && (
+                          <p className="text-indigo-600 font-display text-xl leading-tight tracking-tight italic mb-4">
                              &quot;{quote}&quot;
                           </p>
-                       </div>
-                    )}
+                       )}
 
-                    <div>
                        <h3 className={cn(
                           "font-bold text-lg mb-2 leading-tight tracking-tight",
                           status === 'active' ? "text-slate-900" : "text-slate-600"
                        )}>{node.title}</h3>
-                       
+
                        <div className="flex items-center gap-3">
                          <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden shadow-inner">
-                           <div 
+                           <div
                              className={cn(
                                "h-full rounded-full transition-all duration-1000",
                                status === 'mastered' ? "bg-emerald-400" : "bg-indigo-500"
@@ -202,12 +263,32 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
                          </span>
                        </div>
                     </div>
-                 </div>
+                 )}
               </div>
 
             </motion.div>
           );
         })}
+
+        {/* Journey destination */}
+        {nodes.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+            className="flex flex-col items-center gap-4 -mt-16 select-none"
+          >
+            <div className="relative w-20 h-20 rounded-full bg-white border border-slate-200/70 shadow-[0_20px_40px_rgba(15,23,42,0.08)] flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full bg-gradient-to-b from-amber-100/60 to-transparent" />
+              <span className="relative text-3xl" role="img" aria-label="trophy">🏆</span>
+            </div>
+            <div className="text-center">
+              <p className="font-display text-3xl tracking-tight text-slate-900 leading-none">Mastery</p>
+              <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.3em] text-slate-400">Complete every skill to arrive</p>
+            </div>
+          </motion.div>
+        )}
       </div>
     </div>
   );
