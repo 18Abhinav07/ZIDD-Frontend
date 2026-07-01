@@ -39,6 +39,29 @@ export function createOrder(packId: string): Promise<OrderResponse> {
   });
 }
 
+// DEV-ONLY: top up the wallet locally without Razorpay (which needs a public
+// webhook to grant credits). The backend route 404s outside non-prod.
+export function devGrantCredits(amount = 500): Promise<{ credits: number; granted: number }> {
+  return apiFetch(`/billing/dev/grant?amount=${amount}`, { method: 'POST' });
+}
+
+// Verify a Razorpay Checkout success server-side and grant immediately — so a
+// TEST payment funds the wallet on localhost (where the webhook can't reach the
+// server) and as a safety net if the webhook is delayed. Idempotent server-side.
+export function verifyPayment(payload: {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+}): Promise<{ granted: boolean; credits: number }> {
+  return apiFetch('/billing/razorpay/verify', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+// True only on a local dev host, so dev-only affordances never render in prod.
+export function isLocalDev(): boolean {
+  if (typeof window === 'undefined') return false;
+  return ['localhost', '127.0.0.1'].includes(window.location.hostname);
+}
+
 // ── /session/start with paywall awareness ──
 
 export interface StartSessionArgs {

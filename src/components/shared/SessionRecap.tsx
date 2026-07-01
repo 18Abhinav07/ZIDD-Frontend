@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { SessionRecapFrame } from '@/types';
 import { Target, CheckCircle2, TrendingDown } from 'lucide-react';
 
@@ -10,9 +12,14 @@ interface SessionRecapProps {
 
 export function SessionRecap({ recap, onClose }: SessionRecapProps) {
   const percentage = Math.round(recap.avg_score * 100);
+  // Portal to <body>: this report renders inside the tutor shell, whose
+  // transforms would otherwise trap this fixed overlay and offset it.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-fade-rise">
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-fade-rise overflow-y-auto">
       <div className="bg-white border border-slate-200 rounded-3xl p-10 w-full max-w-lg shadow-2xl flex flex-col items-center">
         
         {/* Header */}
@@ -83,6 +90,7 @@ export function SessionRecap({ recap, onClose }: SessionRecapProps) {
           Return to Path
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

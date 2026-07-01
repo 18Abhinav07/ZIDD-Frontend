@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Cross2Icon, LightningBoltIcon } from '@radix-ui/react-icons';
 import { clsx, type ClassValue } from 'clsx';
@@ -39,6 +40,13 @@ export function PacksModal({ open, onClose, onPurchased, initialPacks }: PacksMo
   const [loading, setLoading] = useState(!initialPacks);
   const [error, setError] = useState('');
   const [buyingId, setBuyingId] = useState<string | null>(null);
+  // Portal to <body> so the fixed-position overlay escapes any ancestor with a
+  // transform / filter / backdrop-filter (the blurred header, the paywall card).
+  // Such an ancestor becomes the containing block for `position: fixed`, which
+  // anchored this modal to the top of that box and cut it off instead of
+  // centering it in the viewport. Mount-gated for SSR safety.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!open) return;
@@ -104,14 +112,16 @@ export function PacksModal({ open, onClose, onPurchased, initialPacks }: PacksMo
       ? packs.reduce((best, p) => (perCreditPaise(p) < perCreditPaise(best) ? p : best), packs[0]).id
       : null;
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm"
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm overflow-y-auto"
           onClick={handleClose}
         >
           <motion.div
@@ -210,6 +220,7 @@ export function PacksModal({ open, onClose, onPurchased, initialPacks }: PacksMo
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }

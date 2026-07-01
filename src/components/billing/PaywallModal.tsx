@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Cross2Icon, LightningBoltIcon, LockClosedIcon } from '@radix-ui/react-icons';
 import type { PaywallDetail } from '@/types';
@@ -30,6 +31,11 @@ export function PaywallModal({
   confirming = false,
 }: PaywallModalProps) {
   const [packsOpen, setPacksOpen] = useState(false);
+  // Portal the overlay to <body> so `position: fixed` is viewport-relative, not
+  // trapped inside an ancestor with a transform/backdrop-filter (same fix as
+  // PacksModal). Mount-gated for SSR safety.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const open = paywall !== null;
   const insufficient = paywall?.error === 'insufficient_credits';
@@ -44,13 +50,14 @@ export function PaywallModal({
 
   return (
     <>
-      <AnimatePresence>
+      {mounted && createPortal(
+        <AnimatePresence>
         {open && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[190] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm"
+            className="fixed inset-0 z-[190] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm overflow-y-auto"
             onClick={onClose}
           >
             <motion.div
@@ -148,7 +155,9 @@ export function PaywallModal({
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
+        </AnimatePresence>,
+        document.body
+      )}
 
       {/* Top-up flow for the insufficient_credits branch. The packs come from the
           402 body so we avoid a redundant fetch. After a confirmed grant we close

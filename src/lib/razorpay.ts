@@ -4,7 +4,7 @@
 // the Razorpay webhook (async), so after the success handler fires we poll
 // getBalance() until the wallet increases before resolving.
 import type { OrderResponse } from '@/types';
-import { getBalance } from '@/services/billing';
+import { getBalance, verifyPayment } from '@/services/billing';
 
 const CHECKOUT_SRC = 'https://checkout.razorpay.com/v1/checkout.js';
 
@@ -144,10 +144,28 @@ export async function openCheckout(
       description: `${order.credits} credits`,
       prefill: opts.prefill,
       theme: { color: '#4f46e5' },
-      handler: () => {
+      handler: (response: RazorpayHandlerResponse) => {
         if (settled) return;
         settled = true;
-        void pollForGrant();
+        // Verify the success server-side for an INSTANT grant (works on localhost
+        // where the webhook can't reach us). Fall back to polling the webhook
+        // grant if verify is unavailable/fails.
+        void (async () => {
+          try {
+            const v = await verifyPayment({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            });
+            if (v.granted || v.credits > baseline) {
+              resolve(true);
+              return;
+            }
+          } catch {
+            // verify endpoint unavailable / signature mismatch — fall through.
+          }
+          void pollForGrant();
+        })();
       },
       modal: {
         ondismiss: () => {
