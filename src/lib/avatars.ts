@@ -7,59 +7,63 @@ export interface AvatarData {
   bg: string;
 }
 
+// Each coach carries a short, supportive line shown beside the avatar. Kept
+// modality-neutral (no "pacing"/"before you speak" claims: the tutor reads typed
+// answers, so audio-analysis copy would be a lie) and subject-agnostic, so the
+// same line reads right for a Class-2 reader and an interview candidate alike.
 export const COACH_AVATARS: AvatarData[] = [
   {
     id: 'stuttering_sam',
     url: AVATAR_PATHS.coach_orange,
-    quote: '"Focus on clarity. I\'m analyzing your pacing and structure."',
+    quote: '"Take your time. Every try shows me how to help you better."',
     bg: '#F59E0B' // Amber
   },
   {
     id: 'fluent_finn',
     url: AVATAR_PATHS.coach_green,
-    quote: '"Great effort! Let\'s try to make that sentence a little bit smoother."',
+    quote: '"Nice work. Let\'s make that answer a little sharper together."',
     bg: '#10B981' // Green
   },
   {
     id: 'brave_bella',
     url: AVATAR_PATHS.coach_pink,
-    quote: '"I am here to help! Remember to take a deep breath before you speak."',
+    quote: '"You\'ve got this. There are no wrong tries here, only practice."',
     bg: '#EC4899' // Pink
   },
   {
     id: 'quiet_quint',
     url: AVATAR_PATHS.coach_blue,
-    quote: '"Wisdom comes from practice. Let\'s review your vocabulary choices."',
+    quote: '"Real progress comes from practice. One small step at a time."',
     bg: '#3B82F6' // Blue
   },
   {
     id: 'tech_black',
     url: AVATAR_PATHS.tech_black,
-    quote: '"Structure your logic. I will test your analytical thinking."',
+    quote: '"Show me your reasoning. I\'m here to stretch your thinking."',
     bg: '#334155' // Slate Gray
   },
   {
     id: 'casual_purple',
     url: AVATAR_PATHS.casual_purple,
-    quote: '"Don\'t rush. Think deeply and respond with intention."',
+    quote: '"No need to rush. Think it over, then tell me what you\'ve got."',
     bg: '#A855F7' // Purple
   },
   {
     id: 'casual_male',
     url: AVATAR_PATHS.casual_male,
-    quote: '"Take the lead. I\'m looking for confidence and initiative."',
+    quote: '"Lead the way. I\'m looking for clear thinking and a bit of courage."',
     bg: '#D97706' // Deep Amber
   },
   {
     id: 'casual_female',
     url: AVATAR_PATHS.casual_female,
-    quote: '"Let\'s brainstorm together. Share your wildest ideas!"',
+    quote: '"Let\'s explore this together. Share whatever comes to mind."',
     bg: '#EAB308' // Yellow
   },
   {
     id: 'casual_blue',
     url: AVATAR_PATHS.casual_blue,
-    quote: '"A solid foundation is everything. Let\'s build it up!"',
+    quote: '"Strong foundations win. Let\'s lay the next brick."',
     bg: '#3B82F6' // Blue
   }
 ];

@@ -69,6 +69,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
   const [inputValue, setInputValue] = useState('');
   const [recapVisible, setRecapVisible] = useState(true);
   const [avatar, setAvatar] = useState<AvatarData | null>(null);
+  const [confirmingExit, setConfirmingExit] = useState(false);
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -97,10 +98,11 @@ export default function SessionPage({ params }: { params: { id: string } }) {
   const isProfessional = state?.phase === 'Interview' || state?.phase === 'Group Discussion';
 
   if (notFound) {
-    return <SessionNotFound onBack={() => router.push('/map')} />;
+    return <SessionNotFound onBack={() => router.push(isProfessional ? '/mode' : '/map')} />;
   }
 
   return (
+    <>
     <TutorShell
       nodeTitle={state?.node_title}
       // Bind to the authoritative done-frame mastery (the per-skill EMA the
@@ -116,10 +118,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
       characterBg={avatar?.bg}
       emotion={avatarEmotion}
       affect={affect}
-      onBack={() => {
-        disconnect();
-        router.push('/map');
-      }}
+      onBack={() => setConfirmingExit(true)}
     >
       <div className="flex flex-col h-full p-6 lg:p-10">
         {/* Transcript Area */}
@@ -313,5 +312,28 @@ export default function SessionPage({ params }: { params: { id: string } }) {
         )}
       </div>
     </TutorShell>
+    {confirmingExit && (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <div className="bg-white rounded-[2rem] p-8 max-w-sm w-full mx-4 shadow-2xl">
+          <h3 className="font-display text-2xl mb-2 text-slate-900">Leave session?</h3>
+          <p className="text-slate-500 text-sm mb-8 leading-relaxed">Your progress so far is saved, but the current exchange will end.</p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setConfirmingExit(false)}
+              className="flex-1 px-6 py-3 rounded-full border border-slate-200 text-slate-700 font-bold text-sm hover:bg-slate-50 transition-colors"
+            >
+              Stay
+            </button>
+            <button
+              onClick={() => { disconnect(); router.push(isProfessional ? '/mode' : '/map'); }}
+              className="flex-1 px-6 py-3 rounded-full bg-slate-900 text-white font-bold text-sm hover:bg-slate-800 transition-colors"
+            >
+              Leave
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

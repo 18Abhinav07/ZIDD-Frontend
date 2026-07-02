@@ -14,8 +14,7 @@ import { motion } from 'framer-motion';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
-import { getAvatarForModule, getModuleThemeColor, getAvatarForCharacter } from '@/lib/avatarRegistry';
-import { getRandomAvatar, type AvatarData } from '@/lib/avatars';
+import { getRandomAvatar, COACH_AVATARS, type AvatarData } from '@/lib/avatars';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -54,13 +53,11 @@ export default function OnboardingPage() {
         const data = await apiFetch('/modules');
         setModules(data);
         
-        const map: Record<string, AvatarData> = {};
         const used = new Set<string>();
+        const map: Record<string, AvatarData> = {};
         data.forEach((m: Module) => {
           let a = getRandomAvatar();
-          while(used.has(a.id) && used.size < 9) {
-             a = getRandomAvatar();
-          }
+          while (used.has(a.id) && used.size < COACH_AVATARS.length) { a = getRandomAvatar(); }
           used.add(a.id);
           map[m.id] = a;
         });
@@ -77,7 +74,7 @@ export default function OnboardingPage() {
     
     const p1 = getRandomAvatar();
     let p2 = getRandomAvatar();
-    while(p2.id === p1.id) p2 = getRandomAvatar();
+    while (p2.id === p1.id) { p2 = getRandomAvatar(); }
     setPlacementAvatars([p1, p2]);
   }, [router]);
 
@@ -126,13 +123,27 @@ export default function OnboardingPage() {
 
       if (typeof window !== 'undefined') {
         localStorage.setItem('zidd_active_module', selectedModule);
+        localStorage.setItem(`zidd_placed_${selectedModule}`, 'true');
+        if (isGrade && selfReport) {
+          localStorage.setItem('zidd_school_class', selfReport);
+        } else {
+          localStorage.removeItem('zidd_school_class');
+        }
       }
 
-      const isSpecialModule = selectedModule === 'interview' || selectedModule === 'group_discussion';
-      if (isSpecialModule) {
-        router.push('/mode');
+      if (selectedModule === 'school_english') {
+        if (isGrade && selfReport) {
+          router.replace(`/subjects/class/${selfReport}`);
+        } else {
+          router.replace('/subjects');
+        }
       } else {
-        router.push('/map');
+        const isSpecialModule = selectedModule === 'interview' || selectedModule === 'group_discussion';
+        if (isSpecialModule) {
+          router.replace('/mode');
+        } else {
+          router.replace('/map');
+        }
       }
     } catch (err: any) {
       setError(err.message || 'Placement failed.');
@@ -174,7 +185,7 @@ export default function OnboardingPage() {
       
       {/* Header */}
       <header className="relative z-50 px-8 py-6 flex items-center justify-between border-b border-slate-100 bg-white/50 backdrop-blur-xl">
-         <div className="font-sans font-black text-2xl tracking-tighter text-slate-900">ZIDD<span className="text-indigo-600">.</span></div>
+         <button onClick={() => router.push('/dashboard')} className="font-sans font-black text-2xl tracking-tighter text-slate-900">ZIDD<span className="text-indigo-600">.</span></button>
          <div className="flex gap-2 items-center">
             <div className={cn("w-12 h-1.5 rounded-full transition-colors duration-500", step >= 1 ? "bg-slate-900" : "bg-slate-200")} />
             <div className={cn("w-12 h-1.5 rounded-full transition-colors duration-500", step >= 2 ? "bg-slate-900" : "bg-slate-200")} />
@@ -441,9 +452,9 @@ export default function OnboardingPage() {
                            {(modules.find(m => m.id === selectedModule)?.grade_range 
                              ? [
                                  { val: '2', label: 'Grade 2', sub: undefined as string | undefined, disabled: false },
-                                 { val: '3', label: 'Grade 3', sub: 'Upcoming', disabled: true },
-                                 { val: '4', label: 'Grade 4', sub: 'Upcoming', disabled: true },
-                                 { val: '5', label: 'Grade 5', sub: 'Upcoming', disabled: true }
+                                 { val: '3', label: 'Grade 3', sub: undefined as string | undefined, disabled: false },
+                                 { val: '4', label: 'Grade 4', sub: undefined as string | undefined, disabled: false },
+                                 { val: '5', label: 'Grade 5', sub: undefined as string | undefined, disabled: false }
                                ]
                              : [
                                  { val: 'beginner', label: 'Beginner', sub: 'A1/A2', disabled: false },
@@ -457,7 +468,7 @@ export default function OnboardingPage() {
                                 disabled={opt.disabled}
                                 onClick={() => setSelfReport(opt.val)}
                                 className={cn(
-                                   "flex flex-col items-center justify-center p-6 rounded-[1.5rem] border text-center transition-all",
+                                   "flex flex-col items-center justify-center p-4 sm:p-6 rounded-[1.25rem] sm:rounded-[1.5rem] border text-center transition-all",
                                    opt.disabled
                                       ? "bg-slate-50 border-slate-100 text-slate-300 cursor-not-allowed opacity-70"
                                       : selfReport === opt.val
@@ -470,10 +481,10 @@ export default function OnboardingPage() {
                                     boxShadow: `0 10px 25px ${placementAvatars[1].bg}4D`,
                                 } : {}}
                               >
-                                 <span className="font-bold text-lg">{opt.label}</span>
-                                 {opt.sub && <span className={cn("text-[10px] font-black uppercase tracking-widest mt-2", selfReport === opt.val ? "text-white/80" : opt.disabled ? "text-slate-300" : "text-slate-400")}>{opt.sub}</span>}
+                                 <span className="font-bold text-sm sm:text-lg tracking-tight">{opt.label}</span>
+                                 {opt.sub && <span className={cn("text-[9px] sm:text-[10px] font-black uppercase tracking-widest mt-1.5 sm:mt-2", selfReport === opt.val ? "text-white/80" : opt.disabled ? "text-slate-300" : "text-slate-400")}>{opt.sub}</span>}
                               </button>
-                           ))}
+                            ))}
                         </div>
                      </div>
                   </motion.div>

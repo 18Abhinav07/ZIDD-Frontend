@@ -26,6 +26,8 @@ const anton = Anton({
 export const metadata: Metadata = {
   title: "Zidd - AI Communication Coach",
   description: "High-end cinematic AI spoken English and communication coaching.",
+  // Declares the apple-touch-icon iOS auto-requests, so it stops 404ing for it.
+  icons: { icon: "/favicon.ico", apple: "/favicon.ico" },
 };
 
 export default function RootLayout({

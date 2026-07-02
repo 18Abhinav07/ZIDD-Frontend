@@ -8,9 +8,15 @@ import { AVATAR_PATHS, needsPaddingCompensation, getAvatarScaleClass } from "@/l
 import { motion, useInView } from 'framer-motion';
 import { SmoothScroll } from '@/components/shared/SmoothScroll';
 
+import { useRouter } from 'next/navigation';
+import { getToken } from '@/services/api';
+
 export default function LandingPage() {
+  const router = useRouter();
   const footerTriggerRef = useRef(null);
   const isFooterVisible = useInView(footerTriggerRef, { once: false, amount: 0.1 });
+
+  // Automatic redirect removed to allow logged-in users to see the landing page
 
   const avatarVariants: any = {
     hidden: (i: number) => ({
@@ -56,19 +62,15 @@ export default function LandingPage() {
           <div className="flex items-baseline w-32">
             <span className="font-hero font-black text-2xl tracking-tighter text-slate-900 antialiased">ZIDD<span className="text-accent">.</span></span>
           </div>
-          <div className="hidden md:flex flex-1 justify-center gap-12 items-center text-[10px] font-bold tracking-[0.25em] uppercase text-slate-400">
-            <a href="#" className="hover:text-slate-900 transition-colors duration-300">Platform</a>
-            <a href="#" className="hover:text-slate-900 transition-colors duration-300">Methodology</a>
-            <a href="#" className="hover:text-slate-900 transition-colors duration-300">Pricing</a>
-          </div>
+          <div className="hidden md:flex flex-1 justify-center" />
           <div className="w-32 flex justify-end">
-            <a 
-              href="/auth/login" 
+            <button 
+              onClick={() => router.push(getToken() ? '/dashboard' : '/auth/login')}
               className="group relative flex items-center justify-center bg-slate-900 rounded-full px-7 py-2.5 overflow-hidden transition-all duration-300 hover:shadow-[0_8px_20px_rgba(0,0,0,0.12)] hover:-translate-y-0.5 active:translate-y-0 border border-transparent hover:border-slate-700"
             >
               <div className="absolute inset-0 bg-gradient-to-tr from-slate-800 to-slate-900 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               <span className="relative z-10 text-[10px] text-white font-bold tracking-[0.2em] uppercase">BEGIN</span>
-            </a>
+            </button>
           </div>
         </nav>
       </div>
@@ -87,13 +89,13 @@ export default function LandingPage() {
             Zidd is a hyper-personalized AI growth platform. It abandons static curriculums to actively monitor, build, and optimize your learning path. It catches what you forget, binds loose concepts, and engineers a holistic environment catered exclusively to your personal evolution.
           </p>
           <div className="mt-14 flex flex-col sm:flex-row items-start sm:items-center gap-6">
-            <a 
-              href="/auth/login" 
+            <button 
+              onClick={() => router.push(getToken() ? '/dashboard' : '/auth/login')}
               className="bg-slate-900 rounded-full px-8 py-4 text-sm text-white hover:scale-[1.02] hover:bg-slate-800 transition-all cursor-pointer font-bold tracking-widest shadow-xl flex items-center gap-3"
             >
               LAUNCH STUDIO
               <ArrowRight className="w-4 h-4" />
-            </a>
+            </button>
             <button 
               onClick={() => {
                 document.getElementById('carousel')?.scrollIntoView({ behavior: 'smooth' });
@@ -142,13 +144,13 @@ export default function LandingPage() {
           <p className="text-slate-500 text-[15px] md:text-[17px] mb-12 max-w-xl mx-auto leading-[1.8] font-medium">
             Experience an AI protocol that strengthens your critical thinking, refines your communication, and continuously adapts to challenge your true potential.
           </p>
-          <a 
-            href="/auth/login" 
+          <button 
+            onClick={() => router.push(getToken() ? '/dashboard' : '/auth/login')}
             className="inline-flex items-center gap-3 bg-slate-900 text-white px-10 py-5 rounded-full text-sm font-bold hover:scale-[1.02] hover:bg-slate-800 transition-all shadow-2xl tracking-widest uppercase"
           >
             START TRAINING
             <ArrowRight className="w-4 h-4" />
-          </a>
+          </button>
         </div>
       </section>
       
