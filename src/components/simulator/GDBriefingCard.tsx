@@ -8,12 +8,6 @@ interface GDBriefingCardProps {
   onSkip: () => void;
 }
 
-const ROLE_TIPS: Record<string, string> = {
-  'Strongly For': "Open with your strongest claim — don't hedge. Name what you're defending from the start.",
-  'Strongly Against': "Lead with a specific flaw or risk. Vague opposition sounds weak; concrete critique is powerful.",
-  'Moderate': "Your value is synthesis, not ambiguity. Acknowledge both sides, then stake a clear middle position.",
-};
-
 const DEFAULT_TIP = "Start with one clear claim. 'I believe X because Y.' You don't need three points from the start.";
 
 export function GDBriefingCard({ topic, onStart, onSkip }: GDBriefingCardProps) {
@@ -57,7 +51,7 @@ export function GDBriefingCard({ topic, onStart, onSkip }: GDBriefingCardProps) 
             <p className="text-[9px] uppercase tracking-[0.2em] font-black text-slate-500 mb-3">How It Works</p>
             <ul className="space-y-2">
               {[
-                "10 rounds — each participant contributes once per round",
+                "Up to 10 rounds — one primary speaker takes the floor, with panel follow-ups when the discussion needs them",
                 "Floor rotates automatically — watch the avatar cards to see who's speaking",
                 "Tension meter (top bar) = debate intensity. Rising tension is good.",
               ].map((item, i) => (
@@ -73,7 +67,7 @@ export function GDBriefingCard({ topic, onStart, onSkip }: GDBriefingCardProps) 
           <div className="bg-slate-900 border border-slate-800 rounded-2xl px-5 py-4">
             <p className="text-[9px] uppercase tracking-[0.2em] font-black text-slate-500 mb-1.5">Your Stance</p>
             <p className="text-[12px] text-slate-400 leading-relaxed">
-              You'll receive a position to defend when the session opens. Argue it clearly — even if you personally disagree. This is communication training, not a personal debate.
+              Pick a side clearly when the session opens. You can change your stance later, but the first move should not sound unsure.
             </p>
           </div>
 

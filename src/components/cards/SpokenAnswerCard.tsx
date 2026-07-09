@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { ChatBubbleIcon, PaperPlaneIcon } from '@radix-ui/react-icons';
 import { motion } from 'framer-motion';
 
 interface SpokenAnswerCardProps {
   sentence: string;
   hint: string;
-  onSubmit: (answer: string) => void;
+  onSubmit: (answer: string) => Promise<boolean> | boolean;
   disabled?: boolean;
 }
 
@@ -17,10 +17,30 @@ interface SpokenAnswerCardProps {
 // learner a free-text area to compose their spoken response.
 export function SpokenAnswerCard({ sentence, hint, onSubmit, disabled }: SpokenAnswerCardProps) {
   const [value, setValue] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const textareaId = useId();
+  const blocked = disabled || submitting || submitted;
 
-  const handleSubmit = () => {
-    if (value.trim() && !disabled) {
-      onSubmit(value);
+  useEffect(() => {
+    setValue('');
+    setSubmitting(false);
+    setSubmitted(false);
+  }, [sentence, hint]);
+
+  const handleSubmit = async () => {
+    const answer = value.trim();
+    if (answer && !blocked) {
+      setSubmitting(true);
+      try {
+        const accepted = await onSubmit(answer);
+        if (accepted !== false) {
+          setSubmitted(true);
+          setValue('');
+        }
+      } finally {
+        setSubmitting(false);
+      }
     }
   };
 
@@ -36,29 +56,31 @@ export function SpokenAnswerCard({ sentence, hint, onSubmit, disabled }: SpokenA
       </p>
 
       <textarea
+        id={textareaId}
+        name="bridge-spoken-answer"
         autoFocus
         value={value}
         onChange={e => setValue(e.target.value)}
         placeholder="Speak your answer here…"
         rows={4}
-        className="w-full mb-8 rounded-[1.5rem] border-[1.5px] border-slate-200/60 bg-slate-50/50 px-6 py-5 text-[15px] font-body font-medium leading-relaxed text-slate-800 placeholder:text-slate-300 outline-none transition-all focus:border-accent/40 focus:bg-white focus:ring-4 focus:ring-accent/10 resize-none"
+        className="w-full mb-8 rounded-[1.5rem] border-[1.5px] border-slate-200/60 bg-slate-50/50 px-6 py-5 text-[15px] font-body font-medium leading-relaxed text-slate-800 placeholder:text-slate-300 outline-none transition-all focus:border-accent/40 focus:bg-white focus:ring-4 focus:ring-accent/10 resize-none disabled:cursor-wait disabled:bg-slate-100 disabled:text-slate-400 disabled:placeholder:text-slate-300"
         onKeyDown={e => {
           if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
             handleSubmit();
           }
         }}
-        disabled={disabled}
+        disabled={blocked}
       />
 
       <motion.button
-        whileHover={{ scale: (!value.trim() || disabled) ? 1 : 1.02 }}
-        whileTap={{ scale: (!value.trim() || disabled) ? 1 : 0.98 }}
+        whileHover={{ scale: (!value.trim() || blocked) ? 1 : 1.02 }}
+        whileTap={{ scale: (!value.trim() || blocked) ? 1 : 0.98 }}
         className="w-full py-5 rounded-[1.5rem] bg-accent text-white font-bold uppercase tracking-[0.15em] text-xs transition-all disabled:opacity-50 disabled:grayscale shadow-md flex items-center justify-center gap-3"
-        disabled={!value.trim() || disabled}
+        disabled={blocked || !value.trim()}
         onClick={handleSubmit}
       >
-        Submit Response
+        {submitting || submitted ? 'Submitting...' : 'Submit Response'}
         <PaperPlaneIcon className="w-4 h-4" />
       </motion.button>
     </div>

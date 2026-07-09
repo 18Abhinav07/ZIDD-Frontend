@@ -1,11 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useImperativeHandle, useState, forwardRef } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, forwardRef } from 'react';
 import { LightningBoltIcon } from '@radix-ui/react-icons';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import type { CreditsBalance } from '@/types';
-import { getBalance } from '@/services/billing';
+import { useAppSession } from '@/components/shared/AppSessionProvider';
 import { PacksModal } from './PacksModal';
 
 function cn(...inputs: ClassValue[]) {
@@ -18,51 +17,73 @@ export interface CreditsBadgeHandle {
 
 interface CreditsBadgeProps {
   className?: string;
+  refreshOnMount?: boolean;
 }
 
 // Compact wallet pill. Shows the live credit balance (∞ when demo_unlimited);
 // clicking opens the PacksModal. Parents can grab a ref and call refresh() after
 // a gated action spends credits. The badge also self-refreshes after a purchase.
 export const CreditsBadge = forwardRef<CreditsBadgeHandle, CreditsBadgeProps>(
-  function CreditsBadge({ className }, ref) {
-    const [balance, setBalance] = useState<CreditsBalance | null>(null);
+  function CreditsBadge({ className, refreshOnMount = false }, ref) {
+    const { balance, loadingBalance, loadBalance } = useAppSession();
     const [packsOpen, setPacksOpen] = useState(false);
+    const [loadFailed, setLoadFailed] = useState(false);
+    const hasLoadedOnMountRef = useRef(false);
 
     const refresh = useCallback(() => {
-      getBalance()
-        .then((b) => setBalance(b))
+      setLoadFailed(false);
+      loadBalance(true)
+        .then(() => setLoadFailed(false))
         .catch(() => {
-          /* keep the last known balance on a transient failure */
+          setLoadFailed(true);
         });
-    }, []);
+    }, [loadBalance]);
 
     useEffect(() => {
-      refresh();
-    }, [refresh]);
+      const shouldForceRefresh = refreshOnMount && !hasLoadedOnMountRef.current;
+      if (shouldForceRefresh) {
+        hasLoadedOnMountRef.current = true;
+      } else if (balance) {
+        return;
+      }
+      setLoadFailed(false);
+      loadBalance(shouldForceRefresh)
+        .then(() => setLoadFailed(false))
+        .catch(() => {
+          setLoadFailed(true);
+        });
+    }, [balance, loadBalance, refreshOnMount]);
 
     useImperativeHandle(ref, () => ({ refresh }), [refresh]);
 
     const unlimited = balance?.demo_unlimited === true;
-    // Show the number only when we actually have a balance. While loading OR
-    // after a failed fetch (balance stays null), leave the label empty and
-    // render a quiet skeleton pill instead — never a bare '0', which would
-    // falsely read as "you have no credits".
     const label = unlimited ? '∞' : balance ? String(balance.credits) : '';
+    const unavailable = loadFailed && !balance;
+    const loading = loadingBalance && !balance && !unavailable;
 
     return (
       <>
         <button
-          onClick={() => setPacksOpen(true)}
+          onClick={() => {
+            if (unavailable) {
+              refresh();
+              return;
+            }
+            setPacksOpen(true);
+          }}
           className={cn(
-            'px-4 py-2 rounded-full bg-white/60 backdrop-blur border border-slate-200/50 shadow-sm flex items-center gap-2 text-slate-800 transition-all hover:bg-white active:scale-95',
+            'px-4 py-2 rounded-full bg-white/60 backdrop-blur border shadow-sm flex items-center gap-2 text-slate-800 transition-all hover:bg-white active:scale-95',
+            unavailable ? 'border-amber-300/70' : 'border-slate-200/50',
             className
           )}
           aria-label="Credit balance — open packs"
-          title={unlimited ? 'Unlimited credits (demo)' : 'Credit balance'}
+          title={unavailable ? 'Credit balance unavailable — retry' : unlimited ? 'Unlimited credits (demo)' : 'Credit balance'}
         >
           <LightningBoltIcon className="text-accent w-4 h-4" />
-          {label === '' ? (
+          {loading ? (
             <span className="inline-block w-4 h-3 rounded bg-slate-200 animate-pulse align-middle" />
+          ) : unavailable ? (
+            <span className="text-sm font-black font-mono leading-none text-amber-700">!</span>
           ) : (
             <span className="text-sm font-bold font-mono leading-none">{label}</span>
           )}

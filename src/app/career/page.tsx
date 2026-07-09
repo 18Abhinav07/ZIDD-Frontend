@@ -1,0 +1,321 @@
+"use client";
+
+import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { motion } from 'framer-motion';
+import { ArrowRightIcon } from '@radix-ui/react-icons';
+import { Loader2 } from 'lucide-react';
+import { AppHeader } from '@/components/shared/AppHeader';
+import { CareerHomeSkeleton } from '@/components/shared/RouteSkeletons';
+import { useAppSession } from '@/components/shared/AppSessionProvider';
+import {
+  myPathForMe,
+  updatePreferences,
+  type MeActivity,
+  type MeResponse,
+  type ModuleId,
+} from '@/services/me';
+import Image from 'next/image';
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+import { getRandomAvatar, COACH_AVATARS, type AvatarData } from '@/lib/avatars';
+import { getAvatarScaleClass } from '@/lib/avatarRegistry';
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+
+const PATHS: { id: ModuleId; label: string; blurb: string }[] = [
+  { id: 'interview', label: 'Interview', blurb: 'Pitch, handle pressure, negotiate, and close strong.' },
+  { id: 'group_discussion', label: 'Group Discussion', blurb: 'Stake a position, build on others, drive consensus.' },
+];
+
+export default function CareerPage() {
+  const router = useRouter();
+  const { me: cachedMe, loadMe, loadActivity, loadingActivity } = useAppSession();
+  const [me, setMe] = useState<MeResponse | null>(null);
+  const [activity, setActivity] = useState<MeActivity | null>(null);
+  const [activityError, setActivityError] = useState('');
+  const [moduleAvatars, setModuleAvatars] = useState<Record<string, AvatarData>>({});
+  const [openingModule, setOpeningModule] = useState<ModuleId | null>(null);
+  const [actionError, setActionError] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [retryKey, setRetryKey] = useState(0);
+  // Gate client-only content (token/host-dependent) until after mount so the
+  // first client render matches the server HTML (avoids a hydration mismatch).
+  const [mounted, setMounted] = useState(false);
+
+  const refreshActivity = useCallback((force = false) => {
+    setActivityError('');
+    loadActivity(force)
+      .then((nextActivity) => {
+        setActivity(nextActivity);
+      })
+      .catch(() => {
+        setActivity(null);
+        setActivityError('Activity summary is temporarily unavailable. Your career paths still work.');
+      });
+  }, [loadActivity]);
+
+  useEffect(() => {
+    setMounted(true);
+
+    let cancelled = false;
+    const loadDashboard = async () => {
+      try {
+        setLoadError('');
+        setActivityError('');
+        const profile = cachedMe ?? await loadMe();
+        if (cancelled) return;
+        if (!profile.onboarding?.completed) {
+          router.replace('/onboarding');
+          return;
+        }
+        if (profile.onboarding.primary_motive === 'school') {
+          router.replace('/subjects');
+          return;
+        }
+        setMe(profile);
+        loadActivity()
+          .then((nextActivity) => {
+            if (!cancelled) setActivity(nextActivity);
+          })
+          .catch(() => {
+            if (!cancelled) {
+              setActivity(null);
+              setActivityError('Activity summary is temporarily unavailable. Your career paths still work.');
+            }
+          });
+      } catch (err: unknown) {
+        if (!cancelled) {
+          const raw = err instanceof Error ? err.message : '';
+          if (raw === 'Unauthorized') {
+            router.replace('/auth/login');
+          } else {
+            setLoadError(
+              raw === 'request_timeout'
+                ? 'Career home took too long to load. Retry when the server is ready.'
+                : 'Could not load career home. Please retry.'
+            );
+          }
+        }
+      }
+    };
+    loadDashboard();
+
+    const used = new Set<string>();
+    const map: Record<string, AvatarData> = {};
+    PATHS.forEach((p) => {
+      let a = getRandomAvatar();
+      while (used.has(a.id) && used.size < COACH_AVATARS.length) { a = getRandomAvatar(); }
+      used.add(a.id);
+      map[p.id] = a;
+    });
+    setModuleAvatars(map);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cachedMe, loadActivity, loadMe, router, retryKey]);
+
+  const activeModule = me?.preferences.active_module ?? null;
+
+  const openPath = async (moduleId: ModuleId) => {
+    if (openingModule) return;
+    setActionError('');
+    setOpeningModule(moduleId);
+    try {
+      const res = await updatePreferences({ pending_module: moduleId, active_module: null, test_mode: null });
+      setMe((m) => (m ? { ...m, preferences: res.preferences } : m));
+      void loadMe(true).catch(() => null);
+      router.push('/mode');
+    } catch {
+      setActionError('Could not save your selected path. Please try again.');
+      setOpeningModule(null);
+    }
+  };
+
+  const pathHref = myPathForMe(me);
+
+  const activeLabel = PATHS.find((p) => p.id === activeModule)?.label;
+  // Greet by the name the coach uses (from the profile), falling back to the id.
+  const displayName = me?.name?.trim() || me?.user_id || 'there';
+
+  return (
+    <div className="min-h-[100dvh] bg-[#FCFCFC] text-slate-900 font-body relative overflow-hidden">
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[600px] bg-indigo-500/[0.04] rounded-full blur-[120px] pointer-events-none" />
+      <AppHeader />
+
+      {loadError ? (
+        <main className="relative z-10 max-w-[720px] mx-auto px-6 lg:px-12 pt-32 pb-24">
+          <div className="rounded-[2rem] border border-rose-200 bg-rose-50 px-7 py-6">
+            <p className="text-sm font-bold text-rose-700">{loadError}</p>
+            <button
+              onClick={() => setRetryKey((value) => value + 1)}
+              className="mt-5 inline-flex items-center gap-2 rounded-full bg-rose-600 px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-white hover:bg-rose-700 transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        </main>
+      ) : !me ? (
+        <CareerHomeSkeleton />
+      ) : (
+      <main className="relative z-10 max-w-[1100px] mx-auto px-6 lg:px-12 pt-28 pb-24">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-indigo-500">Career</span>
+          <h1 className="mt-3 font-display text-5xl md:text-6xl tracking-tight leading-[1]">
+            Welcome back, {displayName}.
+          </h1>
+          <p className="mt-4 text-slate-500 text-[15px] max-w-xl">
+            Choose a career practice environment. Your resume details, goals, and topics live in Profile.
+          </p>
+        </motion.div>
+
+        {activity && (
+          <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="rounded-[1.25rem] border border-slate-200/70 bg-white px-5 py-4">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Profile</p>
+              <p className="mt-2 text-sm font-bold text-slate-800">
+                {activity.career.profile_complete ? 'Personalized' : 'Needs details'}
+              </p>
+            </div>
+            <div className="rounded-[1.25rem] border border-slate-200/70 bg-white px-5 py-4">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Practice</p>
+              <p className="mt-2 text-sm font-bold text-slate-800">{activity.career.attempts} attempts tracked</p>
+            </div>
+            <button
+              onClick={() => router.push('/profile')}
+              className="rounded-[1.25rem] border border-indigo-100 bg-indigo-50 px-5 py-4 text-left hover:bg-indigo-100 transition-colors"
+            >
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-500">Recommended</p>
+              <p className="mt-2 text-sm font-bold text-indigo-900">
+                {activity.recommendations[0]?.title ?? 'Review your profile'}
+              </p>
+            </button>
+          </div>
+        )}
+
+        {activityError && (
+          <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="font-semibold">{activityError}</p>
+              <button
+                type="button"
+                onClick={() => refreshActivity(true)}
+                disabled={loadingActivity}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-amber-800 transition-colors hover:bg-amber-100 disabled:cursor-wait disabled:opacity-60"
+              >
+                {loadingActivity && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Retry
+              </button>
+            </div>
+          </div>
+        )}
+
+        {actionError && (
+          <div className="mt-8 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm font-semibold text-rose-700">
+            {actionError}
+          </div>
+        )}
+
+        {/* Resume CTA — only shown after mount because auth-backed data is client-only */}
+        {mounted && activeModule && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
+            className="mt-10"
+          >
+            <button
+              onClick={() => router.push(pathHref)}
+              className="group w-full sm:w-auto inline-flex items-center gap-3 bg-slate-900 text-white rounded-2xl px-8 py-4 text-sm font-bold uppercase tracking-widest hover:bg-slate-800 hover:-translate-y-0.5 hover:shadow-[0_16px_40px_rgba(15,23,42,0.15)] transition-all"
+            >
+              Resume {activeLabel ?? 'your path'}
+              <ArrowRightIcon className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+            </button>
+          </motion.div>
+        )}
+
+        {/* Paths */}
+        <div className="mt-12">
+          <div className="flex items-baseline justify-between">
+            <h2 className="font-display text-4xl tracking-tight">Career practice</h2>
+          </div>
+          <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-6">
+            {PATHS.map((p) => {
+              const avatar = moduleAvatars[p.id];
+              const isSelected = activeModule === p.id;
+              if (!avatar) return null;
+
+              return (
+	                <button
+	                  key={p.id}
+	                  onClick={() => openPath(p.id)}
+	                  disabled={openingModule !== null}
+	                  className={cn(
+	                    "group relative text-left rounded-[3rem] border-transparent text-white transition-all duration-700 overflow-hidden min-h-[350px] flex flex-col justify-between p-8",
+	                    isSelected
+	                      ? "ring-4 ring-white/30 scale-[1.01] z-20"
+	                      : "opacity-90 hover:opacity-100 hover:-translate-y-1",
+	                    openingModule && openingModule !== p.id ? "opacity-40 grayscale scale-[0.98]" : ""
+	                  )}
+                  style={{
+                    backgroundColor: avatar.bg,
+                    boxShadow: isSelected
+                      ? `0 24px 50px ${avatar.bg}60`
+                      : `0 10px 30px ${avatar.bg}33`,
+                  }}
+                >
+                  {/* Avatar Graphic */}
+                  <div className="absolute -bottom-10 -right-4 w-44 h-56 sm:w-64 sm:h-80 z-0 pointer-events-none transition-transform duration-700 ease-out group-hover:scale-105 group-hover:-translate-y-4">
+                     <Image
+                        src={avatar.url}
+                        alt="Module Avatar"
+                        fill
+                        sizes="(max-width: 640px) 176px, 256px"
+                        className={cn("object-contain object-bottom drop-shadow-2xl", getAvatarScaleClass(avatar.url))}
+                        unoptimized
+                     />
+                  </div>
+
+                  <div className="relative z-10 max-w-[60%] sm:max-w-[200px]">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-display text-3xl font-bold tracking-tight leading-tight">{p.label}</h3>
+                    </div>
+                    {isSelected && (
+                      <span className="mb-4 inline-block text-[9px] font-bold uppercase tracking-[0.18em] text-white bg-white/20 rounded-full px-3 py-1">Active</span>
+                    )}
+                    <p className="text-sm leading-relaxed mb-8 font-medium text-white/80">
+                      {p.blurb}
+                    </p>
+                  </div>
+
+	                  <div className="relative z-10 flex items-center gap-4 text-[10px] uppercase tracking-widest font-black mt-auto text-white/70">
+	                    <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/10 backdrop-blur-sm">
+	                       {openingModule === p.id ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Preparing
+                          </>
+                        ) : (
+                          <>
+                            Open <ArrowRightIcon className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
+                          </>
+                        )}
+	                    </span>
+	                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </main>
+      )}
+    </div>
+  );
+}

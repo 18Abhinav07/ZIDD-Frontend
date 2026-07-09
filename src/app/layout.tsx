@@ -3,6 +3,7 @@ import { Instrument_Serif, Anton, Outfit } from "next/font/google";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import "./globals.css";
+import Providers from "./providers";
 
 const outfit = Outfit({
   subsets: ["latin"],
@@ -38,7 +39,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${GeistSans.variable} ${GeistMono.variable} ${instrumentSerif.variable} ${anton.variable} ${outfit.variable} antialiased`}>
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

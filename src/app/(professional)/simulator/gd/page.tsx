@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useRef, Suspense } from 'react';
+import { useEffect, useState, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useZiddSession, MAX_SIM_ROUNDS } from '@/hooks/useZiddSession';
 import { SimulatorShell } from '@/components/simulator/SimulatorShell';
@@ -10,13 +10,26 @@ import { SimulationReportModal } from '@/components/shared/SimulationReportModal
 import { SessionNotFound } from '@/components/shared/SessionNotFound';
 import { CreditsBadge } from '@/components/billing/CreditsBadge';
 import { SimPersona } from '@/types';
-import { getCoachingNudge } from '@/lib/coachingNudge';
+
+const FALLBACK_MODERATOR_PERSONA: SimPersona = {
+  speaker_id: 'moderator',
+  name: 'Moderator',
+  role: 'Facilitator',
+  role_type: 'moderator',
+  stance: 'discussion facilitator',
+};
+
+function isModeratorPersona(persona: SimPersona) {
+  return persona.role_type === 'moderator' || persona.name.toLowerCase() === 'moderator';
+}
 
 function GDContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const sessionId = searchParams.get('session_id') || '';
   const topicHint = searchParams.get('topic') || '';
+  // Pre-session briefing: show until dismissed, but never block restore.
+  const [briefingDismissed, setBriefingDismissed] = useState(false);
 
   const {
     messages,
@@ -30,120 +43,129 @@ function GDContent() {
     error,
     notFound,
     isStreaming,
+    isBootstrapping,
     bootstrap,
     streamTurn,
     endSession,
     disconnect
-  } = useZiddSession(sessionId, true);
+  } = useZiddSession(sessionId, briefingDismissed);
 
   const [inputValue, setInputValue] = useState('');
   const [recapVisible, setRecapVisible] = useState(true);
-  // Pre-session briefing: show until dismissed, then bootstrap the session
-  const [briefingDismissed, setBriefingDismissed] = useState(false);
-
-  // Tension annotation: track when tension spikes after a user turn
-  const prevTensionRef = useRef(0);
-  const [tensionAnnotations, setTensionAnnotations] = useState<Map<string, string>>(new Map());
-
-  // Coaching nudge: memoized from messages so it re-evaluates on each new message
-  const coachingNudge = useMemo(() => getCoachingNudge(messages), [messages]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const pendingClientTurnIdRef = useRef<string | null>(null);
+  const autoEndAttemptedRef = useRef(false);
 
   useEffect(() => {
     if (!sessionId) return;
-    if (!briefingDismissed) return; // wait for briefing dismissal before streaming
+    autoEndAttemptedRef.current = false;
     bootstrap();
     return () => disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, briefingDismissed]);
 
-  // Tension spike annotations: when tension jumps by 15+ after a user turn,
-  // attach a small annotation tag to that user message in the transcript.
-  useEffect(() => {
-    const delta = tension - prevTensionRef.current;
-    if (delta >= 15) {
-      const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user');
-      if (lastUserMsg) {
-        const copy =
-          tension > 70
-            ? `Tension +${delta}% — that's assertiveness. Keep it up.`
-            : `Tension +${delta}% — direct engagement. GDs reward this.`;
-        setTensionAnnotations((prev) => new Map(prev).set(lastUserMsg.id, copy));
-      }
-    }
-    prevTensionRef.current = tension;
-  }, [tension, messages]);
-
   const handleEnd = () => {
     disconnect();
-    endSession().then((rep) => {
-      if (!rep) router.push('/mode');
-    });
+    void endSession();
   };
 
   useEffect(() => {
-    if (shouldClose && !isStreaming && !report && !isClosing) {
-      endSession().then((rep) => {
-        if (!rep) router.push('/mode');
-      });
+    if (shouldClose && !isStreaming && !report && !isClosing && !autoEndAttemptedRef.current) {
+      autoEndAttemptedRef.current = true;
+      void endSession();
     }
-  }, [shouldClose, isStreaming, report, isClosing, endSession, router]);
+  }, [shouldClose, isStreaming, report, isClosing, endSession]);
 
-  const handleSend = () => {
-    if (!inputValue.trim() || isStreaming) return;
-    streamTurn(inputValue);
+  const handleSend = async () => {
+    const draft = inputValue.trim();
+    const inputBlocked = state?.input_allowed === false || Boolean(state?.block_reason);
+    if (!draft || isStreaming || isClosing || shouldClose || isSubmitting || submittingRef.current || inputBlocked) return;
+    submittingRef.current = true;
+    setIsSubmitting(true);
+    const clientTurnId = pendingClientTurnIdRef.current ?? crypto.randomUUID();
+    pendingClientTurnIdRef.current = clientTurnId;
     setInputValue('');
+    try {
+      const result = await streamTurn(draft, clientTurnId);
+      if (!result.started) {
+        setInputValue(draft);
+      }
+      if (result.completed) {
+        pendingClientTurnIdRef.current = null;
+      }
+    } finally {
+      submittingRef.current = false;
+      setIsSubmitting(false);
+    }
   };
 
   const handleLeave = () => {
     disconnect();
-    router.push('/mode');
+    router.push('/map');
   };
 
   const handleSaveLater = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(
-        'zidd_saved_session',
-        JSON.stringify({ session_id: sessionId, type: 'gd', savedAt: Date.now() })
-      );
-    }
     disconnect();
-    router.push('/mode');
+    router.push('/map');
   };
 
   const latestSpeaker = messages[messages.length - 1]?.speaker_name;
+  const scenarioTopic = state?.scenario_config?.topic || topicHint;
 
   const STANCE_LABEL: Record<string, string> = {
     'strongly in favour': 'Strongly For',
     'strongly against': 'Strongly Against',
     'pragmatic middle ground': 'Moderate',
+    'forceful skeptic': 'Challenger',
+    'evidence-first analyst': 'Analyst',
+    'reserved domain expert': 'Expert',
+    'collaborative synthesizer': 'Builder',
+    'counter-position specialist': 'Advocate',
   };
-  const prettyStance = (s?: string) => (s ? STANCE_LABEL[s.toLowerCase()] ?? s : undefined);
+  const prettyStance = (s?: string) => {
+    if (!s) return undefined;
+    const lower = s.toLowerCase();
+    const match = Object.entries(STANCE_LABEL).find(([key]) => lower.includes(key));
+    return match?.[1] ?? s;
+  };
 
-  const rawPersonas: SimPersona[] = state?.personas || [
-    { speaker_id: 'gd_a', name: 'Aarav', stance: 'Strongly For' },
-    { speaker_id: 'gd_b', name: 'Meera', stance: 'Strongly Against' },
-    { speaker_id: 'gd_c', name: 'Kabir', stance: 'Moderate' },
+  const rawPersonas: SimPersona[] = state?.personas?.length ? state.personas : [
+    FALLBACK_MODERATOR_PERSONA,
+    { speaker_id: 'aggressive_challenger', name: 'Aggressive Challenger', role_type: 'debater', stance: 'forceful skeptic' },
+    { speaker_id: 'data_driven_analyst', name: 'Data-Driven Analyst', role_type: 'debater', stance: 'evidence-first analyst' },
+    { speaker_id: 'consensus_builder', name: 'Consensus Builder', role_type: 'debater', stance: 'collaborative synthesizer' },
   ];
+  const visiblePersonas = rawPersonas.some(isModeratorPersona)
+    ? rawPersonas
+    : [FALLBACK_MODERATOR_PERSONA, ...rawPersonas];
 
-  const participants = rawPersonas
-    .filter((p) => p.name?.toLowerCase() !== 'moderator')
-    .map((p) => ({
-      id: p.speaker_id,
-      name: p.name,
-      role: p.role,
-      stance: prettyStance(p.stance),
-      isActive: latestSpeaker === p.name,
-    }));
+  const participants = visiblePersonas.map((p) => ({
+    id: p.speaker_id,
+    name: p.name,
+    role: p.role_type === 'moderator' ? 'Facilitator' : p.role,
+    stance: p.role_type === 'moderator' ? undefined : prettyStance(p.stance),
+    isActive: latestSpeaker === p.name,
+  }));
+  const isComplete = Boolean(report || (state?.status === 'ended' && state?.simulation_report));
 
   if (!sessionId || notFound) {
-    return <SessionNotFound onBack={() => router.push('/mode')} />;
+    return <SessionNotFound onBack={() => router.push('/map')} />;
   }
 
-  // Show the briefing card until the learner dismisses it
-  if (!briefingDismissed) {
+  if (isBootstrapping) {
+    return (
+      <div className="h-screen bg-[#0a0a0a] flex items-center justify-center text-sm text-white/60">
+        Restoring your discussion…
+      </div>
+    );
+  }
+
+  // Show the briefing only for a fresh, non-terminal discussion.
+  if (!briefingDismissed && messages.length === 0 && !report && !shouldClose) {
     return (
       <GDBriefingCard
-        topic={topicHint}
+        topic={scenarioTopic}
         onStart={() => setBriefingDismissed(true)}
         onSkip={() => setBriefingDismissed(true)}
       />
@@ -152,31 +174,30 @@ function GDContent() {
 
   return (
     <>
-      <SimulatorShell
-        type="gd"
-        title="Group Discussion: Policy Debate"
+        <SimulatorShell
+          type="gd"
+          title={scenarioTopic ? `Group Discussion: ${scenarioTopic}` : 'Group Discussion'}
         participants={participants}
         onEnd={handleEnd}
         round={simTurn}
         isClosing={isClosing}
+        isComplete={isComplete}
         messages={messages.map(m => ({
           id: m.id,
           role: m.role as 'user' | 'assistant',
           content: m.content,
-          speaker_name: m.speaker_name || (m.role === 'user' ? 'You' : 'System')
+          speaker_name: m.speaker_name || (m.role === 'user' ? 'You' : 'Panel')
         }))}
         inputValue={inputValue}
         setInputValue={setInputValue}
         onSend={handleSend}
-        isStreaming={isStreaming || shouldClose}
+        isStreaming={isStreaming || shouldClose || isSubmitting || state?.input_allowed === false || Boolean(state?.block_reason)}
         tension={tension}
         phase={state?.phase}
         error={error}
-        headerExtra={<CreditsBadge />}
+        headerExtra={<CreditsBadge refreshOnMount />}
         onLeave={handleLeave}
         onSaveLater={handleSaveLater}
-        coachingTip={coachingNudge?.text}
-        tensionAnnotations={tensionAnnotations}
       />
 
       {report && (
@@ -185,8 +206,8 @@ function GDContent() {
           report={report}
           simTurn={simTurn}
           maxRounds={MAX_SIM_ROUNDS}
-          onClose={() => router.push('/mode')}
-          onPracticeAgain={() => router.push('/mode')}
+          onClose={() => router.push('/map')}
+          onPracticeAgain={() => router.push('/map')}
         />
       )}
 

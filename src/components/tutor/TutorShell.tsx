@@ -1,7 +1,6 @@
 "use client";
 
 import React, { memo } from 'react';
-import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getAvatarScaleClass } from '@/lib/avatarRegistry';
 import { getEmotionTreatment, getAffectSupportNote } from '@/lib/emotion';
@@ -15,10 +14,12 @@ import {
   ExitIcon,
 } from '@radix-ui/react-icons';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { CreditsBadge } from '@/components/billing/CreditsBadge';
-import { clearToken } from '@/services/api';
+import { AVATAR_PATHS } from '@/lib/avatarRegistry';
+import { signOut, useSession } from 'next-auth/react';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -112,7 +113,7 @@ const AvatarTile = memo(function AvatarTile({ characterImg, characterQuote, mode
         )}
       </AnimatePresence>
 
-      {/* Coaching Directive floating badge */}
+      {/* Coaching note floating badge */}
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -121,7 +122,7 @@ const AvatarTile = memo(function AvatarTile({ characterImg, characterQuote, mode
       >
         <div className="flex items-center gap-2 mb-2">
           <InfoCircledIcon className="text-accent w-4 h-4" />
-          <span className="text-[10px] uppercase tracking-widest font-bold text-slate-500">Directive</span>
+          <span className="text-[10px] uppercase tracking-widest font-bold text-slate-500">Coach Note</span>
         </div>
         <p className="text-sm font-medium leading-relaxed text-slate-700">
           {characterQuote}
@@ -161,11 +162,9 @@ export const TutorShell: React.FC<TutorShellProps> = ({
   affect
 }) => {
   const router = useRouter();
-
-  const signOut = () => {
-    clearToken();
-    router.replace('/auth/login');
-  };
+  const { data: authSession } = useSession();
+  const handleSignOut = () => signOut({ callbackUrl: '/auth/login' });
+  const profileImage = authSession?.user?.image || AVATAR_PATHS.casual_male;
 
   return (
     <div className={cn("relative min-h-[100dvh] w-full overflow-hidden flex flex-col font-body bg-background transition-colors duration-500", mode === 'professional' ? 'mode-professional' : 'mode-gamified')}>
@@ -215,7 +214,22 @@ export const TutorShell: React.FC<TutorShellProps> = ({
               </div>
            </div>
            <button
-             onClick={signOut}
+             onClick={() => router.push('/profile')}
+             aria-label="Profile"
+             title="Profile"
+             className="relative w-10 h-10 rounded-full bg-indigo-50 border border-indigo-100 shadow-sm overflow-hidden hover:scale-105 active:scale-95 transition-all"
+           >
+             <Image
+               src={profileImage}
+               alt="Profile"
+               fill
+               sizes="40px"
+               className="object-cover object-top scale-[1.2] translate-y-1"
+               unoptimized
+             />
+           </button>
+           <button
+             onClick={handleSignOut}
              title="Sign out"
              className="w-10 h-10 rounded-full bg-white/50 backdrop-blur-md border border-slate-200/50 shadow-sm text-slate-600 flex items-center justify-center hover:bg-white hover:text-red-500 transition-all active:scale-95"
            >
@@ -277,9 +291,15 @@ export const TutorShell: React.FC<TutorShellProps> = ({
               </div>
             </div>
 
-            {/* Empty space for future bento extensions or Session Recap */}
-            <div className="flex-1 rounded-[2rem] border border-dashed border-slate-200/80 bg-slate-50/50 flex items-center justify-center p-6 text-center">
-               <p className="text-xs text-slate-400 font-medium">Context Analysis &amp; Memory Stream (Phase 2)</p>
+            {/* Learner-safe session context */}
+            <div className="flex-1 rounded-[2rem] border border-slate-200/60 bg-slate-50/60 p-6">
+               <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-slate-500 font-bold">
+                  <InfoCircledIcon className="text-accent w-4 h-4" />
+                  Session Notes
+               </div>
+               <p className="mt-4 text-sm leading-relaxed text-slate-500">
+                 I&apos;ll keep adjusting the next prompt based on how this session is going.
+               </p>
             </div>
           </motion.aside>
 
@@ -288,4 +308,3 @@ export const TutorShell: React.FC<TutorShellProps> = ({
     </div>
   );
 };
-

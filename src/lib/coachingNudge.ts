@@ -65,7 +65,7 @@ export function getCoachingNudge(messages: ChatMessage[]): CoachingNudge | null 
     if (avgAi > 0 && userWords / avgAi < BREVITY_RATIO_THRESHOLD) {
       return {
         afterMessageId: lastMsg.id,
-        text: "Good start — can you back that up with a specific example or challenge one of their points?",
+        text: "Add one concrete example, or challenge one panelist's point directly.",
       };
     }
   }

@@ -1,57 +1,113 @@
-export type SSEEventCallback = (eventName: string, data: any) => void;
+export type SSEEventCallback = (eventName: string, data: unknown) => void;
+export type SSECompleteCallback = (info: { doneSeen: boolean }) => void;
+export type SSEError = Error & { status?: number; code?: string };
+
+const DEFAULT_IDLE_TIMEOUT_MS = 240_000;
+const DEFAULT_STARTUP_TIMEOUT_MS = 120_000;
 
 export class ZiddSSEClient {
   private abortController: AbortController | null = null;
   private url: string;
-  private body: any;
+  private body: unknown;
   private method: string;
   private headers: Record<string, string>;
   private onEvent: SSEEventCallback;
-  private onError: (err: any) => void;
-  private onComplete: () => void;
+  private onOpen: () => void;
+  private onError: (err: SSEError) => void;
+  private onComplete: SSECompleteCallback;
+  private idleTimeoutMs: number;
+  private startupTimeoutMs: number;
 
   constructor(
     url: string,
     options: {
-      body?: any;
+      body?: unknown;
       method?: string;
       headers?: Record<string, string>;
+      onOpen?: () => void;
       onEvent: SSEEventCallback;
-      onError: (err: any) => void;
-      onComplete?: () => void;
+      onError: (err: SSEError) => void;
+      onComplete?: SSECompleteCallback;
+      idleTimeoutMs?: number;
+      startupTimeoutMs?: number;
     }
   ) {
     this.url = url;
     this.body = options.body;
     this.method = options.method || 'GET';
     this.headers = options.headers || {};
+    this.onOpen = options.onOpen || (() => {});
     this.onEvent = options.onEvent;
     this.onError = options.onError;
     this.onComplete = options.onComplete || (() => {});
+    this.idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
+    this.startupTimeoutMs = options.startupTimeoutMs ?? DEFAULT_STARTUP_TIMEOUT_MS;
   }
 
   async connect() {
     this.abortController = new AbortController();
+    let startupTimer: ReturnType<typeof setTimeout> | null = null;
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
+    let doneSeen = false;
+    let startupTimedOut = false;
+    let idleTimedOut = false;
+    const clearStartupTimer = () => {
+      if (startupTimer) clearTimeout(startupTimer);
+      startupTimer = null;
+    };
+    const resetIdleTimer = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        idleTimedOut = true;
+        this.abortController?.abort(new Error('SSE stream idle timeout'));
+      }, this.idleTimeoutMs);
+    };
+    const clearIdleTimer = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = null;
+    };
     try {
       const mergedHeaders: Record<string, string> = { ...this.headers };
-      if (this.body) {
+      if (this.body !== undefined) {
         mergedHeaders['Content-Type'] = 'application/json';
       }
+
+      startupTimer = setTimeout(() => {
+        startupTimedOut = true;
+        this.abortController?.abort(new Error('SSE stream startup timeout'));
+      }, this.startupTimeoutMs);
 
       const response = await fetch(this.url, {
         method: this.method,
         headers: mergedHeaders,
-        body: this.body ? JSON.stringify(this.body) : undefined,
+        body: this.body !== undefined ? JSON.stringify(this.body) : undefined,
         signal: this.abortController.signal,
       });
+      clearStartupTimer();
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const body = await response.json().catch((): Record<string, unknown> => ({}));
+        const detail = body.detail;
+        const detailObject =
+          typeof detail === 'object' && detail !== null
+            ? (detail as { code?: unknown; message?: unknown })
+            : null;
+        const code = typeof detailObject?.code === 'string' ? detailObject.code : undefined;
+        const message = typeof detail === 'string'
+          ? detail
+          : typeof detailObject?.message === 'string'
+            ? detailObject.message
+            : `HTTP error! status: ${response.status}`;
+        const err = new Error(message) as SSEError;
+        err.status = response.status;
+        err.code = code;
+        throw err;
       }
 
       if (!response.body) {
         throw new Error('Response body is null');
       }
+      this.onOpen();
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -61,27 +117,32 @@ export class ZiddSSEClient {
         if (!frame.trim()) return;
 
         let eventName = 'message';
-        let dataStr = '';
+        const dataLines: string[] = [];
 
-        const lines = frame.split('\n');
-        for (const line of lines) {
+        const lines = frame.replace(/\r\n/g, '\n').split('\n');
+        for (const rawLine of lines) {
+          const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
+          if (!line || line.startsWith(':')) continue;
           if (line.startsWith('event:')) {
             eventName = line.slice(6).trim();
           } else if (line.startsWith('data:')) {
-            dataStr += line.slice(5).trim();
+            dataLines.push(line.slice(5).replace(/^ /, ''));
           }
         }
 
+        const dataStr = dataLines.join('\n');
         if (dataStr) {
           try {
             const parsedData = JSON.parse(dataStr);
+            if (eventName === 'done') doneSeen = true;
             this.onEvent(eventName, parsedData);
-          } catch (err) {
-            console.error('Failed to parse SSE JSON:', dataStr, err);
+          } catch {
+            this.onError(new Error(`Failed to parse SSE JSON for ${eventName}`));
           }
         }
       };
 
+      resetIdleTimer();
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
@@ -91,30 +152,35 @@ export class ZiddSSEClient {
           // `done`/`complete` frame is dropped and the UI hangs.
           buffer += decoder.decode();
           if (buffer.trim()) processFrame(buffer);
-          // EOF backstop: the stream closed cleanly. On the happy path the
-          // `done` frame already cleared the consumer's streaming lock; but if
-          // the backend generator died mid-token AFTER the 200 headers were
-          // sent, the body just ends here with no `done` frame. Fire onComplete
-          // on every clean EOF so the lock is ALWAYS released. It is never
-          // called on an abort (that rejects reader.read() into the catch
-          // below), so a new turn's lock can't be wrongly cleared.
-          this.onComplete();
+          clearIdleTimer();
+          if (!doneSeen) {
+            this.onError(new Error('SSE stream ended before terminal done frame'));
+          }
+          this.onComplete({ doneSeen });
           break;
         }
 
+        resetIdleTimer();
         buffer += decoder.decode(value, { stream: true });
-        const frames = buffer.split('\n\n');
+        const frames = buffer.replace(/\r\n/g, '\n').split('\n\n');
         buffer = frames.pop() || '';
 
         for (const frame of frames) {
           processFrame(frame);
         }
       }
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        console.log('SSE Stream aborted manually.');
-      } else {
-        this.onError(error);
+    } catch (error: unknown) {
+      clearStartupTimer();
+      clearIdleTimer();
+      const err = error instanceof Error ? error : new Error(String(error));
+      if (startupTimedOut) {
+        this.onError(new Error('SSE stream startup timeout'));
+        this.onComplete({ doneSeen });
+      } else if (idleTimedOut) {
+        this.onError(new Error('SSE stream idle timeout'));
+        this.onComplete({ doneSeen });
+      } else if (err.name !== 'AbortError') {
+        this.onError(err);
       }
     }
   }

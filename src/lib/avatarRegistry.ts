@@ -77,6 +77,11 @@ const NAME_MAP: Array<[string, AvatarType]> = [
   ['sharma',   'coach_green'],
   // ── Role-based ──────────────────────────────────────────────────────────
   ['moderator',   'coach_orange'], // distinct from Aarav (blue)
+  ['challenger',  'tech_black'],
+  ['analyst',     'casual_blue'],
+  ['expert',      'coach_green'],
+  ['builder',     'casual_female'],
+  ['advocate',    'casual_purple'],
   ['interviewer', 'coach_orange'], // female interviewer
   ['dr.',         'coach_orange'], // Dr. titles → female interviewer avatar
   ['mr.',         'coach_green'],

@@ -1,68 +1,129 @@
-export const setToken = (token: string) => {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('zidd_token', token);
-  }
-};
+import { getSession, signOut } from 'next-auth/react';
 
-export const getToken = () => {
-  if (typeof window !== 'undefined') {
-    return localStorage.getItem('zidd_token');
-  }
-  return null;
-};
+// The backend-issued JWT lives on the NextAuth session (populated from
+// account.id_token verification in the jwt callback), not in localStorage.
+const ACCESS_TOKEN_CACHE_MS = 60_000;
+let cachedAccessToken: { token: string; cacheKey: string; expiresAt: number } | null = null;
+let sessionRequest: Promise<string | null> | null = null;
 
-export const clearToken = () => {
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem('zidd_token');
-  }
-};
+function clearAccessTokenCache() {
+  cachedAccessToken = null;
+  sessionRequest = null;
+}
 
-const getHeaders = () => {
-  const token = getToken();
+export function invalidateAuthCache() {
+  clearAccessTokenCache();
+}
+
+export function authCacheKeyForToken(token: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < token.length; index += 1) {
+    hash ^= token.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `auth:${(hash >>> 0).toString(36)}:${token.length}`;
+}
+
+function cacheResolvedAccessToken(token: string | null): string | null {
+  if (!token) {
+    clearAccessTokenCache();
+    return null;
+  }
+  cachedAccessToken = {
+    token,
+    cacheKey: authCacheKeyForToken(token),
+    expiresAt: Date.now() + ACCESS_TOKEN_CACHE_MS,
+  };
+  return token;
+}
+
+export async function getAccessToken(): Promise<string | null> {
+  const now = Date.now();
+  if (cachedAccessToken && cachedAccessToken.expiresAt > now) {
+    return cachedAccessToken.token;
+  }
+
+  if (!sessionRequest) {
+    sessionRequest = getSession()
+      .then((session) => session?.accessToken ?? null)
+      .finally(() => {
+        sessionRequest = null;
+      });
+  }
+
+  const token = await sessionRequest;
+  return cacheResolvedAccessToken(token);
+}
+
+export async function getAuthCacheKey(): Promise<string> {
+  const token = await getAccessToken();
+  return token ? authCacheKeyForToken(token) : 'auth:anonymous';
+}
+
+export async function getAuthHeaders(): Promise<Record<string, string>> {
+  const token = await getAccessToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+const getHeaders = async () => {
   return {
     'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(await getAuthHeaders()),
   };
 };
 
-export async function apiFetch(endpoint: string, options: RequestInit = {}) {
-  const response = await fetch(`/api${endpoint}`, {
-    ...options,
-    headers: {
-      ...getHeaders(),
-      ...options.headers,
-    },
-  });
+type ApiFetchOptions = RequestInit & { timeoutMs?: number };
+const DEFAULT_API_TIMEOUT_MS = 20_000;
+
+export async function apiFetch(endpoint: string, options: ApiFetchOptions = {}) {
+  const { timeoutMs = DEFAULT_API_TIMEOUT_MS, signal, ...fetchOptions } = options;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort(new DOMException('request_timeout', 'TimeoutError'));
+  }, timeoutMs);
+  if (signal) {
+    if (signal.aborted) controller.abort(signal.reason);
+    else signal.addEventListener('abort', () => controller.abort(signal.reason), { once: true });
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`/api${endpoint}`, {
+      ...fetchOptions,
+      signal: controller.signal,
+      headers: {
+        ...(await getHeaders()),
+        ...fetchOptions.headers,
+      },
+    });
+  } catch (err: unknown) {
+    const name = err instanceof DOMException || err instanceof Error ? err.name : '';
+    if (name === 'AbortError' || name === 'TimeoutError') {
+      throw new Error('request_timeout');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (response.status === 401) {
-    // Token missing / expired / invalid: clear it and bounce to login from ONE
-    // place, instead of every caller rendering a stale-session error. A service
-    // has no router, so a hard redirect is the portable choice.
-    clearToken();
-    if (typeof window !== 'undefined') {
-      window.location.href = '/auth/login';
-    }
+    // Session missing / expired / invalid: let NextAuth clear it and bounce to
+    // login from ONE place, instead of every caller rendering a stale-session
+    // error. A service has no router, so signOut's own redirect is the
+    // portable choice.
+    invalidateAuthCache();
+    await signOut({ callbackUrl: '/auth/login' });
     throw new Error('Unauthorized');
   }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `API Error: ${response.status}`);
+    const detail = errorData.detail;
+    if (detail && typeof detail === 'object' && typeof detail.code === 'string') {
+      throw new Error(detail.code);
+    }
+    throw new Error(typeof detail === 'string' ? detail : `API Error: ${response.status}`);
   }
 
   return response.json();
-}
-
-export function resolveUserId(fallback: string = 'there'): string {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('zidd_token') : null;
-  if (token) {
-    try {
-      const part = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-      const padded = part.padEnd(part.length + ((4 - (part.length % 4)) % 4), '=');
-      return JSON.parse(atob(padded)).sub || fallback;
-    } catch {
-      /* malformed token */
-    }
-  }
-  return fallback;
 }

@@ -16,8 +16,16 @@ export interface ProgressNode {
   node_id: string;
   title: string;
   mastery: number;
+  raw_mastery?: number;
+  best_mastery?: number;
+  display_mastery?: number;
+  completed?: boolean;
+  mastered?: boolean;
+  node_mastered?: boolean;
+  display_status?: 'not_started' | 'in_progress' | 'ready_to_advance' | 'proficient' | 'mastered' | 'needs_remediation' | 'active' | 'locked' | string;
+  last_gap?: string;
   clean_streak: number;
-  status: 'locked' | 'active' | 'mastered';
+  status: 'locked' | 'active' | 'mastered' | 'ready_to_advance' | 'proficient' | 'needs_remediation' | 'in_progress' | string;
 }
 
 interface PathMapProps {
@@ -38,18 +46,21 @@ const AVATAR_POOL = [
 ];
 
 const QUOTES = [
-  "You're doing great! Keep it up.",
-  "Let's conquer this next challenge.",
-  "Consistency is your superpower.",
-  "Ready to level up your clarity?",
-  "Focus on your breathing. You got this.",
-  "Mastery is just a few turns away."
+  "Open this skill when you are ready to practice.",
+  "One focused answer is enough to make progress.",
+  "Use a specific example when the coach asks.",
+  "Slow down, answer clearly, then refine.",
+  "The next turn will focus on one concrete step.",
+  "Progress updates after the coach reviews your answer."
 ];
 
 export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
   
   // Calculate how far down the active node is to fill the SVG path
-  const activeIndex = nodes.findIndex(n => n.status === 'active');
+  const activeIndex = nodes.findIndex(n => {
+    const state = n.display_status ?? n.status;
+    return state === 'active' || state === 'in_progress';
+  });
   const pathFillPercentage = activeIndex === -1 ? 100 : (activeIndex / Math.max(1, nodes.length - 1)) * 100;
 
   return (
@@ -110,7 +121,14 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
 
         {nodes.map((node, index) => {
           const isEven = index % 2 === 0;
-          const status = node.status;
+          const status = node.display_status ?? node.status;
+          const isLocked = status === 'locked';
+          const isMastered = Boolean(node.mastered ?? node.node_mastered ?? status === 'mastered');
+          const isReady = !isMastered && (status === 'ready_to_advance' || status === 'proficient');
+          const isActive = !isLocked && !isMastered && !isReady;
+          const displayMastery = isMastered
+            ? 1
+            : Math.max(0, Math.min(1, node.display_mastery ?? node.mastery ?? 0));
           
           let hash = 0;
           const seedStr = node.node_id + index.toString();
@@ -121,14 +139,17 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
           const quote = QUOTES[Math.abs(hash) % QUOTES.length];
           
           return (
-            <motion.div 
+            <motion.button
+              type="button"
               initial={{ opacity: 0, y: 50 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: index * 0.1, ease: [0.16, 1, 0.3, 1] }}
               key={node.node_id}
+              aria-label={`${node.title} ${status}`}
+              disabled={isLocked}
               className={cn(
-                "relative flex items-center justify-center w-full max-w-3xl",
-                status !== 'locked' ? "cursor-pointer" : "cursor-not-allowed",
+                "relative flex items-center justify-center w-full max-w-3xl border-0 bg-transparent p-0 text-left",
+                !isLocked ? "cursor-pointer" : "cursor-not-allowed",
                 isEven ? "flex-row" : "flex-row-reverse"
               )}
               onClick={() => onNodeClick(node)}
@@ -140,37 +161,37 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
                  isEven ? "ml-auto md:ml-[50%] md:-translate-x-1/2" : "mr-auto md:mr-[50%] md:translate-x-1/2"
               )}>
                  {/* Ghost step numeral — echoes the onboarding cards, gives the path a count */}
-                 <span className={cn(
-                    "absolute -top-8 left-1/2 -translate-x-1/2 z-0 font-anton leading-none select-none pointer-events-none text-[7rem] md:text-[9rem] tracking-tighter transition-colors duration-700",
-                    status === 'active' ? "text-indigo-500/10" : status === 'mastered' ? "text-emerald-500/10" : "text-slate-900/[0.04]"
-                 )}>{String(index + 1).padStart(2, '0')}</span>
+	                 <span className={cn(
+	                    "absolute -top-8 left-1/2 -translate-x-1/2 z-0 font-anton leading-none select-none pointer-events-none text-[7rem] md:text-[9rem] tracking-tighter transition-colors duration-700",
+	                    isActive ? "text-indigo-500/10" : isMastered ? "text-emerald-500/10" : isReady ? "text-amber-500/10" : "text-slate-900/[0.04]"
+	                 )}>{String(index + 1).padStart(2, '0')}</span>
 
                  {/* Station: a station ring + soft ground shadow so the figure stands ON the path */}
                  <div className="absolute left-1/2 bottom-4 -translate-x-1/2 z-0 pointer-events-none">
                     <div className={cn(
                        "w-28 md:w-36 h-5 rounded-[100%] blur-md transition-colors duration-700",
-                       status === 'active' ? "bg-indigo-900/15" : status === 'locked' ? "bg-slate-900/[0.06]" : "bg-slate-900/10"
-                    )} />
+	                       isActive ? "bg-indigo-900/15" : isLocked ? "bg-slate-900/[0.06]" : isReady ? "bg-amber-900/10" : "bg-slate-900/10"
+	                    )} />
                     <div className={cn(
                        "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-16 md:w-20 h-16 md:h-20 rounded-full border transition-all duration-700",
-                       status === 'active' ? "border-indigo-300/60 bg-indigo-50/40" : status === 'mastered' ? "border-emerald-300/50 bg-emerald-50/30" : "border-slate-200/70 bg-white/30"
-                    )} />
+	                       isActive ? "border-indigo-300/60 bg-indigo-50/40" : isMastered ? "border-emerald-300/50 bg-emerald-50/30" : isReady ? "border-amber-300/50 bg-amber-50/30" : "border-slate-200/70 bg-white/30"
+	                    )} />
                  </div>
 
                  <motion.div
-                    animate={status !== 'locked' ? { y: [0, -12, 0] } : {}}
-                    transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: index * 0.2 }}
-                    whileHover={status !== 'locked' ? { scale: 1.08, rotate: isEven ? 2 : -2 } : {}}
-                    whileTap={status !== 'locked' ? { scale: 0.95 } : {}}
-                    className={cn(
-                      "relative w-48 h-56 md:w-64 md:h-72 flex items-center justify-center transition-all duration-700 z-10",
-                      status === 'mastered' && "opacity-90 scale-90",
-                      status === 'active' && "drop-shadow-[0_30px_40px_rgba(99,102,241,0.4)] z-30",
-                      status === 'locked' && "opacity-45 grayscale-[85%] blur-[1px]"
-                    )}
-                 >
-                    {/* Active Halo */}
-                    {status === 'active' && (
+	                    animate={!isLocked ? { y: [0, -12, 0] } : {}}
+	                    transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: index * 0.2 }}
+	                    whileHover={!isLocked ? { scale: 1.08, rotate: isEven ? 2 : -2 } : {}}
+	                    whileTap={!isLocked ? { scale: 0.95 } : {}}
+	                    className={cn(
+	                      "relative w-48 h-56 md:w-64 md:h-72 flex items-center justify-center transition-all duration-700 z-10",
+	                      isMastered && "opacity-90 scale-90",
+	                      isActive && "drop-shadow-[0_30px_40px_rgba(99,102,241,0.4)] z-30",
+	                      isLocked && "opacity-45 grayscale-[85%] blur-[1px]"
+	                    )}
+	                 >
+	                    {/* Active Halo */}
+	                    {isActive && (
                        <div className="absolute inset-0 bg-indigo-500/20 rounded-full blur-3xl -z-10 animate-pulse" />
                     )}
 
@@ -186,7 +207,7 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
                       unoptimized
                     />
 
-                    {status === 'locked' && (
+	                    {isLocked && (
                        <div className="absolute inset-0 flex items-center justify-center z-20">
                           <div className="w-16 h-16 bg-slate-900/50 backdrop-blur-md rounded-2xl flex items-center justify-center border border-white/10 shadow-2xl">
                              <LockClosedIcon className="w-8 h-8 text-white" />
@@ -194,7 +215,7 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
                        </div>
                     )}
 
-                    {status === 'mastered' && (
+	                    {isMastered && (
                        <div className="absolute top-2 right-2 z-30 w-9 h-9 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/30 ring-4 ring-white">
                           <CheckIcon className="w-5 h-5" />
                        </div>
@@ -207,7 +228,7 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
                  "absolute z-30 transition-all duration-500 opacity-100 translate-y-0",
                  isEven ? "left-4 md:left-[calc(50%+100px)]" : "right-4 md:right-[calc(50%+100px)]"
               )}>
-                 {status === 'locked' ? (
+	                 {isLocked ? (
                     /* Muted name tag: the upcoming skill is NAMED, not an anonymous ghost */
                     <div className={cn(
                        "flex items-center gap-2 bg-white/70 backdrop-blur-sm border border-slate-200/70 rounded-full pl-2 pr-4 py-1.5 shadow-sm max-w-[240px]",
@@ -221,52 +242,59 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
                  ) : (
                     <div className={cn(
                        "relative bg-white/95 backdrop-blur-xl border rounded-[2rem] p-6 shadow-2xl max-w-[280px]",
-                       status === 'active' ? "border-indigo-200 shadow-indigo-500/10 ring-4 ring-indigo-50/50" : "border-slate-200/60 shadow-slate-900/5"
-                    )}>
+	                       isActive ? "border-indigo-200 shadow-indigo-500/10 ring-4 ring-indigo-50/50" : isReady ? "border-amber-200 shadow-amber-500/10 ring-4 ring-amber-50/50" : "border-slate-200/60 shadow-slate-900/5"
+	                    )}>
                        {/* The Tail */}
                        <div className={cn(
                           "absolute top-1/2 -translate-y-1/2 w-6 h-6 bg-white/95 border-b border-l border-slate-200/60 backdrop-blur-xl rotate-45 -z-10",
                           isEven ? "-left-3" : "-right-3 border-t border-r border-b-0 border-l-0"
                        )} />
 
-                       {status === 'active' ? (
-                          <span className="inline-block mb-3 text-[9px] font-bold uppercase tracking-[0.25em] text-indigo-500 bg-indigo-50 rounded-full px-2.5 py-1">You are here</span>
-                       ) : (
-                          <span className="inline-flex items-center gap-1.5 mb-3 text-[9px] font-bold uppercase tracking-[0.25em] text-emerald-600">
-                             <CheckIcon className="w-3 h-3" /> Mastered
-                          </span>
-                       )}
+	                       {isActive ? (
+	                          <span className="inline-block mb-3 text-[9px] font-bold uppercase tracking-[0.25em] text-indigo-500 bg-indigo-50 rounded-full px-2.5 py-1">You are here</span>
+	                       ) : isReady ? (
+	                          <span className="inline-flex items-center gap-1.5 mb-3 text-[9px] font-bold uppercase tracking-[0.25em] text-amber-600">
+	                             Next skill ready
+	                          </span>
+	                       ) : (
+	                          <span className="inline-flex items-center gap-1.5 mb-3 text-[9px] font-bold uppercase tracking-[0.25em] text-emerald-600">
+	                             <CheckIcon className="w-3 h-3" /> Mastered
+	                          </span>
+	                       )}
 
-                       {status === 'active' && (
+	                       {isActive && (
                           <p className="text-indigo-600 font-display text-xl leading-tight tracking-tight italic mb-4">
                              &quot;{quote}&quot;
                           </p>
                        )}
 
                        <h3 className={cn(
-                          "font-bold text-lg mb-2 leading-tight tracking-tight",
-                          status === 'active' ? "text-slate-900" : "text-slate-600"
-                       )}>{node.title}</h3>
+	                          "font-bold text-lg mb-2 leading-tight tracking-tight",
+	                          isActive ? "text-slate-900" : "text-slate-600"
+	                       )}>{node.title}</h3>
+	                       {isReady && node.last_gap && (
+	                         <p className="mb-4 text-xs leading-relaxed text-slate-500">{node.last_gap}</p>
+	                       )}
 
                        <div className="flex items-center gap-3">
                          <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden shadow-inner">
                            <div
                              className={cn(
                                "h-full rounded-full transition-all duration-1000",
-                               status === 'mastered' ? "bg-emerald-400" : "bg-indigo-500"
-                             )}
-                             style={{ width: `${Math.round(node.mastery * 100)}%` }}
+	                               isMastered ? "bg-emerald-400" : isReady ? "bg-amber-400" : "bg-indigo-500"
+	                             )}
+                             style={{ width: `${Math.round(displayMastery * 100)}%` }}
                            />
                          </div>
                          <span className="text-xs font-black tracking-widest text-slate-400">
-                            {Math.round(node.mastery * 100)}%
-                         </span>
+	                            {isMastered ? 'Done' : `${Math.round(displayMastery * 100)}%`}
+	                         </span>
                        </div>
                     </div>
                  )}
               </div>
 
-            </motion.div>
+            </motion.button>
           );
         })}
 

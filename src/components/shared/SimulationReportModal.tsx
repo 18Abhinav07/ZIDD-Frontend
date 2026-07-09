@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { SimulationReport } from '@/types';
-import { Award, CheckCircle2, ArrowUpRight, RotateCcw, Quote } from 'lucide-react';
+import { Award, CheckCircle2, ArrowUpRight, RotateCcw, Quote, AlertTriangle } from 'lucide-react';
 import { clsx } from 'clsx';
+import { getMe, updatePreferences } from '@/services/me';
 
 function cn(...inputs: (string | undefined | false | null)[]) {
   return clsx(inputs);
@@ -24,25 +25,29 @@ interface Dimension {
   value: number; // 0-1
 }
 
+function measuredDimension(label: string, value: number | null | undefined): Dimension | null {
+  return typeof value === 'number' ? { label, value } : null;
+}
+
 // Only the rubric dimensions the backend actually scored for this mode. The
 // report carries all five fields, but the other mode's default to 0.0, so
 // rendering them would print misleading empty bars.
 function dimensionsFor(type: 'gd' | 'interview', report: SimulationReport): Dimension[] {
   if (type === 'gd') {
-    const dims: Dimension[] = [
-      { label: 'Participation', value: report.participation_score },
-      { label: 'Relevance', value: report.relevance_score },
-      { label: 'Language', value: report.language_score },
-    ];
+    const dims = [
+      measuredDimension('Participation', report.participation_score),
+      measuredDimension('Relevance', report.relevance_score),
+      measuredDimension('Language', report.language_score),
+    ].filter((dimension): dimension is Dimension => Boolean(dimension));
     if (report.assertiveness_score !== undefined) {
       dims.push({ label: 'Assertiveness', value: report.assertiveness_score });
     }
     return dims;
   }
   return [
-    { label: 'Clarity', value: report.clarity_score },
-    { label: 'Confidence', value: report.confidence_score },
-  ];
+    measuredDimension('Clarity', report.clarity_score),
+    measuredDimension('Confidence', report.confidence_score),
+  ].filter((dimension): dimension is Dimension => Boolean(dimension));
 }
 
 function barColor(value: number): string {
@@ -58,13 +63,41 @@ function scoreBand(pct: number): { label: string; color: string } {
   return { label: 'Building Foundations', color: 'text-slate-500' };
 }
 
+function validityCopy(report: SimulationReport): { label: string; detail: string; className: string } {
+  const status = report.validity_status || (report.assessment_caveats?.length ? 'partial' : 'final');
+  if (status === 'insufficient_evidence') {
+    return {
+      label: 'Insufficient Evidence',
+      detail: 'This is not a final score. Complete more answered rounds before using this assessment.',
+      className: 'bg-red-50 border-red-200 text-red-700',
+    };
+  }
+  if (status === 'invalid_simulation') {
+    return {
+      label: 'Invalid Simulation',
+      detail: 'The simulator produced invalid panel behavior, so this run should be retried instead of scored.',
+      className: 'bg-red-50 border-red-200 text-red-700',
+    };
+  }
+  if (status === 'partial') {
+    return {
+      label: 'Partial Assessment',
+      detail: 'The score is capped or caveated because the session did not cover enough evidence.',
+      className: 'bg-amber-50 border-amber-200 text-amber-700',
+    };
+  }
+  return {
+    label: 'Final Assessment',
+    detail: 'Enough answered turns and coverage were available for scoring.',
+    className: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+  };
+}
+
 // Returns the dimension with the lowest score — used to label the practice CTA.
 function lowestDimension(dimensions: Dimension[]): Dimension | null {
   if (dimensions.length === 0) return null;
   return dimensions.reduce((min, d) => (d.value < min.value ? d : min), dimensions[0]);
 }
-
-const FIRST_SIM_KEY = 'zidd_first_sim_complete';
 
 export function SimulationReportModal({
   type,
@@ -82,13 +115,14 @@ export function SimulationReportModal({
     setMounted(true);
     const raf = requestAnimationFrame(() => setShown(true));
 
-    // Mark first completion and remember the state for this render
-    if (typeof window !== 'undefined') {
-      if (!localStorage.getItem(FIRST_SIM_KEY)) {
-        setIsFirstSim(true);
-        localStorage.setItem(FIRST_SIM_KEY, '1');
-      }
-    }
+    getMe()
+      .then((me) => {
+        if (!me.preferences.first_sim_complete) {
+          setIsFirstSim(true);
+          return updatePreferences({ first_sim_complete: true });
+        }
+      })
+      .catch(() => {});
 
     return () => cancelAnimationFrame(raf);
   }, []);
@@ -96,8 +130,18 @@ export function SimulationReportModal({
   const overall = Math.round(report.score * 100);
   const band = scoreBand(overall);
   const dimensions = dimensionsFor(type, report);
-  const weakest = lowestDimension(dimensions);
   const isPartialSession = simTurn !== undefined && maxRounds !== undefined && simTurn < maxRounds;
+  const isInsufficientEvidence = report.validity_status === 'insufficient_evidence';
+  const isInvalidSimulation = report.validity_status === 'invalid_simulation';
+  const isNotScored = isInsufficientEvidence || isInvalidSimulation;
+  const weakest = isNotScored ? null : lowestDimension(dimensions);
+  const validity = validityCopy(report);
+  const coverage = report.coverage_map;
+  const hasCoverage = Boolean(
+    report.scorable_turn_count !== undefined ||
+    coverage?.required_unique !== undefined ||
+    coverage?.unique_covered !== undefined
+  );
 
   if (!mounted) return null;
 
@@ -115,6 +159,14 @@ export function SimulationReportModal({
             {type === 'gd' ? 'Group discussion' : 'Interview'} performance, scored across the full session
           </p>
 
+          <div className={cn("w-full mb-5 rounded-2xl border px-4 py-3 text-left", validity.className)}>
+            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider">
+              <AlertTriangle size={15} />
+              {validity.label}
+            </div>
+            <p className="mt-1 text-xs leading-relaxed font-semibold opacity-90">{validity.detail}</p>
+          </div>
+
           {/* Partial session warning */}
           {isPartialSession && (
             <div className="flex items-center gap-2 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-2xl text-amber-700 text-xs font-semibold mb-5 text-center">
@@ -122,26 +174,52 @@ export function SimulationReportModal({
             </div>
           )}
 
+          {report.assessment_caveats && report.assessment_caveats.length > 0 && (
+            <div className="space-y-2 mb-5 w-full">
+              {report.assessment_caveats.map((caveat) => (
+                <div
+                  key={caveat}
+                  className="px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-2xl text-amber-700 text-xs font-semibold text-center"
+                >
+                  {caveat}
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="relative w-28 h-28 flex items-center justify-center">
             <svg className="absolute inset-0 w-full h-full -rotate-90">
               <circle cx="56" cy="56" r="52" fill="none" stroke="currentColor" strokeWidth="5" className="text-slate-100" />
-              <circle
-                cx="56" cy="56" r="52"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="5"
-                strokeLinecap="round"
-                strokeDasharray="327"
-                strokeDashoffset={shown ? 327 - (327 * overall) / 100 : 327}
-                className="text-indigo-600 transition-all duration-1000 ease-out"
-              />
+              {!isNotScored && (
+                <circle
+                  cx="56" cy="56" r="52"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="5"
+                  strokeLinecap="round"
+                  strokeDasharray="327"
+                  strokeDashoffset={shown ? 327 - (327 * overall) / 100 : 327}
+                  className="text-indigo-600 transition-all duration-1000 ease-out"
+                />
+              )}
             </svg>
             <div className="text-center">
-              <div className="text-3xl font-black text-slate-900 leading-none">
-                {overall}<span className="text-lg text-slate-400">%</span>
-              </div>
-              <div className="text-[9px] uppercase tracking-widest font-bold text-indigo-600 mt-1">Overall</div>
-              <p className={cn("text-[10px] font-bold mt-0.5", band.color)}>{band.label}</p>
+              {isNotScored ? (
+                <>
+                  <div className="text-lg font-black text-slate-900 leading-tight">Not scored</div>
+                  <div className="text-[9px] uppercase tracking-widest font-bold text-red-600 mt-1">
+                    {isInvalidSimulation ? 'Simulation' : 'Evidence'}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-3xl font-black text-slate-900 leading-none">
+                    {overall}<span className="text-lg text-slate-400">%</span>
+                  </div>
+                  <div className="text-[9px] uppercase tracking-widest font-bold text-indigo-600 mt-1">Overall</div>
+                  <p className={cn("text-[10px] font-bold mt-0.5", band.color)}>{band.label}</p>
+                </>
+              )}
             </div>
           </div>
 
@@ -156,7 +234,33 @@ export function SimulationReportModal({
         {/* Scrollable body */}
         <div className="px-10 pb-2 overflow-y-auto scrollbar-hide space-y-7">
 
+          {hasCoverage && (
+            <div>
+              <h3 className="text-xs uppercase tracking-widest font-black text-slate-400 mb-4 border-b border-slate-100 pb-2">Assessment Evidence</h3>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-2xl bg-slate-50 border border-slate-100 p-3">
+                  <p className="text-[10px] uppercase tracking-wider font-black text-slate-400">Answered</p>
+                  <p className="mt-1 text-lg font-black text-slate-900 tabular-nums">{report.scorable_turn_count ?? 0}</p>
+                </div>
+                <div className="rounded-2xl bg-slate-50 border border-slate-100 p-3">
+                  <p className="text-[10px] uppercase tracking-wider font-black text-slate-400">Covered</p>
+                  <p className="mt-1 text-lg font-black text-slate-900 tabular-nums">{coverage?.unique_covered ?? 0}</p>
+                </div>
+                <div className="rounded-2xl bg-slate-50 border border-slate-100 p-3">
+                  <p className="text-[10px] uppercase tracking-wider font-black text-slate-400">Needed</p>
+                  <p className="mt-1 text-lg font-black text-slate-900 tabular-nums">{coverage?.required_unique ?? 0}</p>
+                </div>
+              </div>
+              {coverage?.repeated_prompt_count ? (
+                <p className="mt-3 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-100 rounded-2xl px-3 py-2">
+                  {coverage.repeated_prompt_count} repeated prompt{coverage.repeated_prompt_count === 1 ? '' : 's'} reduced assessment confidence.
+                </p>
+              ) : null}
+            </div>
+          )}
+
           {/* Rubric sub-scores */}
+          {!isNotScored && (
           <div>
             <h3 className="text-xs uppercase tracking-widest font-black text-slate-400 mb-4 border-b border-slate-100 pb-2">Rubric</h3>
             <ul className="space-y-4">
@@ -183,6 +287,18 @@ export function SimulationReportModal({
               })}
             </ul>
           </div>
+          )}
+
+          {isNotScored && (
+            <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
+              <h3 className="text-xs uppercase tracking-widest font-black text-red-600 mb-2">Rubric not scored</h3>
+              <p className="text-sm text-red-700 leading-relaxed">
+                {isInvalidSimulation
+                  ? 'The simulator transcript was invalid, so rubric dimensions were not applied to the learner.'
+                  : 'The session did not have enough answered turns to grade dimensions fairly.'}
+              </p>
+            </div>
+          )}
 
           {/* Strengths */}
           {report.strengths.length > 0 && (
@@ -246,7 +362,11 @@ export function SimulationReportModal({
               className="w-full py-4 rounded-2xl bg-indigo-600 text-white font-black text-sm transition-all hover:bg-indigo-700 active:scale-95"
               onClick={onPracticeAgain}
             >
-              {weakest
+              {isInvalidSimulation
+                ? 'Retry Assessment'
+                : isInsufficientEvidence
+                ? 'Complete a Full Attempt'
+                : weakest
                 ? `Drill ${weakest.label} — Practice Again`
                 : 'Practice Again'}
             </button>

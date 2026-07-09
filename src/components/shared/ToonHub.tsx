@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { MoveLeft, MoveRight, ArrowLeft, ArrowRight } from 'lucide-react';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
 import Image from 'next/image';
 import { AVATAR_PATHS, getAvatarScaleClass } from '@/lib/avatarRegistry';
 
-import { motion, useInView } from 'framer-motion';
+import { motion } from 'framer-motion';
 
 const IMAGES = [
   { 

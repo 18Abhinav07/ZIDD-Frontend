@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { SessionRecapFrame } from '@/types';
 import { Target, CheckCircle2, TrendingDown } from 'lucide-react';
+import { labelSkillId } from '@/lib/skillLabels';
 
 interface SessionRecapProps {
   recap: SessionRecapFrame;
@@ -73,7 +74,7 @@ export function SessionRecap({ recap, onClose }: SessionRecapProps) {
                   <li key={idx} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex gap-3">
                     <TrendingDown size={18} className="text-amber-500 shrink-0 mt-0.5" />
                     <div>
-                      <strong className="block text-sm text-slate-900 font-bold mb-1">{w.skill_id}</strong>
+                      <strong className="block text-sm text-slate-900 font-bold mb-1">{labelSkillId(w.skill_id)}</strong>
                       {w.last_raw && <p className="text-sm text-slate-600 leading-relaxed">{w.last_raw}</p>}
                     </div>
                   </li>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MagicWandIcon, CheckCircledIcon } from '@radix-ui/react-icons';
 import { motion } from 'framer-motion';
 import { clsx, type ClassValue } from 'clsx';
@@ -14,16 +14,34 @@ interface MultipleChoiceCardProps {
   sentence: string;
   hint: string;
   options: string[];
-  onSubmit: (answer: string) => void;
+  onSubmit: (answer: string) => Promise<boolean> | boolean;
   disabled?: boolean;
 }
 
 export function MultipleChoiceCard({ sentence, hint, options, onSubmit, disabled }: MultipleChoiceCardProps) {
   const [selected, setSelected] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const blocked = disabled || submitting || submitted;
+  const optionsKey = options.join('\u0001');
 
-  const handleSubmit = () => {
-    if (selected && !disabled) {
-      onSubmit(selected);
+  useEffect(() => {
+    setSelected(null);
+    setSubmitting(false);
+    setSubmitted(false);
+  }, [sentence, hint, optionsKey]);
+
+  const handleSubmit = async () => {
+    if (!selected || blocked) return;
+    const answer = selected;
+    setSubmitting(true);
+    try {
+      const accepted = await onSubmit(answer);
+      if (accepted !== false) {
+        setSubmitted(true);
+      }
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -50,8 +68,8 @@ export function MultipleChoiceCard({ sentence, hint, options, onSubmit, disabled
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
         {options.map((opt, idx) => (
           <motion.button
-            whileHover={{ scale: disabled ? 1 : 1.02 }}
-            whileTap={{ scale: disabled ? 1 : 0.98 }}
+            whileHover={{ scale: blocked ? 1 : 1.02 }}
+            whileTap={{ scale: blocked ? 1 : 0.98 }}
             key={idx}
             className={cn(
               "px-6 py-5 rounded-[1.5rem] text-left transition-all duration-300 border-[1.5px] group",
@@ -59,8 +77,10 @@ export function MultipleChoiceCard({ sentence, hint, options, onSubmit, disabled
                 ? "bg-accent text-white border-accent shadow-lg shadow-accent/20" 
                 : "bg-slate-50/50 border-slate-200/60 text-slate-700 hover:bg-slate-50 hover:border-slate-300"
             )}
-            onClick={() => setSelected(opt)}
-            disabled={disabled}
+            onClick={() => {
+              if (!blocked) setSelected(opt);
+            }}
+            disabled={blocked}
           >
             <div className="flex items-center justify-between">
                <span className="font-bold tracking-tight text-[15px]">{opt}</span>
@@ -71,13 +91,13 @@ export function MultipleChoiceCard({ sentence, hint, options, onSubmit, disabled
       </div>
 
       <motion.button
-        whileHover={{ scale: (!selected || disabled) ? 1 : 1.02 }}
-        whileTap={{ scale: (!selected || disabled) ? 1 : 0.98 }}
+        whileHover={{ scale: (!selected || blocked) ? 1 : 1.02 }}
+        whileTap={{ scale: (!selected || blocked) ? 1 : 0.98 }}
         className="w-full py-5 rounded-[1.5rem] bg-accent text-white font-bold uppercase tracking-[0.15em] text-xs transition-all disabled:opacity-50 disabled:grayscale shadow-md"
-        disabled={!selected || disabled}
+        disabled={blocked || !selected}
         onClick={handleSubmit}
       >
-        Submit Selection
+        {submitting || submitted ? 'Submitting...' : 'Submit Selection'}
       </motion.button>
     </div>
   );

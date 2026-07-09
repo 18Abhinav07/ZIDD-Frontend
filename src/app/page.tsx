@@ -1,24 +1,31 @@
 "use client";
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import Image from 'next/image';
 import { ToonHub } from '@/components/shared/ToonHub';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Loader2 } from 'lucide-react';
 import { AVATAR_PATHS, needsPaddingCompensation, getAvatarScaleClass } from "@/lib/avatarRegistry";
-import { motion, useInView } from 'framer-motion';
+import { motion, useInView, type Variants } from 'framer-motion';
 import { SmoothScroll } from '@/components/shared/SmoothScroll';
 
 import { useRouter } from 'next/navigation';
-import { getToken } from '@/services/api';
+import { useSession } from 'next-auth/react';
 
 export default function LandingPage() {
   const router = useRouter();
+  const { data: session } = useSession();
+  const [opening, setOpening] = useState(false);
   const footerTriggerRef = useRef(null);
   const isFooterVisible = useInView(footerTriggerRef, { once: false, amount: 0.1 });
 
   // Automatic redirect removed to allow logged-in users to see the landing page
+  const begin = () => {
+    if (opening) return;
+    setOpening(true);
+    router.push(session ? '/dashboard' : '/auth/login');
+  };
 
-  const avatarVariants: any = {
+  const avatarVariants: Variants = {
     hidden: (i: number) => ({
       x: i < 4 ? -100 - (4 - i) * 50 : i === 4 ? 0 : 100 + (i - 4) * 50,
       opacity: 0,
@@ -35,7 +42,7 @@ export default function LandingPage() {
     })
   };
 
-  const logoVariants: any = {
+  const logoVariants: Variants = {
     hidden: { y: 200, opacity: 0, scale: 0.8 },
     visible: { 
       y: 0, 
@@ -65,11 +72,15 @@ export default function LandingPage() {
           <div className="hidden md:flex flex-1 justify-center" />
           <div className="w-32 flex justify-end">
             <button 
-              onClick={() => router.push(getToken() ? '/dashboard' : '/auth/login')}
-              className="group relative flex items-center justify-center bg-slate-900 rounded-full px-7 py-2.5 overflow-hidden transition-all duration-300 hover:shadow-[0_8px_20px_rgba(0,0,0,0.12)] hover:-translate-y-0.5 active:translate-y-0 border border-transparent hover:border-slate-700"
+              onClick={begin}
+              disabled={opening}
+              className="group relative flex items-center justify-center bg-slate-900 rounded-full px-7 py-2.5 overflow-hidden transition-all duration-300 hover:shadow-[0_8px_20px_rgba(0,0,0,0.12)] hover:-translate-y-0.5 active:translate-y-0 border border-transparent hover:border-slate-700 disabled:cursor-wait disabled:opacity-75"
             >
               <div className="absolute inset-0 bg-gradient-to-tr from-slate-800 to-slate-900 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-              <span className="relative z-10 text-[10px] text-white font-bold tracking-[0.2em] uppercase">BEGIN</span>
+              <span className="relative z-10 inline-flex items-center gap-2 text-[10px] text-white font-bold tracking-[0.2em] uppercase">
+                {opening && <Loader2 className="h-3 w-3 animate-spin" />}
+                BEGIN
+              </span>
             </button>
           </div>
         </nav>
@@ -90,9 +101,11 @@ export default function LandingPage() {
           </p>
           <div className="mt-14 flex flex-col sm:flex-row items-start sm:items-center gap-6">
             <button 
-              onClick={() => router.push(getToken() ? '/dashboard' : '/auth/login')}
-              className="bg-slate-900 rounded-full px-8 py-4 text-sm text-white hover:scale-[1.02] hover:bg-slate-800 transition-all cursor-pointer font-bold tracking-widest shadow-xl flex items-center gap-3"
+              onClick={begin}
+              disabled={opening}
+              className="bg-slate-900 rounded-full px-8 py-4 text-sm text-white hover:scale-[1.02] hover:bg-slate-800 transition-all cursor-pointer font-bold tracking-widest shadow-xl flex items-center gap-3 disabled:cursor-wait disabled:opacity-75"
             >
+              {opening && <Loader2 className="h-4 w-4 animate-spin" />}
               LAUNCH STUDIO
               <ArrowRight className="w-4 h-4" />
             </button>
@@ -145,9 +158,11 @@ export default function LandingPage() {
             Experience an AI protocol that strengthens your critical thinking, refines your communication, and continuously adapts to challenge your true potential.
           </p>
           <button 
-            onClick={() => router.push(getToken() ? '/dashboard' : '/auth/login')}
-            className="inline-flex items-center gap-3 bg-slate-900 text-white px-10 py-5 rounded-full text-sm font-bold hover:scale-[1.02] hover:bg-slate-800 transition-all shadow-2xl tracking-widest uppercase"
+            onClick={begin}
+            disabled={opening}
+            className="inline-flex items-center gap-3 bg-slate-900 text-white px-10 py-5 rounded-full text-sm font-bold hover:scale-[1.02] hover:bg-slate-800 transition-all shadow-2xl tracking-widest uppercase disabled:cursor-wait disabled:opacity-75"
           >
+            {opening && <Loader2 className="h-4 w-4 animate-spin" />}
             START TRAINING
             <ArrowRight className="w-4 h-4" />
           </button>

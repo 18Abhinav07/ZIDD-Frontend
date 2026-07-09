@@ -1,16 +1,19 @@
+const backendInternalUrl = process.env.BACKEND_INTERNAL_URL;
+
+if (!backendInternalUrl) {
+  throw new Error('BACKEND_INTERNAL_URL is required for API rewrites');
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
   async rewrites() {
     return [
+      // Exclude /api/auth/* so NextAuth owns sign-in/callback/session.
+      // Exclude /api/session/* so the explicit route handler can stream SSE and
+      // preserve structured 402 bodies without the generic rewrite timing out.
       {
-        source: '/api/:path*',
-        destination: 'http://127.0.0.1:8000/:path*',
+        source: '/api/:path((?!auth/)(?!session/).*)',
+        destination: `${backendInternalUrl}/:path`,
       },
     ]
   },

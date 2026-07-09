@@ -1,7 +1,40 @@
 // School / subjects API client — wraps the live /school/* endpoints (NCERT
 // Class 2-5 English: classes -> chapters -> levels -> chapter tests + milestone
 // exams, all scored server-side).
-import { apiFetch } from '@/services/api';
+import { apiFetch, getAuthCacheKey } from '@/services/api';
+import { invalidateMeActivityCache } from '@/services/me';
+
+const SCHOOL_CACHE_MS = 30_000;
+const schoolCache = new Map<string, { value: unknown; expiresAt: number }>();
+const schoolRequests = new Map<string, Promise<unknown>>();
+
+async function cachedSchoolFetch<T>(key: string, loader: () => Promise<T>): Promise<T> {
+  const authKey = await getAuthCacheKey();
+  const scopedKey = `${authKey}:${key}`;
+  const now = Date.now();
+  const cached = schoolCache.get(scopedKey);
+  if (cached && cached.expiresAt > now) {
+    return Promise.resolve(cached.value as T);
+  }
+  const pending = schoolRequests.get(scopedKey);
+  if (pending) return pending as Promise<T>;
+
+  const request = loader()
+    .then((value) => {
+      schoolCache.set(scopedKey, { value, expiresAt: Date.now() + SCHOOL_CACHE_MS });
+      return value;
+    })
+    .finally(() => {
+      schoolRequests.delete(scopedKey);
+    });
+  schoolRequests.set(scopedKey, request);
+  return request;
+}
+
+export function invalidateSchoolCache() {
+  schoolCache.clear();
+  schoolRequests.clear();
+}
 
 export interface SchoolClassSummary {
   class_no: number;
@@ -73,12 +106,16 @@ export interface TestResult {
   by_skill: SkillScore[];
   weak_skills: string[];
   missed_item_ids: string[];
+  saved: boolean;
+  degraded: boolean;
+  persistence_error?: string | null;
 }
 
-export const getClasses = (): Promise<SchoolClassSummary[]> => apiFetch('/school/classes');
+export const getClasses = (): Promise<SchoolClassSummary[]> =>
+  cachedSchoolFetch('classes', () => apiFetch('/school/classes'));
 
 export const getClassDetail = (classNo: number): Promise<SchoolClassDetail> =>
-  apiFetch(`/school/class/${classNo}`);
+  cachedSchoolFetch(`class:${classNo}`, () => apiFetch(`/school/class/${classNo}`));
 
 export const getTest = (testId: string): Promise<ServedTest> =>
   apiFetch(`/school/test/${testId}`);
@@ -87,6 +124,10 @@ export const submitTest = (testId: string, answers: Record<string, string>): Pro
   apiFetch(`/school/test/${testId}/submit`, {
     method: 'POST',
     body: JSON.stringify({ answers }),
+  }).then((result) => {
+    invalidateSchoolCache();
+    invalidateMeActivityCache();
+    return result;
   });
 
 export const getDueMilestone = (
@@ -120,20 +161,22 @@ export interface SchoolProgressResponse {
   class_no: number | null;
   results: ServerResultRow[];
   passed_tests: string[];        // test ids (chapter tests + milestones) passed
+  lesson_progress: Record<string, 'learn' | 'in_progress' | 'completed' | 'reattempting'>;
   skill_mastery: ServerSkillMastery[];
   weak_skills: string[];         // current weak skills, weakest-first
   overall: number;               // 0-1 average across taken assessments
 }
 
 export const getServerProgress = (classNo: number): Promise<SchoolProgressResponse> =>
-  apiFetch(`/school/progress?class_no=${classNo}`);
+  cachedSchoolFetch(`progress:${classNo}`, () => apiFetch(`/school/progress?class_no=${classNo}`));
 
 // ---- progress shape the UI renders ----
-// Sourced from the server when available (durable), with a localStorage cache
-// for instant first paint + offline fallback.
+// Sourced from the server. Browser storage is intentionally not used for product
+// progress so clearing site data cannot change completion history.
 
 export interface ClassProgress {
   passedChapters: string[];   // chapter ids whose test was passed
+  lessonProgress: Record<string, 'learn' | 'in_progress' | 'completed' | 'reattempting'>;
   testScores: Record<string, number>;   // testId -> score (0-1)
   firedMilestones: number[];  // milestone at_percent values already taken
 }
@@ -157,50 +200,24 @@ export function serverToProgress(
       if (Number.isFinite(pct) && !firedMilestones.includes(pct)) firedMilestones.push(pct);
     }
   }
-  return { passedChapters, testScores, firedMilestones };
+  return { passedChapters, lessonProgress: server.lesson_progress || {}, testScores, firedMilestones };
 }
 
 // Turn a raw skill tag (new_words, asking_questions) into readable copy.
 export const humanizeSkill = (s: string): string => s.replace(/_/g, ' ');
 
-const _key = (classNo: number) => `zidd_school_progress_c${classNo}`;
-
 export function getProgress(classNo: number): ClassProgress {
-  if (typeof window === 'undefined') return { passedChapters: [], testScores: {}, firedMilestones: [] };
-  try {
-    const raw = localStorage.getItem(_key(classNo));
-    if (raw) return JSON.parse(raw);
-  } catch {
-    /* ignore */
-  }
-  return { passedChapters: [], testScores: {}, firedMilestones: [] };
+  void classNo;
+  return { passedChapters: [], lessonProgress: {}, testScores: {}, firedMilestones: [] };
 }
 
-// Warm the localStorage cache with the authoritative server progress, so the
-// next first paint (and offline) reflects the durable record.
 export function cacheProgress(classNo: number, p: ClassProgress): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(_key(classNo), JSON.stringify(p));
-  } catch {
-    /* ignore */
-  }
+  void classNo;
+  void p;
 }
 
 export function recordResult(classNo: number, result: TestResult, chapterId?: string): void {
-  if (typeof window === 'undefined') return;
-  const p = getProgress(classNo);
-  p.testScores[result.test_id] = result.score;
-  if (result.kind === 'chapter' && chapterId && result.passed && !p.passedChapters.includes(chapterId)) {
-    p.passedChapters.push(chapterId);
-  }
-  if (result.kind === 'milestone') {
-    const pct = Number(result.test_id.split('_').pop());
-    if (Number.isFinite(pct) && !p.firedMilestones.includes(pct)) p.firedMilestones.push(pct);
-  }
-  try {
-    localStorage.setItem(_key(classNo), JSON.stringify(p));
-  } catch {
-    /* ignore */
-  }
+  void classNo;
+  void result;
+  void chapterId;
 }

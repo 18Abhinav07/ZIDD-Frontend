@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, memo, useRef } from 'react';
+import React, { useState, useEffect, memo, useRef, useId } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   PaperPlaneIcon,
@@ -52,8 +52,9 @@ interface SimulatorShellProps {
   round?: number;
   maxRounds?: number;
   isClosing?: boolean;
+  isComplete?: boolean;
   // Exit flow — called when learner wants to leave. If not provided, falls back
-  // to hard-navigating to /dashboard (backward-compatible).
+  // to the career home.
   onLeave?: () => void;
   onSaveLater?: () => void;
   // Inline coaching nudge rendered above the input when the student needs a prompt
@@ -395,7 +396,7 @@ const TranscriptFeed = memo(function TranscriptFeed({
 
           {messages.map((msg) => {
             const isUser = msg.role === 'user';
-            const speakerLabel = msg.speaker_name || (isUser ? 'YOU' : 'SYSTEM');
+            const speakerLabel = msg.speaker_name || (isUser ? 'YOU' : type === 'gd' ? 'Panel' : 'Interviewer');
             const annotation = msg.annotation || tensionAnnotations?.get(msg.id);
             return (
               <motion.div
@@ -450,7 +451,7 @@ const InputBar = memo(function InputBar({
   inputValue,
   setInputValue,
   onSend,
-  isStreaming,
+  disabled,
   placeholder,
   type,
   coachingTip,
@@ -458,11 +459,13 @@ const InputBar = memo(function InputBar({
   inputValue: string;
   setInputValue: (v: string) => void;
   onSend: () => void;
-  isStreaming: boolean;
+  disabled: boolean;
   placeholder: string;
   type: 'interview' | 'gd';
   coachingTip?: string;
 }) {
+  const textareaId = useId();
+
   return (
     <div className={cn(
       "relative shrink-0 z-30",
@@ -487,14 +490,18 @@ const InputBar = memo(function InputBar({
       </AnimatePresence>
       <div className="flex items-end gap-3 max-w-2xl mx-auto">
         <textarea
+          id={textareaId}
+          name={`${type}-response`}
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           placeholder={placeholder}
           aria-label={placeholder}
           rows={2}
+          disabled={disabled}
           className={cn(
             "flex-1 resize-none text-[14px] font-medium rounded-[1.25rem] border outline-none transition-all",
             "px-5 py-4 text-slate-900 placeholder:text-slate-400 leading-relaxed",
+            "disabled:cursor-wait disabled:opacity-70",
             type === 'interview'
               ? "bg-slate-50 border-slate-200 focus:bg-white focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
               : "bg-slate-50 border-slate-100 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
@@ -512,7 +519,7 @@ const InputBar = memo(function InputBar({
           whileHover={{ scale: 1.06 }}
           whileTap={{ scale: 0.93 }}
           onClick={onSend}
-          disabled={isStreaming || !inputValue.trim()}
+          disabled={disabled || !inputValue.trim()}
           className={cn(
             "w-14 h-14 shrink-0 flex items-center justify-center rounded-[1.25rem] transition-all",
             "disabled:opacity-40 disabled:cursor-not-allowed shadow-md",
@@ -596,6 +603,7 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
   round = 0,
   maxRounds = 10,
   isClosing = false,
+  isComplete = false,
   onLeave,
   onSaveLater,
   coachingTip,
@@ -621,7 +629,7 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
     if (onLeave || onSaveLater) {
       setConfirmLeave(true);
     } else {
-      window.location.href = '/dashboard';
+      window.location.href = '/career';
     }
   };
 
@@ -630,7 +638,7 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
     if (onLeave) {
       onLeave();
     } else {
-      window.location.href = '/dashboard';
+      window.location.href = '/career';
     }
   };
 
@@ -641,7 +649,7 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
     } else if (onLeave) {
       onLeave();
     } else {
-      window.location.href = '/dashboard';
+      window.location.href = '/career';
     }
   };
 
@@ -652,6 +660,15 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
       : tension > 40
       ? 'Rising tension — you\'re engaging assertively. Keep challenging ideas with specific points.'
       : 'Low tension — build your argument. Try making a direct claim or challenging a point.';
+  const statusLabel = isComplete ? 'Complete' : isClosing ? 'Scoring' : isStreaming ? 'Live' : 'Ready';
+  const statusDotClass = isComplete
+    ? 'bg-indigo-500'
+    : isClosing
+      ? 'bg-amber-500 animate-pulse shadow-[0_0_6px_rgba(245,158,11,0.45)]'
+      : isStreaming
+        ? 'bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.5)]'
+        : 'bg-slate-300';
+  const effectiveCoachingTip = isComplete || isClosing ? undefined : coachingTip;
 
   return (
     <div className="relative h-[100dvh] overflow-hidden flex flex-col font-body text-slate-900 selection:bg-indigo-100">
@@ -703,25 +720,30 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
               <span className="hidden sm:inline text-[9px] uppercase tracking-[0.2em] text-slate-500 font-black tabular-nums">
                 Round {Math.min(Math.max(round, 1), maxRounds)}/{maxRounds}
               </span>
-              <button
-                type="button"
-                onClick={onEnd}
-                disabled={isClosing}
-                aria-label="End the session and get my score"
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-900 text-white text-[9px] font-black uppercase tracking-[0.18em] hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:pointer-events-none"
-              >
-                {isClosing ? 'Scoring…' : 'End & Score'}
-                <ExitIcon className="w-3 h-3" />
-              </button>
+              {!isComplete && (
+                <button
+                  type="button"
+                  onClick={onEnd}
+                  disabled={isClosing}
+                  aria-label="End the session and get my score"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-900 text-white text-[9px] font-black uppercase tracking-[0.18em] hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                >
+                  {isClosing ? 'Scoring…' : 'End & Score'}
+                  <ExitIcon className="w-3 h-3" />
+                </button>
+              )}
             </div>
           )}
 
           {headerExtra}
 
           <div className="flex items-center gap-2 px-3.5 py-1.5 bg-slate-50 rounded-full border border-slate-200">
-            <span className={cn("w-1.5 h-1.5 rounded-full", isStreaming ? "bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.5)]" : "bg-slate-300")} />
+            <span className={cn(
+              "w-1.5 h-1.5 rounded-full",
+              statusDotClass
+            )} />
             <span className="text-[9px] uppercase tracking-[0.2em] font-black text-slate-600">
-              {isStreaming ? 'Live' : 'Ready'}
+              {statusLabel}
             </span>
           </div>
         </div>
@@ -741,10 +763,10 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
                 inputValue={inputValue}
                 setInputValue={setInputValue}
                 onSend={onSend}
-                isStreaming={isStreaming}
+                disabled={isStreaming || isClosing || isComplete}
                 placeholder="Contribute to the discussion..."
                 type="gd"
-                coachingTip={coachingTip}
+                coachingTip={effectiveCoachingTip}
               />
             </div>
 
@@ -784,10 +806,10 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
               inputValue={inputValue}
               setInputValue={setInputValue}
               onSend={onSend}
-              isStreaming={isStreaming}
+              disabled={isStreaming || isClosing || isComplete}
               placeholder="Contribute to the discussion..."
               type="gd"
-              coachingTip={coachingTip}
+              coachingTip={effectiveCoachingTip}
             />
           </div>
         </>
@@ -813,10 +835,10 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
                   inputValue={inputValue}
                   setInputValue={setInputValue}
                   onSend={onSend}
-                  isStreaming={isStreaming}
+                  disabled={isStreaming || isClosing || isComplete}
                   placeholder="Speak your response..."
                   type="interview"
-                  coachingTip={coachingTip}
+                  coachingTip={effectiveCoachingTip}
                 />
               </div>
             </div>
@@ -858,10 +880,10 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
               inputValue={inputValue}
               setInputValue={setInputValue}
               onSend={onSend}
-              isStreaming={isStreaming}
+              disabled={isStreaming || isClosing || isComplete}
               placeholder="Speak your response..."
               type="interview"
-              coachingTip={coachingTip}
+              coachingTip={effectiveCoachingTip}
             />
           </div>
         </>

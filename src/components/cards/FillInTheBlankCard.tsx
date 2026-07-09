@@ -1,22 +1,41 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { MagicWandIcon, PaperPlaneIcon } from '@radix-ui/react-icons';
 import { motion } from 'framer-motion';
 
 interface FillInTheBlankCardProps {
   sentence: string;
   hint: string;
-  onSubmit: (answer: string) => void;
+  onSubmit: (answer: string) => Promise<boolean> | boolean;
   disabled?: boolean;
 }
 
 export function FillInTheBlankCard({ sentence, hint, onSubmit, disabled }: FillInTheBlankCardProps) {
   const [value, setValue] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const inputId = useId();
+  const blocked = disabled || submitting || submitted;
 
-  const handleSubmit = () => {
-    if (value.trim() && !disabled) {
-      onSubmit(value);
+  useEffect(() => {
+    setValue('');
+    setSubmitting(false);
+    setSubmitted(false);
+  }, [sentence, hint]);
+
+  const handleSubmit = async () => {
+    const answer = value.trim();
+    if (!answer || blocked) return;
+    setSubmitting(true);
+    try {
+      const accepted = await onSubmit(answer);
+      if (accepted !== false) {
+        setSubmitted(true);
+        setValue('');
+      }
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -33,17 +52,20 @@ export function FillInTheBlankCard({ sentence, hint, onSubmit, disabled }: FillI
             {part}
             {i < arr.length - 1 && (
               <input
+                id={inputId}
+                name="bridge-fill-blank-answer"
                 autoFocus
                 value={value}
                 onChange={e => setValue(e.target.value)}
                 placeholder="........"
-                className="inline-block border-b-[3px] border-accent/30 mx-2 text-accent font-body font-bold text-center focus:ring-0 focus:border-accent transition-all w-[180px] bg-transparent outline-none"
+                className="inline-block border-b-[3px] border-accent/30 mx-2 text-accent font-body font-bold text-center focus:ring-0 focus:border-accent transition-all w-[180px] bg-transparent outline-none disabled:cursor-wait disabled:text-slate-400 disabled:border-slate-200 disabled:placeholder:text-slate-300"
                 onKeyDown={e => {
                   if (e.key === 'Enter') {
+                    e.preventDefault();
                     handleSubmit();
                   }
                 }}
-                disabled={disabled}
+                disabled={blocked}
               />
             )}
           </span>
@@ -51,13 +73,13 @@ export function FillInTheBlankCard({ sentence, hint, onSubmit, disabled }: FillI
       </p>
       
       <motion.button
-        whileHover={{ scale: (!value.trim() || disabled) ? 1 : 1.02 }}
-        whileTap={{ scale: (!value.trim() || disabled) ? 1 : 0.98 }}
+        whileHover={{ scale: (!value.trim() || blocked) ? 1 : 1.02 }}
+        whileTap={{ scale: (!value.trim() || blocked) ? 1 : 0.98 }}
         className="w-full py-5 rounded-[1.5rem] bg-accent text-white font-bold uppercase tracking-[0.15em] text-xs transition-all disabled:opacity-50 disabled:grayscale shadow-md flex items-center justify-center gap-3"
-        disabled={!value.trim() || disabled}
+        disabled={blocked || !value.trim()}
         onClick={handleSubmit}
       >
-        Verify Completion
+        {submitting || submitted ? 'Verifying...' : 'Verify Completion'}
         <PaperPlaneIcon className="w-4 h-4" />
       </motion.button>
     </div>

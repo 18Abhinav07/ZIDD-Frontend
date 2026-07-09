@@ -1,57 +1,89 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { apiFetch, setToken, getToken } from '@/services/api';
+import { Suspense, useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { signIn, signOut, useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import { getRandomAvatar, AvatarData } from '@/lib/avatars';
+import { getAvatarScaleClass } from '@/lib/avatarRegistry';
+import { learnerSafeErrorMessage } from '@/lib/errorCopy';
+import { getMe, homeForMe } from '@/services/me';
 
-export default function LoginPage() {
-  const [userId, setUserId] = useState('');
-  const [password, setPassword] = useState('');
+function GoogleIcon() {
+  return (
+    <svg className="w-5 h-5" viewBox="0 0 24 24">
+      <path fill="#4285F4" d="M23.52 12.27c0-.85-.08-1.67-.22-2.45H12v4.64h6.47c-.28 1.5-1.13 2.78-2.4 3.63v3.02h3.88c2.27-2.09 3.57-5.17 3.57-8.84z"/>
+      <path fill="#34A853" d="M12 24c3.24 0 5.96-1.07 7.95-2.9l-3.88-3.02c-1.08.72-2.45 1.15-4.07 1.15-3.13 0-5.78-2.11-6.73-4.96H1.27v3.12C3.25 21.3 7.31 24 12 24z"/>
+      <path fill="#FBBC05" d="M5.27 14.27a7.2 7.2 0 0 1 0-4.54V6.61H1.27a12 12 0 0 0 0 10.78l4-3.12z"/>
+      <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.44-3.44C17.95 1.19 15.24 0 12 0 7.31 0 3.25 2.7 1.27 6.61l4 3.12C6.22 6.86 8.87 4.75 12 4.75z"/>
+    </svg>
+  );
+}
+
+function LoginContent() {
+  const [loadingAction, setLoadingAction] = useState<'account' | 'google' | null>(null);
+  const [routing, setRouting] = useState(false);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
   const [avatar, setAvatar] = useState<AvatarData | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { data: session, status } = useSession();
 
   useEffect(() => {
     setAvatar(getRandomAvatar());
-    // Already signed in? Don't show login again (e.g. landing here via back) —
-    // forward to the app so the session stays alive instead of dead-ending.
-    if (getToken()) router.replace('/dashboard');
-  }, [router]);
+  }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    if (searchParams.get('error')) {
+      setError('Sign-in could not be completed. Please choose your Google account and try again.');
+    }
+  }, [searchParams]);
+
+  const handleExistingAccountContinue = async () => {
     setError('');
-    setLoading(true);
-
+    setLoadingAction('account');
+    setRouting(true);
     try {
-      const data = await apiFetch('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ user_id: userId, password }),
-      });
-      
-      setToken(data.access_token);
-      // replace (not push) so login is NOT left in history — otherwise browser
-      // back lands the learner straight back on login. Returning learners land on
-      // their dashboard; onboarding is for new sign-ups (register).
-      router.replace('/dashboard');
-    } catch (err: any) {
-      setError(err.message || 'Login failed');
+      const me = await getMe();
+      router.replace(homeForMe(me));
+    } catch {
+      await signOut({ callbackUrl: '/auth/login' });
     } finally {
-      setLoading(false);
+      setLoadingAction(null);
+      setRouting(false);
     }
   };
+
+  const handleGoogleSignIn = async () => {
+    setError('');
+    setLoadingAction('google');
+    try {
+      await signIn(
+        'google',
+        { callbackUrl: '/auth/login' },
+        { prompt: 'select_account' }
+      );
+    } catch (err: unknown) {
+      setError(learnerSafeErrorMessage(err, 'Sign-in failed. Please try again.'));
+      setLoadingAction(null);
+    }
+  };
+
+  const busy = Boolean(loadingAction) || routing || status === 'loading';
+  const existingUser = status === 'authenticated' ? session?.user : null;
+  const initials = (existingUser?.name || existingUser?.email || 'Z')
+    .trim()
+    .slice(0, 1)
+    .toUpperCase();
 
   return (
     <div className="flex min-h-screen bg-white text-slate-900 overflow-hidden">
       {/* Left Panel: Form */}
-      <div className="w-full lg:w-1/2 flex flex-col justify-center px-8 sm:px-16 lg:px-24 xl:px-32 relative z-10">
-        <motion.div 
+      <div className="w-full lg:w-1/2 flex flex-col justify-center px-8 sm:px-16 lg:px-24 xl:px-32 relative z-30">
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
@@ -69,7 +101,7 @@ export default function LoginPage() {
 
           <AnimatePresence mode="wait">
             {error && (
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
@@ -80,67 +112,90 @@ export default function LoginPage() {
             )}
           </AnimatePresence>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="group relative">
-              <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400 mb-2 transition-colors group-focus-within:text-slate-900">
-                Username
-              </label>
-              <input
-                type="text"
-                value={userId}
-                onChange={e => setUserId(e.target.value)}
-                placeholder="e.g., asha_r"
-                autoComplete="username"
-                className="w-full bg-white border border-slate-200 rounded-xl px-5 py-4 text-slate-900 placeholder:text-slate-300 focus:outline-none focus:border-slate-400 focus:shadow-sm transition-all text-sm"
-                required
-              />
-            </div>
-            
-            <div className="group relative">
-              <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400 mb-2 transition-colors group-focus-within:text-slate-900">
-                Password
-              </label>
-              <input 
-                type="password" 
-                value={password} 
-                onChange={e => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full bg-white border border-slate-200 rounded-xl px-5 py-4 text-slate-900 placeholder:text-slate-300 focus:outline-none focus:border-slate-400 focus:shadow-sm transition-all font-mono text-sm"
-                required 
-              />
-            </div>
-            
-            <button 
-              type="submit" 
-              disabled={loading} 
-              className="w-full mt-4 bg-slate-900 text-white rounded-xl px-5 py-4 flex items-center justify-center gap-3 text-sm font-bold uppercase tracking-widest hover:bg-slate-800 transition-all disabled:opacity-50 disabled:pointer-events-none group"
+          {existingUser && (
+            <button
+              type="button"
+              onClick={handleExistingAccountContinue}
+              disabled={busy}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left transition-all hover:border-slate-300 hover:bg-white hover:shadow-sm disabled:opacity-50 disabled:pointer-events-none"
             >
-              {loading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <>
-                  Sign in
-                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </>
-              )}
+              <div className="flex items-center gap-4">
+                <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full bg-slate-900 text-white">
+                  {existingUser.image ? (
+                    <Image
+                      src={existingUser.image}
+                      alt={existingUser.name || existingUser.email || 'Google account'}
+                      fill
+                      sizes="48px"
+                      className="object-cover"
+                      unoptimized
+                    />
+                  ) : (
+                    <span className="flex h-full w-full items-center justify-center text-sm font-black">
+                      {initials}
+                    </span>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">
+                    Continue as
+                  </p>
+                  <p className="mt-1 truncate text-sm font-black text-slate-900">
+                    {existingUser.name || 'Google account'}
+                  </p>
+                  {existingUser.email && (
+                    <p className="mt-0.5 truncate text-xs font-medium text-slate-500">
+                      {existingUser.email}
+                    </p>
+                  )}
+                </div>
+                {loadingAction === 'account' || routing ? (
+                  <Loader2 className="h-5 w-5 shrink-0 animate-spin text-slate-400" />
+                ) : (
+                  <ArrowRight className="h-5 w-5 shrink-0 text-slate-400" />
+                )}
+              </div>
             </button>
-          </form>
+          )}
 
-          <div className="mt-12 pt-8 border-t border-slate-200">
-            <p className="text-slate-500 text-sm">
-              Don't have an account?{' '}
-              <Link href="/auth/register" className="text-slate-900 font-medium hover:underline underline-offset-4 transition-all">
-                Create one
-              </Link>
-            </p>
-          </div>
+          {existingUser && (
+            <div className="mt-5 flex items-center gap-3">
+              <div className="h-px flex-1 bg-slate-200" />
+              <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">or</span>
+              <div className="h-px flex-1 bg-slate-200" />
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={handleGoogleSignIn}
+            disabled={busy}
+            className={`${existingUser ? 'mt-5' : ''} w-full bg-white border border-slate-200 text-slate-900 rounded-xl px-5 py-4 flex items-center justify-center gap-3 text-sm font-bold uppercase tracking-widest hover:bg-slate-50 hover:border-slate-300 transition-all disabled:opacity-50 disabled:pointer-events-none`}
+          >
+            {loadingAction === 'google' ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <>
+                <GoogleIcon />
+                Continue with Google
+              </>
+            )}
+          </button>
+
+          <p className="mt-3 text-center text-xs font-medium text-slate-400">
+            Choose or add another Google account.
+          </p>
+
+          <p className="mt-8 text-center text-slate-400 text-xs">
+            By continuing, you agree to Zidd's terms and privacy policy.
+          </p>
         </motion.div>
       </div>
 
       {/* Right Panel: Visual World */}
-      <div className="hidden lg:flex w-1/2 relative items-center justify-center overflow-hidden p-8">
+      <div className="hidden lg:flex w-1/2 relative items-center justify-center overflow-hidden p-8 pointer-events-none">
          <div className="grain-overlay opacity-30 z-10 mix-blend-overlay pointer-events-none" />
-         
+
          {/* Dynamic Background */}
          <AnimatePresence>
            {avatar && (
@@ -157,11 +212,11 @@ export default function LoginPage() {
 
          {/* Gradient Overlay for depth */}
          <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-white/10 z-0" />
-         
+
          {/* Centered Transparent Card with Avatar */}
          <AnimatePresence>
            {avatar && (
-             <motion.div 
+             <motion.div
                key={avatar.id}
                initial={{ opacity: 0, scale: 0.95 }}
                animate={{ opacity: 1, scale: 1 }}
@@ -173,12 +228,12 @@ export default function LoginPage() {
                  transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
                  className="relative z-10 w-[90%] h-[105%] mb-[-2%]"
                >
-                 <Image 
-                   src={avatar.url} 
+                 <Image
+                   src={avatar.url}
                    alt={`${avatar.id} 3D Avatar`}
                    fill
                    sizes="(max-width: 1024px) 50vw, 33vw"
-                   className="object-contain object-bottom drop-shadow-2xl"
+                   className={`object-contain object-bottom drop-shadow-2xl ${getAvatarScaleClass(avatar.url)}`}
                    draggable={false}
                    priority
                  />
@@ -188,5 +243,13 @@ export default function LoginPage() {
          </AnimatePresence>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-white" />}>
+      <LoginContent />
+    </Suspense>
   );
 }

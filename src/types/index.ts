@@ -68,9 +68,9 @@ export interface AdaptationCueFrame {
 // POST /session/{id}/end -> { session_id, summary, report, score }
 // `report` is the once-at-the-end scored read of a TEST-mode simulation
 // (interview_test / gd_test). Mirrors app/ai/schemas.py SimulationReport: it
-// always carries all five rubric sub-scores, but only the dimensions for the
-// session's own mode are populated (the other mode's three/two default to 0.0),
-// so the recap renders the type-appropriate subset rather than misleading zeros.
+// always carries the session's own rubric sub-scores. The backend may null
+// dimensions that were not measured for this mode, so the UI must render by mode
+// and must not treat a null sub-score as a real 0%.
 //   GD       -> participation_score, relevance_score, language_score
 //   Interview -> clarity_score, confidence_score
 // For coaching ("prep") sessions the backend returns report: null.
@@ -79,23 +79,60 @@ export interface SimulationReport {
   summary: string;            // one-paragraph read of the whole performance
   strengths: string[];        // what landed (may be empty)
   improvements: string[];     // the few things to work on next (may be empty)
-  participation_score: number;
-  relevance_score: number;
-  language_score: number;
-  clarity_score: number;
-  confidence_score: number;
+  participation_score: number | null;
+  relevance_score: number | null;
+  language_score: number | null;
+  clarity_score: number | null;
+  confidence_score: number | null;
   assertiveness_score?: number;    // GD only — derived from tension escalation events
   // One data-driven sentence per rubric dimension, keyed by label (e.g. "Participation")
   score_explanations?: Record<string, string>;
   // Three utterance-level observations: [hedging_phrase, strong_moment, structural_change]
   read_observations?: string[];
+  scenario_label?: string;
+  role_focus?: string;
+  topic?: string;
+  observed_skill_gaps?: string[];
+  recommended_next_nodes?: string[];
+  assessment_caveats?: string[];
+  validity_status?: 'final' | 'partial' | 'insufficient_evidence' | 'invalid_simulation' | string;
+  scorable_turn_count?: number;
+  coverage_map?: {
+    required_unique?: number;
+    unique_covered?: number;
+    covered_ids?: string[];
+    event_count?: number;
+    repeated_prompt_count?: number;
+    source?: string;
+  };
+  evidence_quotes?: string[];
+  repeated_answer_flags?: string[];
+  topic_drift_flags?: string[];
+  persona_warnings?: string[];
+}
+
+export interface ReadinessReport {
+  status: 'in_progress' | 'ready_to_advance' | 'mastered' | 'needs_remediation' | string;
+  readiness_score: number;
+  strengths: string[];
+  gaps: string[];
+  recommended_actions: string[];
+  summary?: string;
+  allow_next?: boolean;
+  allow_mastery_challenge?: boolean;
 }
 
 export interface EndSessionResponse {
+  status?: 'processing' | 'completed' | 'failed' | 'not_started' | string;
   session_id: string;
-  summary: string;
-  report: SimulationReport | null;
-  score: number;
+  summary?: string;
+  report?: SimulationReport | null;
+  score?: number;
+}
+
+export interface ActiveTurn {
+  client_turn_id: string;
+  status: 'processing' | 'completed' | 'failed' | string;
 }
 
 // TEST-mode simulation roster, carried on the done frame. Interview personas
@@ -106,11 +143,35 @@ export interface SimPersona {
   name: string;
   stance?: string;
   role?: string;
+  role_type?: 'moderator' | 'debater' | 'interviewer' | string;
+}
+
+export interface SimulationScenarioConfig {
+  topic_mode?: 'profile' | 'custom' | 'random';
+  topic?: string;
+  custom_topic?: string;
+  environment?: 'campus_placement' | 'business_case' | 'workplace_debate' | 'high_pressure_panel';
+  persona_ids?: string[];
+  target_role?: string;
+  interview_type?: 'hr' | 'behavioral' | 'technical_project' | 'management' | 'mixed';
+  pressure_level?: 'warm' | 'standard' | 'high';
+}
+
+export interface ScenarioSnapshot {
+  task_type?: string;
+  topic?: string;
+  environment?: string;
+  personas?: string[];
+  interview_type?: string;
+  pressure_level?: string;
+  target_role?: string;
+  role_family?: string;
 }
 
 export interface DoneFrame {
   session_id: string;
   competency_node: string;
+  task_type?: string;
   node_title: string;
   current_mastery: number;
   turn_count: number;
@@ -121,6 +182,18 @@ export interface DoneFrame {
   attempts: number;
   clean_streak: number;
   scaffold: number;
+  node_mastered?: boolean;
+  display_status?: 'not_started' | 'in_progress' | 'ready_to_advance' | 'proficient' | 'mastered' | 'needs_remediation' | 'active' | string;
+  best_independent_score?: number;
+  independent_passes?: number;
+  transfer_passes?: number;
+  pressure_passes?: number;
+  scaffold_successes?: number;
+  meaningful_attempts?: number;
+  readiness_score?: number;
+  last_gap?: string;
+  mastery_evidence?: Array<string | Record<string, unknown>>;
+  readiness_report?: ReadinessReport | null;
   remediation: boolean;
   module_done: boolean;
   phase: string;
@@ -134,6 +207,35 @@ export interface DoneFrame {
   // TEST-mode roster (interview panel / GD debaters); null for coaching sessions
   // and the first simulation frame before round 1 builds it.
   personas?: SimPersona[] | null;
+  scenario_config?: ScenarioSnapshot | null;
+  status?: 'active' | 'ended' | 'expired' | string;
+  session_over?: boolean;
+  simulation_round?: number;
+  simulation_tension?: number;
+  simulation_score?: number | null;
+  simulation_report?: SimulationReport | null;
+  session_version?: number;
+  pending_transition?: PendingNodeTransition | null;
+  active_turn?: ActiveTurn | null;
+  handoff_session_id?: string | null;
+  input_allowed?: boolean;
+  block_reason?: string | null;
+  opening_streamed?: boolean;
+}
+
+export interface PendingNodeTransition {
+  transition_id: string;
+  from_node: string;
+  from_title?: string;
+  from_display_status?: string;
+  from_node_mastered?: boolean;
+  from_last_gap?: string;
+  to_node: string;
+  to_title?: string;
+  status?: 'awaiting_next_opening' | 'opening_streaming' | 'opening_failed' | 'committed' | string;
+  created_at?: number;
+  attempts?: number;
+  last_error?: string | null;
 }
 
 export interface ChatMessage {
@@ -141,6 +243,11 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   speaker_name?: string; // For TEST mode
+  speaker_id?: string;
+  node_id?: string;
+  transition_id?: string;
+  message_kind?: string;
+  status?: string;
   // True while this assistant bubble is still receiving streamed tokens. Used to
   // coalesce tokens into ONE bubble per reply (a new bubble opens only when there
   // is no open one, or the speaker changes) instead of relying on a ref mutated
@@ -153,6 +260,12 @@ export interface TranscriptResponse {
   messages: ChatMessage[];
   state: DoneFrame;
   opening_streamed: boolean;
+  pending_transition?: PendingNodeTransition | null;
+  active_turn?: ActiveTurn | null;
+  game_prompt?: GamePromptFrame | null;
+  input_allowed?: boolean;
+  block_reason?: string | null;
+  session_version?: number;
 }
 
 // ───────────────────────────────────────────────────────────────────────────

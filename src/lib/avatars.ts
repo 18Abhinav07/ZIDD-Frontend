@@ -21,7 +21,7 @@ export const COACH_AVATARS: AvatarData[] = [
   {
     id: 'fluent_finn',
     url: AVATAR_PATHS.coach_green,
-    quote: '"Nice work. Let\'s make that answer a little sharper together."',
+    quote: '"Start with one clear thought. I\'ll help you sharpen it step by step."',
     bg: '#10B981' // Green
   },
   {

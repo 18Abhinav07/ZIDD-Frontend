@@ -6,7 +6,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:no-local-storage": "node scripts/check-no-product-local-storage.mjs",
+    "test:auth-middleware": "node scripts/check-auth-middleware.mjs",
+    "test:auth-flow": "node scripts/check-auth-flow.mjs",
+    "test:app-shell": "node scripts/check-app-shell-routing.mjs",
+    "test:session-proxy": "node scripts/check-session-proxy.mjs",
+    "test:session-start-idempotency": "node scripts/check-session-start-idempotency.mjs",
+    "test:session-stream-guards": "node scripts/check-session-stream-guards.mjs",
+    "test:simulator-runtime-safety": "node scripts/check-simulator-runtime-safety.mjs",
+    "test:tutor-shell-avatar": "node scripts/check-tutor-shell-avatar.mjs",
+    "test:ux-edge-hardening": "node scripts/check-ux-edge-hardening.mjs"
   },
   "dependencies": {
     "@radix-ui/react-icons": "^1.3.2",
@@ -14,6 +24,7 @@
     "framer-motion": "^12.40.0",
     "geist": "^1.7.2",
     "next": "14.2.35",
+    "next-auth": "^4.24.14",
     "react": "^18",
     "react-dom": "^18"
   },

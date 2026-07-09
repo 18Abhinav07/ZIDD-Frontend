@@ -6,60 +6,85 @@ import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { ChevronLeft } from 'lucide-react';
 import { ExitIcon } from '@radix-ui/react-icons';
-import { getToken, clearToken } from '@/services/api';
+import { signOut } from 'next-auth/react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { getRandomAvatar, type AvatarData } from '@/lib/avatars';
+import { getAvatarScaleClass } from '@/lib/avatarRegistry';
+import { getMe, homeForMe, updatePreferences, type ModuleId } from '@/services/me';
+import { ModeCommitSkeleton } from '@/components/shared/RouteSkeletons';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+const CAREER_MODULES = new Set<ModuleId>(['interview', 'group_discussion']);
+
 export default function ModeSelectionPage() {
   const router = useRouter();
   const [selectedMode, setSelectedMode] = useState<'prep' | 'test' | null>(null);
+  const [routingError, setRoutingError] = useState('');
   const [avatars, setAvatars] = useState<AvatarData[]>([]);
 
   useEffect(() => {
-    if (!getToken()) {
-      router.replace('/auth/login');
-      return;
-    }
     const a1 = getRandomAvatar();
     let a2 = getRandomAvatar();
     while (a2.id === a1.id) { a2 = getRandomAvatar(); }
     setAvatars([a1, a2]);
-  }, [router]);
+  }, []);
 
-  const handleSelectMode = (mode: 'prep' | 'test') => {
-    setSelectedMode(mode);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('zidd_test_mode', mode === 'test' ? 'true' : 'false');
-      const pending = localStorage.getItem('zidd_pending_module');
-      if (pending) {
-        localStorage.setItem('zidd_active_module', pending);
-        localStorage.removeItem('zidd_pending_module');
-      }
-    }
-    setTimeout(() => {
-      router.replace('/map');
-    }, 600);
+  const goHome = async () => {
+    const me = await getMe();
+    router.push(homeForMe(me));
   };
+
+  const handleSelectMode = async (mode: 'prep' | 'test') => {
+    if (selectedMode) return;
+    setSelectedMode(mode);
+    setRoutingError('');
+    try {
+      const me = await getMe();
+      const pending = me.preferences.pending_module as ModuleId | undefined;
+      const current = me.preferences.active_module as ModuleId | undefined;
+      const activeModule = pending && CAREER_MODULES.has(pending)
+        ? pending
+        : current && CAREER_MODULES.has(current)
+          ? current
+          : null;
+      if (!activeModule) {
+        router.replace('/career?error=choose_path');
+        return;
+      }
+      await updatePreferences({
+        active_module: activeModule,
+        pending_module: null,
+        test_mode: mode === 'test',
+      });
+      router.replace('/map');
+    } catch {
+      setRoutingError('Could not save this mode. Please try again.');
+      setSelectedMode(null);
+    }
+  };
+
+  if (selectedMode) {
+    return <ModeCommitSkeleton mode={selectedMode} />;
+  }
 
   return (
     <div className="min-h-[100dvh] bg-[#FCFCFC] text-slate-900 font-body relative overflow-hidden flex flex-col">
       {/* Header */}
       <header className="relative z-50 px-8 py-6 flex items-center justify-between">
         <button
-          onClick={() => router.push('/dashboard')}
+          onClick={goHome}
           className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400 hover:text-indigo-600 transition-colors"
         >
           <ChevronLeft size={16} />
           Switch Module
         </button>
-        <button onClick={() => router.push('/dashboard')} className="font-sans font-black text-2xl tracking-tighter text-slate-900">ZIDD<span className="text-indigo-600">.</span></button>
+        <button onClick={goHome} className="font-sans font-black text-2xl tracking-tighter text-slate-900">ZIDD<span className="text-indigo-600">.</span></button>
         <button
-          onClick={() => { clearToken(); router.replace('/auth/login'); }}
+          onClick={() => signOut({ callbackUrl: '/auth/login' })}
           title="Sign out"
           className="w-9 h-9 rounded-full bg-slate-50 border border-slate-200 shadow-sm text-slate-500 flex items-center justify-center hover:bg-slate-100 hover:text-red-500 transition-all hover:scale-105 active:scale-95"
         >
@@ -75,6 +100,11 @@ export default function ModeSelectionPage() {
           <p className="text-slate-500 max-w-lg mx-auto text-lg">
             Do you want a relaxed coaching space to practice, or a high-stakes simulation to test your skills?
           </p>
+          {routingError && (
+            <p className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+              {routingError}
+            </p>
+          )}
         </div>
 
         <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12">
@@ -105,13 +135,13 @@ export default function ModeSelectionPage() {
                       alt="Preparation Mode Avatar"
                       fill
                       sizes="(max-width: 768px) 288px, 384px"
-                      className="object-contain object-bottom drop-shadow-[0_20px_40px_rgba(0,0,0,0.3)]"
+                      className={cn("object-contain object-bottom drop-shadow-[0_20px_40px_rgba(0,0,0,0.3)]", getAvatarScaleClass(avatars[0].url))}
                       unoptimized
                     />
                   </div>
 
                   <div className="absolute top-8 left-8">
-                    <span 
+                    <span
                       className="px-4 py-2 bg-white/90 backdrop-blur-md rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg"
                       style={{ color: avatars[0].bg }}
                     >
@@ -153,7 +183,7 @@ export default function ModeSelectionPage() {
                       alt="Test Mode Avatar"
                       fill
                       sizes="(max-width: 768px) 288px, 384px"
-                      className="object-contain object-bottom drop-shadow-[0_20px_40px_rgba(0,0,0,0.3)] scale-[1.25] origin-bottom"
+                      className={cn("object-contain object-bottom drop-shadow-[0_20px_40px_rgba(0,0,0,0.3)]", getAvatarScaleClass(avatars[1].url))}
                       unoptimized
                     />
                   </div>

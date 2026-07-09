@@ -19,6 +19,9 @@ interface PaywallModalProps {
   onBalanceChange?: () => void;
   // Disables the confirm button while the parent re-runs the session start.
   confirming?: boolean;
+  // Caller-visible failure from the gated action. Kept in the modal so a
+  // confirm timeout/error does not disappear behind the overlay.
+  error?: string | null;
 }
 
 const fmt = (n: number) => n.toLocaleString('en-IN');
@@ -29,8 +32,10 @@ export function PaywallModal({
   onConfirm,
   onBalanceChange,
   confirming = false,
+  error = null,
 }: PaywallModalProps) {
   const [packsOpen, setPacksOpen] = useState(false);
+  const [slowConfirming, setSlowConfirming] = useState(false);
   // Portal the overlay to <body> so `position: fixed` is viewport-relative, not
   // trapped inside an ancestor with a transform/backdrop-filter (same fix as
   // PacksModal). Mount-gated for SSR safety.
@@ -47,6 +52,18 @@ export function PaywallModal({
   // (communication). Only the confirm_required body carries scope. The copy must
   // not call a recurring attempt a "module unlock".
   const isAttempt = paywall?.error === 'confirm_required' && paywall.scope === 'attempt';
+  useEffect(() => {
+    if (!open || !confirming) {
+      setSlowConfirming(false);
+      return;
+    }
+    const timeout = window.setTimeout(() => setSlowConfirming(true), 8000);
+    return () => window.clearTimeout(timeout);
+  }, [confirming, open]);
+
+  const handleClose = () => {
+    if (!confirming) onClose();
+  };
 
   return (
     <>
@@ -58,7 +75,7 @@ export function PaywallModal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[190] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm overflow-y-auto"
-            onClick={onClose}
+            onClick={handleClose}
           >
             <motion.div
               initial={{ opacity: 0, y: 24, scale: 0.97 }}
@@ -69,8 +86,9 @@ export function PaywallModal({
               onClick={(e) => e.stopPropagation()}
             >
               <button
-                onClick={onClose}
-                className="absolute top-5 right-5 w-9 h-9 rounded-full bg-slate-50 border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-slate-100 hover:text-slate-900 transition-all active:scale-95"
+                onClick={handleClose}
+                disabled={confirming}
+                className="absolute top-5 right-5 w-9 h-9 rounded-full bg-slate-50 border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-slate-100 hover:text-slate-900 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-wait"
                 aria-label="Close"
               >
                 <Cross2Icon className="w-4 h-4" />
@@ -100,6 +118,12 @@ export function PaywallModal({
                   You have {fmt(balance)}
                 </span>
               </div>
+
+              {error && (
+                <p className="mb-5 rounded-[1rem] border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold leading-relaxed text-red-600">
+                  {error}
+                </p>
+              )}
 
               {insufficient ? (
                 <>
@@ -134,9 +158,16 @@ export function PaywallModal({
                       </>
                     )}
                   </p>
+                  {confirming && (
+                    <div className="mb-5 rounded-[1rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold leading-relaxed text-slate-600" aria-live="polite">
+                      {slowConfirming
+                        ? 'Still starting your session. We are checking the handoff so you are not charged twice.'
+                        : 'Starting your session...'}
+                    </div>
+                  )}
                   <div className="flex gap-3">
                     <button
-                      onClick={onClose}
+                      onClick={handleClose}
                       disabled={confirming}
                       className="flex-1 px-5 py-3 rounded-full bg-slate-50 border border-slate-200 text-slate-700 text-sm font-bold tracking-wide hover:bg-slate-100 transition-all active:scale-[0.98] disabled:opacity-50"
                     >

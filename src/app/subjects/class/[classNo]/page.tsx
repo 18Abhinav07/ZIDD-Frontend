@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Loader2 } from 'lucide-react';
 import {
   ArrowRightIcon, CheckCircledIcon, ChevronDownIcon, LockClosedIcon,
   Pencil2Icon, ReaderIcon, RocketIcon, StarIcon,
 } from '@radix-ui/react-icons';
 import { AppHeader } from '@/components/shared/AppHeader';
-import { getToken, resolveUserId } from '@/services/api';
 import { startSessionWithPaywall } from '@/services/billing';
 import {
   cacheProgress, getClassDetail, getProgress, getServerProgress, humanizeSkill,
@@ -26,38 +26,58 @@ export default function ClassPage() {
   const [detail, setDetail] = useState<SchoolClassDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [progressError, setProgressError] = useState('');
   const [openChapter, setOpenChapter] = useState<string | null>(null);
   const [starting, setStarting] = useState<string | null>(null);
   const [progress, setProgress] = useState(() => getProgress(classNo));
+  const [progressTrusted, setProgressTrusted] = useState(false);
   const [weakSkills, setWeakSkills] = useState<string[]>([]);
   const [serverOverall, setServerOverall] = useState<number | null>(null);
+  const startIdsRef = useRef<Map<string, string>>(new Map());
+
+  const loadClass = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    setProgressError('');
+    setProgress(getProgress(classNo));
+    setProgressTrusted(false);
+    setWeakSkills([]);
+    setServerOverall(null);
+    try {
+      const d = await getClassDetail(classNo);
+      setDetail(d);
+      try {
+        const server = await getServerProgress(classNo);
+        const mapped = serverToProgress(d, server);
+        setProgress(mapped);
+        setProgressTrusted(true);
+        cacheProgress(classNo, mapped);
+        setWeakSkills(server.weak_skills);
+        setServerOverall(server.overall);
+      } catch (err: unknown) {
+        const raw = err instanceof Error ? err.message : '';
+        setProgressTrusted(false);
+        setProgressError(
+          raw === 'request_timeout'
+            ? 'Saved progress took too long to load. Lesson statuses are temporarily unavailable.'
+            : 'Could not load saved progress. Lesson statuses are temporarily unavailable.'
+        );
+      }
+    } catch {
+      setError('Could not load this class.');
+      setDetail(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [classNo]);
 
   useEffect(() => {
-    if (!getToken()) {
-      router.replace('/auth/login');
-      return;
-    }
-    setProgress(getProgress(classNo));   // instant first paint from cache
-    getClassDetail(classNo)
-      .then((d) => {
-        setDetail(d);
-        // Reconcile with the durable server record; cache stays the fallback.
-        getServerProgress(classNo)
-          .then((server) => {
-            const mapped = serverToProgress(d, server);
-            setProgress(mapped);
-            cacheProgress(classNo, mapped);
-            setWeakSkills(server.weak_skills);
-            setServerOverall(server.overall);
-          })
-          .catch(() => { /* keep the localStorage cache */ });
-      })
-      .catch(() => setError('Could not load this class.'))
-      .finally(() => setLoading(false));
-  }, [router, classNo]);
+    void loadClass();
+  }, [loadClass]);
 
   const total = detail?.chapters.length ?? 0;
   const done = progress.passedChapters.length;
+  const progressUnavailable = Boolean(progressError) && !progressTrusted;
   const pct = total ? Math.round((done / total) * 100) : 0;
 
   const reportSkills = useMemo(() => {
@@ -68,14 +88,42 @@ export default function ClassPage() {
     return { taken: scores.length, avg: Math.round(avg * 100) };
   }, [progress, serverOverall]);
 
+  const startIdForLevel = (levelId: string) => {
+    const existing = startIdsRef.current.get(levelId);
+    if (existing) return existing;
+    const next = crypto.randomUUID();
+    startIdsRef.current.set(levelId, next);
+    return next;
+  };
+
+  const clearStartId = (levelId: string) => {
+    startIdsRef.current.delete(levelId);
+  };
+
   const startLevel = async (levelId: string) => {
     setStarting(levelId);
+    setError('');
     try {
-      const r = await startSessionWithPaywall({ user_id: resolveUserId('anonymous'), competency_node: levelId, test_mode: false });
-      if (r.ok) router.push(`/session/${r.session_id}`);
-      else setError('This lesson is not available right now.');
-    } catch {
-      setError('Could not start the lesson. Please try again.');
+      const r = await startSessionWithPaywall({
+        competency_node: levelId,
+        test_mode: false,
+        client_start_id: startIdForLevel(levelId),
+      });
+      if (r.ok) {
+        clearStartId(levelId);
+        router.push(`/session/${r.session_id}`);
+      } else {
+        clearStartId(levelId);
+        setError('This lesson is not available right now.');
+      }
+    } catch (err: unknown) {
+      const raw = err instanceof Error ? err.message : '';
+      if (raw !== 'session_start_timeout' && !/Failed to fetch|NetworkError|load failed/i.test(raw)) {
+        clearStartId(levelId);
+      }
+      setError(raw === 'progression_unavailable'
+        ? 'Could not read your saved lesson progress from the server. Please retry in a moment.'
+        : 'Could not start the lesson. Please try again.');
     } finally {
       setStarting(null);
     }
@@ -93,20 +141,55 @@ export default function ClassPage() {
             {[0, 1, 2].map((i) => <div key={i} className="h-20 bg-slate-100/70 rounded-[1.5rem] animate-pulse" />)}
           </div>
         ) : error && !detail ? (
-          <div className="bg-rose-50 border border-rose-200 text-rose-600 rounded-2xl px-6 py-4">{error}</div>
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-6 py-4 text-sm text-rose-700">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="font-semibold">{error}</p>
+              <button
+                type="button"
+                onClick={() => void loadClass()}
+                disabled={loading}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-300 bg-white px-4 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-rose-700 transition-colors hover:bg-rose-100 disabled:cursor-wait disabled:opacity-60"
+              >
+                {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Retry
+              </button>
+            </div>
+          </div>
         ) : detail && (
           <>
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}>
-              <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-indigo-500">English · Marigold</span>
+              <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-indigo-500">English curriculum</span>
               <h1 className="mt-3 font-display text-4xl md:text-5xl tracking-tight leading-[1.05]">{detail.title}</h1>
               {/* progress bar */}
               <div className="mt-6 flex items-center gap-4 max-w-md">
                 <div className="flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden shadow-inner">
-                  <motion.div className="h-full rounded-full bg-indigo-500" initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }} />
+                  <motion.div
+                    className={`h-full rounded-full ${progressUnavailable ? 'bg-slate-300' : 'bg-indigo-500'}`}
+                    initial={{ width: 0 }}
+                    animate={{ width: progressUnavailable ? '100%' : `${pct}%` }}
+                    transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+                  />
                 </div>
-                <span className="text-xs font-black tracking-widest text-slate-400">{done}/{total} chapters</span>
+                <span className="text-xs font-black tracking-widest text-slate-400">
+                  {progressUnavailable ? 'Progress unavailable' : `${done}/${total} chapters`}
+                </span>
               </div>
             </motion.div>
+
+            {progressError && (
+              <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="font-semibold">{progressError}</p>
+                  <button
+                    type="button"
+                    onClick={() => void loadClass()}
+                    className="inline-flex items-center justify-center rounded-xl border border-amber-300 bg-white px-4 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-amber-800 transition-colors hover:bg-amber-100"
+                  >
+                    Retry
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Chapters */}
             <h2 className="mt-12 mb-4 font-display text-2xl tracking-tight">Chapters</h2>
@@ -114,6 +197,9 @@ export default function ClassPage() {
               {detail.chapters.map((ch, i) => {
                 const passed = progress.passedChapters.includes(ch.id);
                 const open = openChapter === ch.id;
+                const completedLessons = ch.levels.filter(
+                  (level) => progress.lessonProgress[level.id] === 'completed',
+                ).length;
                 return (
                   <motion.div
                     key={ch.id}
@@ -130,7 +216,9 @@ export default function ClassPage() {
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="font-bold text-lg tracking-tight truncate">{ch.ncert_unit}</p>
-                        <p className="text-xs text-slate-400 font-medium capitalize">{ch.genre} · {ch.levels.length} levels</p>
+                        <p className="text-xs text-slate-400 font-medium capitalize">
+                          {ch.genre} · {progressUnavailable ? 'saved progress unavailable' : `${completedLessons}/${ch.levels.length} lessons done`}
+                        </p>
                       </div>
                       <ChevronDownIcon className={`w-5 h-5 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
                     </button>
@@ -145,19 +233,43 @@ export default function ClassPage() {
                           <div className="px-5 pb-5 pt-1 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                             {ch.levels.map((lvl, li) => {
                               const Icon = LEVEL_ICON[li] ?? ReaderIcon;
+                              const lessonStatus = progressUnavailable ? 'unavailable' : (progress.lessonProgress[lvl.id] || 'learn');
+                              const label = lessonStatus === 'unavailable'
+                                ? 'Unavailable'
+                                : lessonStatus === 'completed'
+                                ? 'Completed'
+                                : lessonStatus === 'in_progress' || lessonStatus === 'reattempting'
+                                  ? 'Continue'
+                                  : 'Learn';
                               return (
                                 <button
                                   key={lvl.id}
                                   onClick={() => startLevel(lvl.id)}
-                                  disabled={starting !== null}
-                                  className="group flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-slate-50/40 px-4 py-3 text-left hover:border-indigo-200 hover:bg-white transition-all disabled:opacity-50"
+                                  disabled={starting !== null || progressUnavailable}
+                                  className={`group flex items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-all disabled:opacity-50 ${
+                                    lessonStatus === 'completed'
+                                      ? 'border-emerald-200 bg-emerald-50/40 hover:bg-white'
+                                      : lessonStatus === 'in_progress' || lessonStatus === 'reattempting'
+                                        ? 'border-indigo-200 bg-indigo-50/40 hover:bg-white'
+                                        : lessonStatus === 'unavailable'
+                                          ? 'border-slate-200/70 bg-slate-100/70 cursor-not-allowed'
+                                          : 'border-slate-200/70 bg-slate-50/40 hover:border-indigo-200 hover:bg-white'
+                                  }`}
                                 >
-                                  <span className="w-8 h-8 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-indigo-500">
-                                    <Icon className="w-4 h-4" />
+                                  <span className={`w-8 h-8 rounded-xl bg-white border flex items-center justify-center ${
+                                    lessonStatus === 'completed'
+                                      ? 'border-emerald-200 text-emerald-600'
+                                      : 'border-slate-200 text-indigo-500'
+                                  }`}>
+                                    {lessonStatus === 'completed' ? <CheckCircledIcon className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
                                   </span>
                                   <span className="flex-1 text-sm font-semibold text-slate-700">{lvl.title}</span>
                                   <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">
-                                    {starting === lvl.id ? '…' : 'Learn'}
+                                    {starting === lvl.id ? (
+                                        <span className="inline-flex items-center gap-1.5">
+                                          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Starting
+                                        </span>
+                                      ) : label}
                                   </span>
                                 </button>
                               );

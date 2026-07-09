@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { CheckCircledIcon, CrossCircledIcon } from '@radix-ui/react-icons';
 import { AppHeader } from '@/components/shared/AppHeader';
-import { getToken } from '@/services/api';
 import {
   getTest, submitTest, recordResult,
   type ServedTest, type TestResult,
@@ -25,16 +24,23 @@ export default function TestPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    if (!getToken()) {
-      router.replace('/auth/login');
-      return;
+  const loadTest = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const served = await getTest(testId);
+      setTest(served);
+    } catch {
+      setTest(null);
+      setError('Could not load this test.');
+    } finally {
+      setLoading(false);
     }
-    getTest(testId)
-      .then(setTest)
-      .catch(() => setError('Could not load this test.'))
-      .finally(() => setLoading(false));
-  }, [router, testId]);
+  }, [testId]);
+
+  useEffect(() => {
+    void loadTest();
+  }, [loadTest]);
 
   const answered = test ? test.items.filter((i) => (answers[i.id] || '').trim()).length : 0;
   const allAnswered = test ? answered === test.items.length : false;
@@ -42,13 +48,17 @@ export default function TestPage() {
   const submit = async () => {
     if (!test) return;
     setSubmitting(true);
+    setError('');
     try {
       const r = await submitTest(testId, answers);
       setResult(r);
       if (classNo) recordResult(classNo, r, chapterId);
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch {
-      setError('Could not submit your answers. Please try again.');
+    } catch (err) {
+      const message = err instanceof Error && err.message === 'progress_not_saved'
+        ? 'Your answers were scored, but progress could not be saved. Please submit again.'
+        : 'Could not submit your answers. Please try again.';
+      setError(message);
     } finally {
       setSubmitting(false);
     }
@@ -65,7 +75,19 @@ export default function TestPage() {
         {loading ? (
           <div className="space-y-4">{[0, 1, 2].map((i) => <div key={i} className="h-28 bg-slate-100/70 rounded-[1.5rem] animate-pulse" />)}</div>
         ) : error && !test ? (
-          <div className="bg-rose-50 border border-rose-200 text-rose-600 rounded-2xl px-6 py-4">{error}</div>
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-6 py-4 text-sm text-rose-700">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="font-semibold">{error}</p>
+              <button
+                type="button"
+                onClick={() => void loadTest()}
+                disabled={loading}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-300 bg-white px-4 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-rose-700 transition-colors hover:bg-rose-100 disabled:cursor-wait disabled:opacity-60"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
         ) : result ? (
           <ResultView result={result} onBack={backToClass} onRetry={() => { setResult(null); setAnswers({}); }} />
         ) : test && (
