@@ -1,5 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
+import {
+  authCookieNamesToClear,
+  deletionCookieOptions,
+  hasSessionAuthCookie,
+} from '@/lib/authCookiePolicy.mjs';
 
 type ProfileGate = {
   user_id?: string;
@@ -22,6 +27,7 @@ const PROTECTED_PREFIXES = [
   '/simulator',
 ];
 
+const AUTH_LOGIN_PATH = '/auth/login';
 const PROFILE_CHECK_TIMEOUT_MS = 8000;
 const PROFILE_GATE_CACHE_MS = 30_000;
 const INCOMPLETE_PROFILE_GATE_CACHE_MS = 1500;
@@ -41,6 +47,39 @@ function redirectToLogin(req: NextRequest, callbackPath: string, reason?: string
     loginUrl.searchParams.set('reason', reason);
   }
   return NextResponse.redirect(loginUrl);
+}
+
+function clearAuthCookies(req: NextRequest, response: NextResponse) {
+  const observedCookieNames = req.cookies.getAll().map((cookie) => cookie.name);
+  for (const cookieName of authCookieNamesToClear(observedCookieNames)) {
+    response.cookies.set(deletionCookieOptions(cookieName));
+  }
+}
+
+function hasAuthCookie(req: NextRequest): boolean {
+  return hasSessionAuthCookie(req.cookies.getAll().map((cookie) => cookie.name));
+}
+
+function redirectToLoginAndClearAuth(req: NextRequest, callbackPath: string, reason: string) {
+  const response = redirectToLogin(req, callbackPath, reason);
+  clearAuthCookies(req, response);
+  return response;
+}
+
+function redirectToCleanLogin(req: NextRequest, reason: string) {
+  const loginUrl = req.nextUrl.clone();
+  loginUrl.pathname = AUTH_LOGIN_PATH;
+  loginUrl.search = '';
+  loginUrl.searchParams.set('reason', reason);
+  const response = NextResponse.redirect(loginUrl);
+  clearAuthCookies(req, response);
+  return response;
+}
+
+function continueDuringProfileGateOutage() {
+  const response = NextResponse.next();
+  response.headers.set('x-zidd-profile-gate', 'unavailable');
+  return response;
 }
 
 function homeForProfile(profile: ProfileGate): string {
@@ -113,22 +152,46 @@ async function loadProfileGate(accessToken: string): Promise<ProfileGate | null>
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
 
+  if (pathname === AUTH_LOGIN_PATH) {
+    let token: Awaited<ReturnType<typeof getToken>> = null;
+    try {
+      token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+    } catch {
+      return redirectToCleanLogin(req, 'auth_cookie_reset');
+    }
+    if (token == null && hasAuthCookie(req)) {
+      return redirectToCleanLogin(req, 'auth_cookie_reset');
+    }
+    return NextResponse.next();
+  }
+
   if (!isProtectedPath(pathname)) {
     return NextResponse.next();
   }
 
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   const callbackPath = `${pathname}${search}`;
+  let token: Awaited<ReturnType<typeof getToken>> = null;
+  try {
+    token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+  } catch {
+    return redirectToLoginAndClearAuth(req, callbackPath, 'auth_cookie_reset');
+  }
+
+  if (token == null && hasAuthCookie(req)) {
+    return redirectToLoginAndClearAuth(req, callbackPath, 'auth_cookie_reset');
+  }
 
   if (!token?.accessToken || typeof token.accessToken !== 'string') {
-    return redirectToLogin(req, callbackPath);
+    return hasAuthCookie(req)
+      ? redirectToLoginAndClearAuth(req, callbackPath, 'auth_cookie_reset')
+      : redirectToLogin(req, callbackPath);
   }
 
   let profile: ProfileGate | null = null;
   try {
     profile = await loadProfileGate(token.accessToken);
   } catch {
-    return redirectToLogin(req, callbackPath, 'profile_check_failed');
+    return continueDuringProfileGateOutage();
   }
 
   if (!profile) {
@@ -166,6 +229,7 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
+    '/auth/login',
     '/dashboard/:path*',
     '/career/:path*',
     '/profile/:path*',

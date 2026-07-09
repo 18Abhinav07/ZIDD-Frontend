@@ -1,4 +1,5 @@
 import { getSession, signOut } from 'next-auth/react';
+import { fetchWithOneAuthRetry } from '@/services/authenticatedFetch.mjs';
 
 // The backend-issued JWT lives on the NextAuth session (populated from
 // account.id_token verification in the jwt callback), not in localStorage.
@@ -37,7 +38,8 @@ function cacheResolvedAccessToken(token: string | null): string | null {
   return token;
 }
 
-export async function getAccessToken(): Promise<string | null> {
+export async function getAccessToken(force = false): Promise<string | null> {
+  if (force) clearAccessTokenCache();
   const now = Date.now();
   if (cachedAccessToken && cachedAccessToken.expiresAt > now) {
     return cachedAccessToken.token;
@@ -60,15 +62,15 @@ export async function getAuthCacheKey(): Promise<string> {
   return token ? authCacheKeyForToken(token) : 'auth:anonymous';
 }
 
-export async function getAuthHeaders(): Promise<Record<string, string>> {
-  const token = await getAccessToken();
+export async function getAuthHeaders(force = false): Promise<Record<string, string>> {
+  const token = await getAccessToken(force);
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-const getHeaders = async () => {
+const getHeaders = async (forceAuth = false) => {
   return {
     'Content-Type': 'application/json',
-    ...(await getAuthHeaders()),
+    ...(await getAuthHeaders(forceAuth)),
   };
 };
 
@@ -87,14 +89,18 @@ export async function apiFetch(endpoint: string, options: ApiFetchOptions = {}) 
   }
 
   let response: Response;
+  const runFetch = async (forceAuth = false) => fetch(`/api${endpoint}`, {
+    ...fetchOptions,
+    signal: controller.signal,
+    headers: {
+      ...(await getHeaders(forceAuth)),
+      ...fetchOptions.headers,
+    },
+  });
   try {
-    response = await fetch(`/api${endpoint}`, {
-      ...fetchOptions,
-      signal: controller.signal,
-      headers: {
-        ...(await getHeaders()),
-        ...fetchOptions.headers,
-      },
+    response = await fetchWithOneAuthRetry({
+      runFetch,
+      invalidateAuth: invalidateAuthCache,
     });
   } catch (err: unknown) {
     const name = err instanceof DOMException || err instanceof Error ? err.name : '';

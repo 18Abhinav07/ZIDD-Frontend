@@ -50,8 +50,17 @@ export function AppHeader({ title, onBack, backLabel = 'Back', showCredits = tru
         return;
       }
       router.push(target);
-    } catch {
-      router.push('/auth/login');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '';
+      if (message === 'Unauthorized') {
+        router.push('/auth/login');
+        return;
+      }
+      if (me) {
+        router.push(destination(me));
+        return;
+      }
+      setPendingNav(null);
     }
   };
 
