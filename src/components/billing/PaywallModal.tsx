@@ -69,7 +69,7 @@ export function PaywallModal({
     <>
       {mounted && createPortal(
         <AnimatePresence>
-        {open && (
+        {open && !packsOpen && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -198,14 +198,10 @@ export function PaywallModal({
         initialPacks={insufficient ? paywall.packs : undefined}
         onClose={() => setPacksOpen(false)}
         onPurchased={(granted) => {
-          // Always refresh the badge; PacksModal closes itself on a confirmed
-          // grant. Only retry the gated action when credits actually landed —
-          // retrying on an ungranted balance would just trigger another 402.
           onBalanceChange?.();
-          if (granted) {
-            setPacksOpen(false);
-            void onConfirm();
-          }
+          if (!granted) return;
+          setPacksOpen(false);
+          void onConfirm();
         }}
       />
     </>

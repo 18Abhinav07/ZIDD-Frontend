@@ -23,6 +23,8 @@ type FailedStart = {
   simulationConfig?: SimulationScenarioConfig;
 };
 
+type StartNodeResult = 'navigated' | 'paywall' | 'ignored';
+
 
 
 export default function MapPage() {
@@ -40,6 +42,8 @@ export default function MapPage() {
   const [pendingNodeId, setPendingNodeId] = useState<string | null>(null);
   const [pendingReattempt, setPendingReattempt] = useState(false);
   const [pendingSimulationConfig, setPendingSimulationConfig] = useState<SimulationScenarioConfig | undefined>();
+  const [paywallError, setPaywallError] = useState('');
+  const [scenarioStarting, setScenarioStarting] = useState(false);
   const [reattemptNode, setReattemptNode] = useState<ProgressNode | null>(null);
   const [reattemptSimulationConfig, setReattemptSimulationConfig] = useState<SimulationScenarioConfig | undefined>();
   const [confirming, setConfirming] = useState(false);
@@ -47,6 +51,8 @@ export default function MapPage() {
   const badgeRef = useRef<CreditsBadgeHandle>(null);
   const startIdsRef = useRef<Map<string, string>>(new Map());
   const failedStartRef = useRef<FailedStart | null>(null);
+  const scenarioStartInFlightRef = useRef(false);
+  const startInFlightRef = useRef(false);
 
   useEffect(() => {
     const fetchProgress = async () => {
@@ -129,14 +135,16 @@ export default function MapPage() {
     startIdsRef.current.delete(intentKey);
   };
 
-  // Core start. Returns true on navigation, false if a paywall was surfaced
-  // (state is set so the PaywallModal can drive the confirm/top-up retry).
+  // Core start. Returns an explicit status so duplicate guards do not masquerade
+  // as successful navigation or paywall state.
   const startNode = async (
     nodeId: string,
     confirm: boolean,
     reattempt = false,
     simulationConfig?: SimulationScenarioConfig,
-  ): Promise<boolean> => {
+  ): Promise<StartNodeResult> => {
+    if (startInFlightRef.current) return 'ignored';
+    startInFlightRef.current = true;
     const intentKey = startIntentKey(nodeId, reattempt, simulationConfig);
     let result;
     try {
@@ -150,27 +158,40 @@ export default function MapPage() {
       });
     } catch (err) {
       failedStartRef.current = { nodeId, confirm, reattempt, simulationConfig };
+      if (!confirm) {
+        setPaywall(null);
+        setPendingNodeId(null);
+        setPendingReattempt(false);
+        setPendingSimulationConfig(undefined);
+        setPaywallError('');
+      }
       throw err;
+    } finally {
+      startInFlightRef.current = false;
     }
 
     if (result.ok) {
       failedStartRef.current = null;
       clearStartId(intentKey);
+      setError('');
       setPaywall(null);
       setPendingNodeId(null);
       setPendingReattempt(false);
       setPendingSimulationConfig(undefined);
       badgeRef.current?.refresh();
       routeToSession(result.session_id, simulationConfig);
-      return true;
+      return 'navigated';
     }
 
     // 402 — surface the paywall and remember which node to retry.
+    setError('');
     setPaywall(result.paywall);
+    setPaywallError('');
     setPendingNodeId(nodeId);
     setPendingReattempt(reattempt);
     setPendingSimulationConfig(simulationConfig);
-    return false;
+    failedStartRef.current = null;
+    return 'paywall';
   };
 
   const startErrorMessage = (err: unknown): string => {
@@ -178,6 +199,7 @@ export default function MapPage() {
   };
 
   const retryFailedStart = async () => {
+    if (startInFlightRef.current) return;
     const failed = failedStartRef.current;
     if (!failed) {
       setReloadKey((value) => value + 1);
@@ -192,7 +214,7 @@ export default function MapPage() {
         failed.reattempt,
         failed.simulationConfig,
       );
-      if (!navigated) setLoading(false);
+      if (navigated !== 'navigated') setLoading(false);
     } catch (err: unknown) {
       console.error(err);
       setError(startErrorMessage(err));
@@ -201,9 +223,11 @@ export default function MapPage() {
   };
 
   const handleNodeClick = async (node: ProgressNode) => {
+    if (loading || startInFlightRef.current) return;
+    setError('');
     const status = node.display_status ?? node.status;
     const mastered = Boolean(node.mastered ?? node.node_mastered ?? status === 'mastered');
-    const completed = Boolean(mastered);
+    const completed = Boolean(node.completed || mastered || status === 'ready_to_advance' || status === 'proficient');
     if (status === 'locked') return;
     if (completed) {
       setReattemptNode(node);
@@ -213,7 +237,7 @@ export default function MapPage() {
     try {
       setLoading(true);
       const navigated = await startNode(node.node_id, false);
-      if (!navigated) {
+      if (navigated !== 'navigated') {
         // Paywall is up; stop the loading spinner so the modal is usable.
         setLoading(false);
       }
@@ -228,31 +252,39 @@ export default function MapPage() {
   // the attempt meter, not on prep mastery), so there is NO locked-node guard —
   // the picker offers them all.
   const handleScenarioPick = async (node: ProgressNode, simulationConfig: SimulationScenarioConfig) => {
+    if (loading || scenarioStartInFlightRef.current || startInFlightRef.current) return;
+    scenarioStartInFlightRef.current = true;
     try {
+      setScenarioStarting(true);
       setLoading(true);
+      setError('');
       const navigated = await startNode(node.node_id, false, false, simulationConfig);
-      if (!navigated) setLoading(false);
+      if (navigated !== 'navigated') {
+        setLoading(false);
+        setScenarioStarting(false);
+        scenarioStartInFlightRef.current = false;
+      }
     } catch (err: unknown) {
       console.error(err);
       setError(startErrorMessage(err));
       setLoading(false);
+      setScenarioStarting(false);
+      scenarioStartInFlightRef.current = false;
     }
   };
 
   // Retry the pending node with confirm: true (learner agreed to spend, or just
   // topped up). On a fresh 402 the modal simply re-renders with the new state.
   const handleConfirmStart = async () => {
-    if (!pendingNodeId) return;
+    if (!pendingNodeId || confirming || startInFlightRef.current) return;
     setConfirming(true);
+    setPaywallError('');
     try {
       const navigated = await startNode(pendingNodeId, true, pendingReattempt, pendingSimulationConfig);
-      if (navigated) setLoading(true); // hold the spinner through the route push
+      if (navigated === 'navigated') setLoading(true); // hold the spinner through the route push
     } catch (err: unknown) {
       console.error(err);
-      setError(startErrorMessage(err));
-      setPaywall(null);
-      setPendingNodeId(null);
-      setPendingReattempt(false);
+      setPaywallError(startErrorMessage(err));
     } finally {
       setConfirming(false);
     }
@@ -265,29 +297,34 @@ export default function MapPage() {
         : null,
     );
     setPaywall(null);
+    setPaywallError('');
+    failedStartRef.current = null;
     setPendingNodeId(null);
     setPendingReattempt(false);
     setPendingSimulationConfig(undefined);
   };
 
   const handleReattemptConfirm = async () => {
-    if (!reattemptNode) return;
+    if (!reattemptNode || loading || startInFlightRef.current) return;
     setLoading(true);
+    setError('');
     let clearIntent = false;
     try {
       const navigated = await startNode(
         reattemptNode.node_id,
-        true,
+        false,
         true,
         reattemptSimulationConfig,
       );
-      clearIntent = navigated;
-      if (!navigated) setLoading(false);
+      clearIntent = navigated === 'navigated';
+      if (navigated !== 'navigated') setLoading(false);
     } catch (err: unknown) {
       console.error(err);
       setError(startErrorMessage(err));
       setLoading(false);
-      clearIntent = true;
+      // Keep the idempotency key after an ambiguous network/proxy failure. The
+      // backend may already have committed and charged this start; retrying the
+      // same intent must recover that result rather than create a second attempt.
     } finally {
       if (clearIntent) {
         clearStartId(startIntentKey(
@@ -421,6 +458,7 @@ export default function MapPage() {
                 moduleId={currentModule}
                 careerProfile={careerProfile}
                 onPick={handleScenarioPick}
+                disabled={loading || scenarioStarting || confirming}
               />
             )
             : <PathMap nodes={nodes} onNodeClick={handleNodeClick} />}
@@ -433,6 +471,7 @@ export default function MapPage() {
         onClose={handlePaywallClose}
         onConfirm={handleConfirmStart}
         onBalanceChange={() => badgeRef.current?.refresh()}
+        error={paywallError || undefined}
       />
       {reattemptNode && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/40 backdrop-blur-sm px-4">

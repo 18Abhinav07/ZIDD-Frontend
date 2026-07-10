@@ -54,6 +54,27 @@ const QUOTES = [
   "Progress updates after the coach reviews your answer."
 ];
 
+function statusDescription({
+  isActive,
+  isLocked,
+  isMastered,
+  isNeedsPractice,
+  isReady,
+}: {
+  isActive: boolean;
+  isLocked: boolean;
+  isMastered: boolean;
+  isNeedsPractice: boolean;
+  isReady: boolean;
+}) {
+  if (isLocked) return 'Locked';
+  if (isMastered) return 'Mastered';
+  if (isReady) return 'Ready for next skill';
+  if (isActive) return 'You are here';
+  if (isNeedsPractice) return 'Needs practice';
+  return 'Needs practice';
+}
+
 export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
   
   // Calculate how far down the active node is to fill the SVG path
@@ -125,7 +146,9 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
           const isLocked = status === 'locked';
           const isMastered = Boolean(node.mastered ?? node.node_mastered ?? status === 'mastered');
           const isReady = !isMastered && (status === 'ready_to_advance' || status === 'proficient');
-          const isActive = !isLocked && !isMastered && !isReady;
+          const isActive = status === 'active' || status === 'in_progress';
+          const isNeedsPractice = !isLocked && !isMastered && !isReady && !isActive;
+          const accessibleStatus = statusDescription({ isActive, isLocked, isMastered, isNeedsPractice, isReady });
           const displayMastery = isMastered
             ? 1
             : Math.max(0, Math.min(1, node.display_mastery ?? node.mastery ?? 0));
@@ -145,7 +168,7 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: index * 0.1, ease: [0.16, 1, 0.3, 1] }}
               key={node.node_id}
-              aria-label={`${node.title} ${status}`}
+              aria-label={`${node.title} ${accessibleStatus}`}
               disabled={isLocked}
               className={cn(
                 "relative flex items-center justify-center w-full max-w-3xl border-0 bg-transparent p-0 text-left",
@@ -163,18 +186,18 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
                  {/* Ghost step numeral — echoes the onboarding cards, gives the path a count */}
 	                 <span className={cn(
 	                    "absolute -top-8 left-1/2 -translate-x-1/2 z-0 font-anton leading-none select-none pointer-events-none text-[7rem] md:text-[9rem] tracking-tighter transition-colors duration-700",
-	                    isActive ? "text-indigo-500/10" : isMastered ? "text-emerald-500/10" : isReady ? "text-amber-500/10" : "text-slate-900/[0.04]"
+	                    isActive ? "text-indigo-500/10" : isMastered ? "text-emerald-500/10" : isReady ? "text-amber-500/10" : isNeedsPractice ? "text-rose-500/10" : "text-slate-900/[0.04]"
 	                 )}>{String(index + 1).padStart(2, '0')}</span>
 
                  {/* Station: a station ring + soft ground shadow so the figure stands ON the path */}
                  <div className="absolute left-1/2 bottom-4 -translate-x-1/2 z-0 pointer-events-none">
                     <div className={cn(
                        "w-28 md:w-36 h-5 rounded-[100%] blur-md transition-colors duration-700",
-	                       isActive ? "bg-indigo-900/15" : isLocked ? "bg-slate-900/[0.06]" : isReady ? "bg-amber-900/10" : "bg-slate-900/10"
+	                       isActive ? "bg-indigo-900/15" : isLocked ? "bg-slate-900/[0.06]" : isReady ? "bg-amber-900/10" : isNeedsPractice ? "bg-rose-900/10" : "bg-slate-900/10"
 	                    )} />
                     <div className={cn(
                        "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-16 md:w-20 h-16 md:h-20 rounded-full border transition-all duration-700",
-	                       isActive ? "border-indigo-300/60 bg-indigo-50/40" : isMastered ? "border-emerald-300/50 bg-emerald-50/30" : isReady ? "border-amber-300/50 bg-amber-50/30" : "border-slate-200/70 bg-white/30"
+	                       isActive ? "border-indigo-300/60 bg-indigo-50/40" : isMastered ? "border-emerald-300/50 bg-emerald-50/30" : isReady ? "border-amber-300/50 bg-amber-50/30" : isNeedsPractice ? "border-rose-200/60 bg-rose-50/30" : "border-slate-200/70 bg-white/30"
 	                    )} />
                  </div>
 
@@ -242,7 +265,7 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
                  ) : (
                     <div className={cn(
                        "relative bg-white/95 backdrop-blur-xl border rounded-[2rem] p-6 shadow-2xl max-w-[280px]",
-	                       isActive ? "border-indigo-200 shadow-indigo-500/10 ring-4 ring-indigo-50/50" : isReady ? "border-amber-200 shadow-amber-500/10 ring-4 ring-amber-50/50" : "border-slate-200/60 shadow-slate-900/5"
+	                       isActive ? "border-indigo-200 shadow-indigo-500/10 ring-4 ring-indigo-50/50" : isReady ? "border-amber-200 shadow-amber-500/10 ring-4 ring-amber-50/50" : isNeedsPractice ? "border-rose-200 shadow-rose-500/10 ring-4 ring-rose-50/50" : "border-slate-200/60 shadow-slate-900/5"
 	                    )}>
                        {/* The Tail */}
                        <div className={cn(
@@ -254,7 +277,11 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
 	                          <span className="inline-block mb-3 text-[9px] font-bold uppercase tracking-[0.25em] text-indigo-500 bg-indigo-50 rounded-full px-2.5 py-1">You are here</span>
 	                       ) : isReady ? (
 	                          <span className="inline-flex items-center gap-1.5 mb-3 text-[9px] font-bold uppercase tracking-[0.25em] text-amber-600">
-	                             Next skill ready
+	                             Ready for next skill
+	                          </span>
+	                       ) : isNeedsPractice ? (
+	                          <span className="inline-flex items-center gap-1.5 mb-3 text-[9px] font-bold uppercase tracking-[0.25em] text-rose-600">
+	                             Needs practice
 	                          </span>
 	                       ) : (
 	                          <span className="inline-flex items-center gap-1.5 mb-3 text-[9px] font-bold uppercase tracking-[0.25em] text-emerald-600">
@@ -270,7 +297,7 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
 
                        <h3 className={cn(
 	                          "font-bold text-lg mb-2 leading-tight tracking-tight",
-	                          isActive ? "text-slate-900" : "text-slate-600"
+	                          isActive ? "text-slate-900" : isNeedsPractice ? "text-slate-800" : "text-slate-600"
 	                       )}>{node.title}</h3>
 	                       {isReady && node.last_gap && (
 	                         <p className="mb-4 text-xs leading-relaxed text-slate-500">{node.last_gap}</p>
@@ -281,7 +308,7 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
                            <div
                              className={cn(
                                "h-full rounded-full transition-all duration-1000",
-	                               isMastered ? "bg-emerald-400" : isReady ? "bg-amber-400" : "bg-indigo-500"
+	                               isMastered ? "bg-emerald-400" : isReady ? "bg-amber-400" : isNeedsPractice ? "bg-rose-400" : "bg-indigo-500"
 	                             )}
                              style={{ width: `${Math.round(displayMastery * 100)}%` }}
                            />
@@ -312,8 +339,8 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
               <span className="relative text-3xl" role="img" aria-label="trophy">🏆</span>
             </div>
             <div className="text-center">
-              <p className="font-display text-3xl tracking-tight text-slate-900 leading-none">Mastery</p>
-              <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.3em] text-slate-400">Complete every skill to arrive</p>
+              <p className="font-display text-3xl tracking-tight text-slate-900 leading-none">Sustained Mastery</p>
+              <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.3em] text-slate-400">Repeat proof across every skill</p>
             </div>
           </motion.div>
         )}

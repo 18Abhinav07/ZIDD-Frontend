@@ -116,6 +116,7 @@ export interface StartSessionArgs {
   client_start_id: string;
   source_session_id?: string;
   source_transition_id?: string;
+  source_action?: 'advance' | 'reattempt';
 }
 
 // 2xx -> { ok: true, session_id, … } or normalized { ok: false, paywall };
@@ -129,6 +130,10 @@ export type StartSessionResult =
       first_message: string;
       current_mastery: number;
       resumed?: boolean;
+      display_status?: string;
+      node_mastered?: boolean;
+      readiness_score?: number;
+      best_independent_score?: number;
     }
   | { ok: false; paywall: PaywallDetail };
 
@@ -245,6 +250,7 @@ function startRequestBody(args: StartSessionArgs): string {
     client_start_id: args.client_start_id,
     source_session_id: args.source_session_id,
     source_transition_id: args.source_transition_id,
+    source_action: args.source_action,
   });
 }
 
