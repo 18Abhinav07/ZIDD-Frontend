@@ -7,11 +7,12 @@ import { motion } from 'framer-motion';
 interface FillInTheBlankCardProps {
   sentence: string;
   hint: string;
+  context?: string;
   onSubmit: (answer: string) => Promise<boolean> | boolean;
   disabled?: boolean;
 }
 
-export function FillInTheBlankCard({ sentence, hint, onSubmit, disabled }: FillInTheBlankCardProps) {
+export function FillInTheBlankCard({ sentence, hint, context, onSubmit, disabled }: FillInTheBlankCardProps) {
   const [value, setValue] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -45,6 +46,11 @@ export function FillInTheBlankCard({ sentence, hint, onSubmit, disabled }: FillI
          <MagicWandIcon className="text-accent w-4 h-4" />
          <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-500">{hint}</span>
       </div>
+      {context && (
+        <p className="-mt-3 mb-6 text-sm font-normal leading-6 text-slate-500">
+          <span className="font-semibold text-slate-700">Why this exercise: </span>{context}
+        </p>
+      )}
       
       <p className="text-2xl font-display leading-tight mb-10 text-slate-900">
         {sentence.split('___').map((part, i, arr) => (

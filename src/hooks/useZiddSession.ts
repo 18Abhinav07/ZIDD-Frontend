@@ -5,6 +5,13 @@ import { getAuthHeaders } from '../services/api';
 import { invalidateMeActivityCache } from '../services/me';
 import { ZiddSSEClient } from '../services/sseClient';
 import {
+  durableTurnCompleted,
+  nextActiveStreamKind,
+  openingSnapshotComplete,
+  runLateTurnRecovery,
+  shouldStartLateTurnRecovery,
+} from '../lib/sessionStreamPresentation.mjs';
+import {
   DoneFrame,
   NodeAdvanceFrame,
   ProgressUpdateFrame,
@@ -17,7 +24,8 @@ import {
   TranscriptResponse,
   SimulationReport,
   EndSessionResponse,
-  PendingNodeTransition
+  PendingNodeTransition,
+  AssessmentClientAction
 } from '../types';
 
 // Hard round cap mirrored from the backend (simulation_service MAX_SIM_ROUNDS).
@@ -27,6 +35,20 @@ export const MAX_SIM_ROUNDS = 10;
 type StreamTurnResult = {
   started: boolean;
   completed: boolean;
+};
+
+export type ActiveStreamKind = 'opening' | 'learner_turn' | null;
+
+type ExpectedUserTurn = {
+  clientTurnId: string;
+  userInput: string;
+};
+
+type TranscriptRestoreOutcome = {
+  foundExpectedTurn: boolean;
+  completed: boolean;
+  failed: boolean;
+  terminal?: boolean;
 };
 
 // Close any still-open (streaming) assistant bubble so the next token starts a
@@ -42,16 +64,239 @@ function finalizeOpen(prev: ChatMessage[]): ChatMessage[] {
   return prev;
 }
 
+function duplicateAssistantDisplayKey(message: ChatMessage): string {
+  return [
+    message.role,
+    // Live SSE bubbles carry the display name, while transcript rehydration
+    // also adds speaker_id. Identity metadata must not make the same visible
+    // assistant response look different during stream-plus-recovery merging.
+    message.speaker_name ?? message.speaker_id ?? '',
+    String(message.content ?? '').trim().replace(/\s+/g, ' '),
+  ].join('|');
+}
+
+function dedupeAdjacentDuplicateMessages(messages: ChatMessage[]): ChatMessage[] {
+  const deduped: ChatMessage[] = [];
+  for (const message of messages) {
+    const previous = deduped[deduped.length - 1];
+    if (
+      previous &&
+      previous.role === 'assistant' &&
+      message.role === 'assistant' &&
+      duplicateAssistantDisplayKey(previous) === duplicateAssistantDisplayKey(message)
+    ) {
+      continue;
+    }
+    deduped.push(message);
+  }
+  return deduped;
+}
+
 function cleanRestoredTranscriptContent(content: string): string {
   return content.replace(/^\[(?:Fill in the blank|Bridge exercise|Multiple choice|Spoken answer)\]\s*/i, 'Bridge exercise: ');
+}
+
+function transcriptMessageKey(message: ChatMessage): string {
+  if (message.message_id) return `message:${message.message_id}`;
+  if (message.message_kind === 'opening') {
+    return [
+      'opening',
+      message.node_id ?? '',
+      message.transition_id ?? '',
+      message.speaker_id ?? '',
+      message.speaker_name ?? '',
+      message.content,
+    ].join('|');
+  }
+  return [
+    message.id,
+    message.role,
+    message.node_id ?? '',
+    message.transition_id ?? '',
+    message.speaker_id ?? '',
+    message.speaker_name ?? '',
+    message.content,
+  ].join('|');
+}
+
+function normalizeTranscriptMessages(
+  messages: ChatMessage[] | undefined,
+  restoredGamePrompt: GamePromptFrame | null
+): ChatMessage[] {
+  if (!Array.isArray(messages)) return [];
+  const seen = new Set<string>();
+  const normalized: ChatMessage[] = [];
+  const visibleTranscriptMessages = messages.filter((m) => {
+    if (!restoredGamePrompt?.turn_id) return true;
+    return !(
+      m.role === 'assistant' &&
+      m.turn_id === restoredGamePrompt.turn_id &&
+      String(m.content).includes(restoredGamePrompt.sentence)
+    );
+  });
+  for (const m of visibleTranscriptMessages) {
+    const row: ChatMessage = {
+      id: m.id,
+      message_id: m.message_id ?? undefined,
+      role: m.role,
+      content: cleanRestoredTranscriptContent(m.content),
+      turn_id: m.turn_id ?? undefined,
+      speaker_name: m.speaker_name ?? undefined,
+      speaker_id: m.speaker_id ?? undefined,
+      node_id: m.node_id ?? undefined,
+      transition_id: m.transition_id ?? undefined,
+      message_kind: m.message_kind ?? undefined,
+      status: m.status ?? undefined,
+    };
+    const key = transcriptMessageKey(row);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(row);
+  }
+  return dedupeAdjacentDuplicateMessages(normalized);
+}
+
+function hasOpeningTranscriptMessage(messages: ChatMessage[]): boolean {
+  return messages.some((message) => message.role === 'assistant' && message.message_kind === 'opening');
+}
+
+function hasCompletedTurnOutcomeAfterUserIndex(
+  data: TranscriptResponse,
+  messages: ChatMessage[],
+  userIndex: number
+): boolean {
+  if (userIndex < 0) return false;
+  const assistantAfterCurrentUserTurn = messages
+    .slice(userIndex + 1)
+    .some((message) => message.role === 'assistant');
+  const pending = data.pending_transition ?? data.state?.pending_transition ?? null;
+  const currentUserTurnId = messages[userIndex]?.turn_id;
+  const gamePromptCompletesCurrentTurn = Boolean(
+    currentUserTurnId && data.game_prompt?.turn_id === currentUserTurnId
+  );
+  return (
+    assistantAfterCurrentUserTurn ||
+    Boolean(pending) ||
+    gamePromptCompletesCurrentTurn ||
+    Boolean(data.state?.module_done) ||
+    Boolean(data.state?.session_over) ||
+    data.state?.status === 'ended' ||
+    Boolean(data.state?.simulation_report)
+  );
+}
+
+function hasCompletedTurnOutcomeAfterExpectedUser(
+  data: TranscriptResponse,
+  messages: ChatMessage[],
+  expectedUserTurn?: ExpectedUserTurn
+): boolean {
+  if (!expectedUserTurn) return false;
+  const currentUserTurnIndex = findCurrentUserTurnIndex(messages, expectedUserTurn);
+  return hasCompletedTurnOutcomeAfterUserIndex(data, messages, currentUserTurnIndex);
+}
+
+function findCurrentUserTurnIndex(
+  messages: ChatMessage[],
+  expectedUserTurn?: ExpectedUserTurn
+): number {
+  if (!expectedUserTurn) return -1;
+  const clientTurnId = expectedUserTurn.clientTurnId.trim();
+  const exactTurnIndex = messages.findIndex((message) => {
+    if (message.role !== 'user') return false;
+    const messageTurnId = String(message.turn_id ?? '').trim();
+    const messageId = String(message.message_id ?? '');
+    if (
+      clientTurnId &&
+      (messageTurnId === clientTurnId || messageId.includes(`:turn:${clientTurnId}:user`))
+    ) {
+      return true;
+    }
+    return false;
+  });
+  return exactTurnIndex;
+}
+
+function recoverTurnLockFromTranscript(data: TranscriptResponse) {
+  const activeTurn = data.active_turn ?? data.state?.active_turn ?? null;
+  const blockReason = data.block_reason ?? data.state?.block_reason;
+  const releaseStaleTurnLock =
+    activeTurn?.status === 'processing' &&
+    blockReason === 'turn_processing' &&
+    durableTurnSettled(data.state?.last_turn, activeTurn.client_turn_id);
+  return {
+    activeTurn: releaseStaleTurnLock ? null : activeTurn,
+    inputAllowed: releaseStaleTurnLock ? true : data.input_allowed ?? data.state?.input_allowed,
+    blockReason: releaseStaleTurnLock ? null : blockReason,
+  };
+}
+
+function durableTurnSettled(
+  lastTurn: DoneFrame['last_turn'],
+  expectedClientTurnId: string
+): boolean {
+  return Boolean(
+    expectedClientTurnId &&
+    lastTurn?.client_turn_id === expectedClientTurnId &&
+    (lastTurn?.status === 'completed' || lastTurn?.status === 'failed')
+  );
 }
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function abortError(): Error {
+  const error = new Error('transcript_request_aborted');
+  error.name = 'AbortError';
+  return error;
+}
+
+function throwIfAborted(signal: AbortSignal): void {
+  if (signal.aborted) throw abortError();
+}
+
+function awaitWithAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(abortError());
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(abortError());
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      value => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      },
+      error => {
+        signal.removeEventListener('abort', onAbort);
+        reject(error);
+      }
+    );
+  });
+}
+
 const OPENING_RECOVERY_POLL_ATTEMPTS = 90;
 const OPENING_RECOVERY_POLL_DELAY_MS = 2_000;
+const SESSION_STREAM_IDLE_TIMEOUT_MS = 35_000;
+const SESSION_STREAM_RECOVERY_FIRST_POLL_MS = 25_000;
+const SESSION_STREAM_RECOVERY_POLL_DELAY_MS = 10_000;
+const SESSION_STREAM_RECOVERY_MAX_POLLS = 8;
+const SESSION_STREAM_MAX_DURATION_MS = 150_000;
+const SESSION_STREAM_LATE_RECOVERY_DURATION_MS = 360_000;
+const SESSION_STREAM_LATE_RECOVERY_POLL_DELAY_MS = 20_000;
+const SESSION_STREAM_LATE_RECOVERY_MAX_POLLS = 18;
+const TRANSCRIPT_REQUEST_TIMEOUT_MS = 15_000;
+const TRANSIENT_PROCESSING_MESSAGE = 'Your last answer is still being processed. Wait here or reload in a moment.';
+const LATE_RECOVERY_MESSAGE = 'The tutor is still working. This page will update automatically when your answer is ready.';
+const LATE_RECOVERY_EXHAUSTED_MESSAGE = 'The tutor is taking longer than expected. Reload this page to check for the completed answer.';
+
+function roundFromDoneFrame(done: DoneFrame): number | null {
+  const stateRound = typeof done.simulation_round === 'number' ? done.simulation_round : null;
+  const progressRound =
+    typeof done.assessment_state?.progress?.round_count === 'number'
+      ? done.assessment_state.progress.round_count
+      : null;
+  const nextRound = stateRound && stateRound > 0 ? stateRound : progressRound;
+  return nextRound && nextRound > 0 ? nextRound : null;
+}
 
 export function useZiddSession(sessionId: string, isOpening: boolean = false) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -81,11 +326,26 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
   const [isClosing, setIsClosing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isRecoveringTurn, setIsRecoveringTurn] = useState(false);
+  const [activeStreamKind, setActiveStreamKind] = useState<ActiveStreamKind>(null);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   // Distinct from a transport error: the session id is unknown/expired (the
   // transcript fetch 404'd). The page shows a "session not found" screen with a
   // way back to the map instead of a misleading "connection error" banner.
   const [notFound, setNotFound] = useState(false);
+
+  const startActiveStream = useCallback((kind: Exclude<ActiveStreamKind, null>) => {
+    setActiveStreamKind((current) => nextActiveStreamKind(
+      current,
+      kind === 'opening' ? 'opening_started' : 'learner_turn_started'
+    ));
+    setIsStreaming(true);
+  }, []);
+
+  const clearActiveStream = useCallback((reason: 'completed' | 'error' | 'disconnected' | 'session_changed') => {
+    setIsStreaming(false);
+    setActiveStreamKind((current) => nextActiveStreamKind(current, reason));
+  }, []);
 
   const clientRef = useRef<ZiddSSEClient | null>(null);
   const currentSpeakerRef = useRef<string | undefined>(undefined);
@@ -95,22 +355,64 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
   // re-entry before any render commits.
   const closingRef = useRef(false);
   const streamInFlightRef = useRef(false);
+  const activeStreamTokenRef = useRef<string | null>(null);
+  const lateRecoveryTokenRef = useRef<string | null>(null);
+  const activeStreamSettleRef = useRef<((result: StreamTurnResult) => void) | null>(null);
+  const streamEventRevisionRef = useRef(0);
   const gamePromptSeenThisStreamRef = useRef(false);
   const pendingGamePromptFrameRef = useRef<GamePromptFrame | null>(null);
   const pendingVisibleSimTurnRef = useRef<number | null>(null);
   // React dev/StrictMode can run mount effects twice. Bootstrap is allowed once
   // per session id; otherwise two transcript checks can both stream an opening.
   const bootstrappedSessionRef = useRef<string | null>(null);
+  const bootstrapGenerationRef = useRef(0);
   const activeSessionIdRef = useRef(sessionId);
+  const transcriptRequestControllersRef = useRef<Set<AbortController>>(new Set());
   const sessionIdChanged = activeSessionIdRef.current !== sessionId;
 
+  const abortTranscriptRequests = useCallback(() => {
+    transcriptRequestControllersRef.current.forEach((controller) => {
+      controller.abort();
+    });
+    transcriptRequestControllersRef.current.clear();
+  }, []);
+
+  const runBoundedTranscriptRequest = useCallback(async <T,>(
+    deadlineMs: number,
+    request: (signal: AbortSignal) => Promise<T>
+  ): Promise<T> => {
+    const remainingMs = deadlineMs - Date.now();
+    if (remainingMs <= 0) throw abortError();
+
+    const controller = new AbortController();
+    transcriptRequestControllersRef.current.add(controller);
+    const timeout = setTimeout(
+      () => controller.abort(),
+      Math.min(TRANSCRIPT_REQUEST_TIMEOUT_MS, remainingMs)
+    );
+    try {
+      return await awaitWithAbort(request(controller.signal), controller.signal);
+    } finally {
+      clearTimeout(timeout);
+      transcriptRequestControllersRef.current.delete(controller);
+    }
+  }, []);
+
   useEffect(() => {
+    abortTranscriptRequests();
+    bootstrapGenerationRef.current += 1;
     activeSessionIdRef.current = sessionId;
+    activeStreamSettleRef.current?.({ started: false, completed: false });
+    activeStreamSettleRef.current = null;
     clientRef.current?.disconnect();
     clientRef.current = null;
     currentSpeakerRef.current = undefined;
     closingRef.current = false;
     streamInFlightRef.current = false;
+    activeStreamTokenRef.current = null;
+    lateRecoveryTokenRef.current = null;
+    setIsRecoveringTurn(false);
+    streamEventRevisionRef.current = 0;
     gamePromptSeenThisStreamRef.current = false;
     pendingGamePromptFrameRef.current = null;
     pendingVisibleSimTurnRef.current = null;
@@ -132,10 +434,22 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
     setReport(null);
     setIsClosing(false);
     setError(null);
-    setIsStreaming(false);
+    clearActiveStream('session_changed');
     setIsBootstrapping(true);
     setNotFound(false);
-  }, [sessionId]);
+  }, [abortTranscriptRequests, clearActiveStream, sessionId]);
+
+  useEffect(() => () => {
+    abortTranscriptRequests();
+    bootstrapGenerationRef.current += 1;
+    lateRecoveryTokenRef.current = null;
+    activeStreamTokenRef.current = null;
+    activeStreamSettleRef.current?.({ started: false, completed: false });
+    activeStreamSettleRef.current = null;
+    clientRef.current?.disconnect();
+    clientRef.current = null;
+    streamInFlightRef.current = false;
+  }, [abortTranscriptRequests]);
 
   const handleEvent = useCallback((eventName: string, data: unknown) => {
     switch (eventName) {
@@ -150,6 +464,7 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
         // message while the backend state already has game_prompt=null.
         pendingGamePromptFrameRef.current = null;
         setGamePrompt(null);
+        setError(prev => (prev === TRANSIENT_PROCESSING_MESSAGE ? null : prev));
         // Append the token to the open assistant bubble; open a NEW bubble only
         // when there is no open one or the speaker changed (GD: two debaters must
         // never merge under one name). Pure reducer — see finalizeOpen.
@@ -184,7 +499,7 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
         // Close the old node's bubble and drop its speaker context: a 'speaker'
         // frame sets this fresh inside a simulation, so undefined is correct
         // until then and prevents a prior persona's name bleeding onto a plain turn.
-        setMessages(finalizeOpen);
+        setMessages(prev => dedupeAdjacentDuplicateMessages(finalizeOpen(prev)));
         currentSpeakerRef.current = undefined;
         setNodeAdvance(data as NodeAdvanceFrame);
         // New node: drop the prior node's affect until a fresh done frame lands.
@@ -206,7 +521,7 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
         // A new persona block begins: close the current bubble so the next token
         // opens a fresh one attributed to this speaker.
         const speakerData = data as SpeakerFrame;
-        setMessages(finalizeOpen);
+        setMessages(prev => dedupeAdjacentDuplicateMessages(finalizeOpen(prev)));
         currentSpeakerRef.current = speakerData.name;
         break;
       }
@@ -237,18 +552,21 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
         }
         // The stream ended cleanly: finalise the open bubble so a later turn's
         // first token can't append to it.
-        setMessages(finalizeOpen);
+        setMessages(prev => dedupeAdjacentDuplicateMessages(finalizeOpen(prev)));
         if (gamePromptSeenThisStreamRef.current && pendingGamePromptFrameRef.current) {
           setGamePrompt(pendingGamePromptFrameRef.current);
         } else {
           setGamePrompt(null);
         }
+        const doneRound = roundFromDoneFrame(done);
+        if (doneRound !== null) setSimTurn(doneRound);
         pendingGamePromptFrameRef.current = null;
         setState(done);
         setPendingTransition(done.pending_transition ?? null);
         setAvatarEmotion(done.avatar_emotion);
         setAffect(done.affect);
-        setIsStreaming(false);
+        clearActiveStream('completed');
+        setError(prev => (prev === TRANSIENT_PROCESSING_MESSAGE ? null : prev));
         break;
       }
       case 'error':
@@ -265,9 +583,196 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
       default:
         console.warn('Unknown event:', eventName);
     }
-  }, []);
+  }, [clearActiveStream]);
 
-  const streamTurn = useCallback(async (userInput?: string, clientTurnId?: string): Promise<StreamTurnResult> => {
+  const restoreTranscriptSnapshotOutcome = useCallback(async (
+    expectedUserTurn?: ExpectedUserTurn,
+    shouldApply?: () => boolean,
+    requireDurableSettlement: boolean = false,
+    requestDeadlineMs: number = Date.now() + TRANSCRIPT_REQUEST_TIMEOUT_MS
+  ): Promise<TranscriptRestoreOutcome> => {
+    let res: Response;
+    let data: TranscriptResponse | null;
+    try {
+      ({ res, data } = await runBoundedTranscriptRequest(requestDeadlineMs, async (signal) => {
+        const headers = await getAuthHeaders();
+        throwIfAborted(signal);
+        if (shouldApply && !shouldApply()) throw abortError();
+        const response = await fetch(`/api/session/${sessionId}/transcript`, { headers, signal });
+        throwIfAborted(signal);
+        if (!response.ok) return { res: response, data: null };
+        const transcript = (await response.json()) as TranscriptResponse;
+        throwIfAborted(signal);
+        return { res: response, data: transcript };
+      }));
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        return { foundExpectedTurn: false, completed: false, failed: false };
+      }
+      throw error;
+    }
+    if (shouldApply && !shouldApply()) {
+      return { foundExpectedTurn: false, completed: false, failed: false };
+    }
+    if (res.status === 401 || res.status === 403) {
+      lateRecoveryTokenRef.current = null;
+      activeStreamTokenRef.current = null;
+      streamInFlightRef.current = false;
+      setIsRecoveringTurn(false);
+      activeStreamSettleRef.current?.({ started: Boolean(expectedUserTurn), completed: false });
+      clearActiveStream('error');
+      setError('Your sign-in expired while this answer was processing. Sign in again, then reopen the session.');
+      return { foundExpectedTurn: false, completed: false, failed: false, terminal: true };
+    }
+    if (res.status === 404 || res.status === 410) {
+      lateRecoveryTokenRef.current = null;
+      activeStreamTokenRef.current = null;
+      streamInFlightRef.current = false;
+      setIsRecoveringTurn(false);
+      activeStreamSettleRef.current?.({ started: Boolean(expectedUserTurn), completed: false });
+      clearActiveStream('error');
+      setNotFound(true);
+      setIsBootstrapping(false);
+      return { foundExpectedTurn: false, completed: false, failed: false, terminal: true };
+    }
+    if (!res.ok) {
+      throw new Error(`transcript_restore_failed:${res.status}`);
+    }
+    if (!data) {
+      throw new Error('transcript_restore_failed:empty');
+    }
+    const pending = data.pending_transition ?? data.state?.pending_transition ?? null;
+    const restoredGamePrompt = data.game_prompt ?? null;
+    const restoredMessages = normalizeTranscriptMessages(data.messages, restoredGamePrompt);
+    const currentUserTurnIndex = findCurrentUserTurnIndex(restoredMessages, expectedUserTurn);
+    const durableExpectedTurnCompleted = Boolean(
+      expectedUserTurn &&
+      durableTurnCompleted(data.state?.last_turn, expectedUserTurn.clientTurnId)
+    );
+    const durableExpectedTurnFailed = Boolean(
+      expectedUserTurn &&
+      data.state?.last_turn?.client_turn_id === expectedUserTurn.clientTurnId &&
+      data.state?.last_turn?.status === 'failed'
+    );
+    if (
+      expectedUserTurn &&
+      currentUserTurnIndex < 0 &&
+      !durableExpectedTurnCompleted &&
+      !durableExpectedTurnFailed
+    ) {
+      return { foundExpectedTurn: false, completed: false, failed: false };
+    }
+    if (
+      requireDurableSettlement &&
+      !durableExpectedTurnCompleted &&
+      !durableExpectedTurnFailed
+    ) {
+      return { foundExpectedTurn: currentUserTurnIndex >= 0, completed: false, failed: false };
+    }
+    const completedTurnOutcome = durableExpectedTurnCompleted || hasCompletedTurnOutcomeAfterExpectedUser(
+      data,
+      restoredMessages,
+      expectedUserTurn,
+    );
+    const completedOpeningOutcome = !expectedUserTurn && openingSnapshotComplete({
+      openingStreamed: data.opening_streamed ?? data.state?.opening_streamed,
+      hasOpeningMessage: hasOpeningTranscriptMessage(restoredMessages),
+      hasGamePrompt: Boolean(restoredGamePrompt),
+      terminalSession: Boolean(
+        data.state?.session_over ||
+        data.state?.status === 'ended' ||
+        data.state?.simulation_report
+      ),
+    });
+    const recoveredTurn = recoverTurnLockFromTranscript(data);
+    if (shouldApply && !shouldApply()) {
+      return { foundExpectedTurn: false, completed: false, failed: false };
+    }
+
+    if (data.state) {
+      setState({
+        ...data.state,
+        session_version: data.session_version ?? data.state.session_version,
+        pending_transition: pending,
+        active_turn: recoveredTurn.activeTurn,
+        input_allowed: recoveredTurn.inputAllowed,
+        block_reason: recoveredTurn.blockReason,
+        opening_streamed: data.opening_streamed ?? data.state.opening_streamed,
+      });
+      if (data.state.simulation_round) {
+        setSimTurn(data.state.simulation_round);
+      }
+      if (typeof data.state.simulation_tension === 'number') {
+        setTension(Math.round(Math.max(0, Math.min(1, data.state.simulation_tension)) * 100));
+      }
+      if (data.state.session_over || data.state.status === 'ended') {
+        setShouldClose(true);
+      }
+      if (data.state.simulation_report) {
+        setReport(data.state.simulation_report);
+        closingRef.current = true;
+      }
+    }
+    setPendingTransition(pending);
+    setSessionRecap(data.session_recap ?? null);
+    setGamePrompt(restoredGamePrompt);
+    if (restoredMessages.length > 0) {
+      setMessages(restoredMessages);
+    }
+    if (pending) {
+      setNodeAdvance({ from_node: pending.from_node, to_node: pending.to_node });
+    }
+    const activeTurn = recoveredTurn.activeTurn;
+    const recoveredCompletedOutcome = expectedUserTurn
+      ? durableExpectedTurnCompleted || (
+          completedTurnOutcome && recoveredTurn.blockReason !== 'turn_processing'
+        )
+      : completedOpeningOutcome && recoveredTurn.blockReason !== 'turn_processing';
+    if (recoveredCompletedOutcome) {
+      streamInFlightRef.current = false;
+      setIsRecoveringTurn(false);
+      clearActiveStream('completed');
+    }
+    if (durableExpectedTurnFailed) {
+      lateRecoveryTokenRef.current = null;
+      streamInFlightRef.current = false;
+      setIsRecoveringTurn(false);
+      clearActiveStream('error');
+      setError('The tutor could not finish that answer. Please try again.');
+      return { foundExpectedTurn: true, completed: false, failed: true };
+    }
+    if (expectedUserTurn && recoveredCompletedOutcome) {
+      setError(activeTurn?.status === 'processing' ? TRANSIENT_PROCESSING_MESSAGE : null);
+      return { foundExpectedTurn: true, completed: true, failed: false };
+    }
+    if (activeTurn?.status === 'processing') {
+      setError(TRANSIENT_PROCESSING_MESSAGE);
+      return { foundExpectedTurn: true, completed: false, failed: false };
+    }
+    if (expectedUserTurn) {
+      setError(TRANSIENT_PROCESSING_MESSAGE);
+      return { foundExpectedTurn: true, completed: false, failed: false };
+    }
+    if (!expectedUserTurn && !completedOpeningOutcome) {
+      return { foundExpectedTurn: false, completed: false, failed: false };
+    }
+    setError(null);
+    return { foundExpectedTurn: true, completed: true, failed: false };
+  }, [clearActiveStream, runBoundedTranscriptRequest, sessionId]);
+
+  const restoreTranscriptSnapshot = useCallback(async (
+    expectedUserTurn?: ExpectedUserTurn,
+    shouldApply?: () => boolean
+  ): Promise<boolean> => {
+    const outcome = await restoreTranscriptSnapshotOutcome(expectedUserTurn, shouldApply);
+    return outcome.completed;
+  }, [restoreTranscriptSnapshotOutcome]);
+
+  const streamTurn = useCallback(async (
+    userInput?: string,
+    clientTurnId?: string,
+    assessmentAction?: AssessmentClientAction
+  ): Promise<StreamTurnResult> => {
     if (userInput && pendingTransition) {
       setError('Start the next skill before sending another answer.');
       return { started: false, completed: false };
@@ -284,15 +789,29 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
       return { started: false, completed: false };
     }
     streamInFlightRef.current = true;
+    activeStreamTokenRef.current = null;
     if (clientRef.current) {
       clientRef.current.disconnect();
     }
+    const streamToken = crypto.randomUUID();
+    activeStreamTokenRef.current = streamToken;
+    streamEventRevisionRef.current = 0;
+    const isActiveStream = () => activeStreamTokenRef.current === streamToken;
+    const activeClientTurnId = clientTurnId ?? crypto.randomUUID();
+    const expectedUserTurn = userInput
+      ? { clientTurnId: activeClientTurnId, userInput }
+      : undefined;
+    const nextStreamKind: Exclude<ActiveStreamKind, null> = expectedUserTurn
+      ? 'learner_turn'
+      : 'opening';
 
     let optimisticUserMessageId: string | null = null;
     let opened = false;
+    let accepted = false;
+    const streamStartedAt = Date.now();
     const previousGamePrompt = gamePrompt;
     try {
-      setIsStreaming(true);
+      startActiveStream(nextStreamKind);
       pendingVisibleSimTurnRef.current = null;
       pendingGamePromptFrameRef.current = null;
       gamePromptSeenThisStreamRef.current = false;
@@ -305,7 +824,7 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
       // Close any bubble left open by the previous turn so this turn's first token
       // starts fresh, and reset the speaker so a new turn never inherits the prior
       // turn's persona name; only a 'speaker' frame on this turn may set it again.
-      setMessages(finalizeOpen);
+      setMessages(prev => dedupeAdjacentDuplicateMessages(finalizeOpen(prev)));
       currentSpeakerRef.current = undefined;
       if (userInput) {
         const optimisticId = `user-${crypto.randomUUID()}`;
@@ -321,9 +840,12 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
       let body: Record<string, unknown> | undefined = {
         session_id: sessionId,
         user_input: userInput,
-        client_turn_id: clientTurnId ?? crypto.randomUUID(),
+        client_turn_id: activeClientTurnId,
         expected_session_version: state?.session_version,
       };
+      if (assessmentAction) {
+        body.assessment_action = assessmentAction;
+      }
 
       if (!userInput && isOpening) {
         url = `/api/session/${sessionId}/opening`;
@@ -332,13 +854,194 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
       }
 
       const headers = await getAuthHeaders();
+      if (!isActiveStream() || activeSessionIdRef.current !== sessionId) {
+        return { started: false, completed: false };
+      }
       let settled = false;
+      let recoveryTimer: ReturnType<typeof setTimeout> | null = null;
+      let maxDurationTimer: ReturnType<typeof setTimeout> | null = null;
       const completion = new Promise<StreamTurnResult>((resolve) => {
         const settle = (value: StreamTurnResult) => {
           if (settled) return;
           settled = true;
+          if (activeStreamSettleRef.current === settle) {
+            activeStreamSettleRef.current = null;
+          }
+          if (recoveryTimer) {
+            clearTimeout(recoveryTimer);
+            recoveryTimer = null;
+          }
+          if (maxDurationTimer) {
+            clearTimeout(maxDurationTimer);
+            maxDurationTimer = null;
+          }
           resolve(value);
         };
+        activeStreamSettleRef.current = settle;
+
+        let recoveryPollCount = 0;
+        let lateRecoveryStarted = false;
+        const startLateRecovery = () => {
+          if (
+            lateRecoveryStarted ||
+            settled ||
+            !expectedUserTurn ||
+            !isActiveStream() ||
+            activeSessionIdRef.current !== sessionId ||
+            !shouldStartLateTurnRecovery({
+              accepted,
+              hasLearnerTurn: Boolean(expectedUserTurn),
+              elapsedMs: Date.now() - streamStartedAt,
+              normalOwnershipMs: SESSION_STREAM_MAX_DURATION_MS,
+            })
+          ) {
+            return false;
+          }
+          lateRecoveryStarted = true;
+          const lateRecoveryToken = crypto.randomUUID();
+          const lateRecoveryDeadline = Date.now() + SESSION_STREAM_LATE_RECOVERY_DURATION_MS;
+          const ownsLateRecovery = () => (
+            lateRecoveryTokenRef.current === lateRecoveryToken &&
+            activeSessionIdRef.current === sessionId
+          );
+
+          lateRecoveryTokenRef.current = lateRecoveryToken;
+          activeStreamTokenRef.current = null;
+          const activeClient = clientRef.current;
+          clientRef.current = null;
+          activeClient?.disconnect();
+          streamInFlightRef.current = true;
+          setIsRecoveringTurn(true);
+          pendingVisibleSimTurnRef.current = null;
+          pendingGamePromptFrameRef.current = null;
+          clearActiveStream('error');
+          setMessages(prev => dedupeAdjacentDuplicateMessages(finalizeOpen(prev)));
+          setError(LATE_RECOVERY_MESSAGE);
+          settle({ started: opened, completed: false });
+
+          void runLateTurnRecovery({
+            expectedClientTurnId: expectedUserTurn.clientTurnId,
+            deadlineMs: lateRecoveryDeadline,
+            maxPolls: SESSION_STREAM_LATE_RECOVERY_MAX_POLLS,
+            pollDelayMs: SESSION_STREAM_LATE_RECOVERY_POLL_DELAY_MS,
+            isOwner: ownsLateRecovery,
+            pollTranscript: (expectedClientTurnId: string, requestDeadlineMs: number) => (
+              restoreTranscriptSnapshotOutcome(
+                { clientTurnId: expectedClientTurnId, userInput: expectedUserTurn.userInput },
+                ownsLateRecovery,
+                true,
+                requestDeadlineMs
+              )
+            ),
+          }).then((outcome) => {
+            if (!ownsLateRecovery() || outcome.status === 'cancelled') return;
+            lateRecoveryTokenRef.current = null;
+            streamInFlightRef.current = false;
+            setIsRecoveringTurn(false);
+            if (outcome.status === 'completed') {
+              setError(null);
+            } else if (outcome.status === 'failed') {
+              setError('The tutor could not finish that answer. Please try again.');
+            } else if (outcome.status === 'terminal') {
+              // The transcript restore path already supplied the terminal message.
+            } else if (outcome.status === 'exhausted') {
+              setError(LATE_RECOVERY_EXHAUSTED_MESSAGE);
+            }
+          });
+          return true;
+        };
+        const scheduleRecoveryPoll = (delayMs: number) => {
+          if (recoveryTimer) {
+            clearTimeout(recoveryTimer);
+          }
+          recoveryTimer = setTimeout(() => {
+            if (settled) return;
+            const recover = async () => {
+              const recoveryRevision = streamEventRevisionRef.current;
+              try {
+                const recovered = await restoreTranscriptSnapshot(
+                  expectedUserTurn,
+                  () => isActiveStream() && streamEventRevisionRef.current === recoveryRevision
+                );
+                if (!isActiveStream() || streamEventRevisionRef.current !== recoveryRevision) return;
+                if (recovered) {
+                  if (!isActiveStream()) return;
+                  clientRef.current?.disconnect();
+                  activeStreamTokenRef.current = null;
+                  streamInFlightRef.current = false;
+                  pendingVisibleSimTurnRef.current = null;
+                  pendingGamePromptFrameRef.current = null;
+                  clearActiveStream('completed');
+                  settle({ started: true, completed: true });
+                  return;
+                }
+              } catch {
+                // Keep polling until the bounded recovery budget is exhausted.
+              }
+              recoveryPollCount += 1;
+              if (recoveryPollCount >= SESSION_STREAM_RECOVERY_MAX_POLLS) {
+                if (startLateRecovery()) return;
+                if (accepted && expectedUserTurn) {
+                  // The accepted turn still belongs to the backend. Stop the
+                  // early polls and let the 150-second backstop transfer
+                  // ownership to bounded late recovery.
+                  return;
+                }
+                if (!isActiveStream()) return;
+                clientRef.current?.disconnect();
+                activeStreamTokenRef.current = null;
+                streamInFlightRef.current = false;
+                pendingVisibleSimTurnRef.current = null;
+                pendingGamePromptFrameRef.current = null;
+                clearActiveStream('error');
+                setError('The tutor is still working. Reopen this session in a moment if the answer does not appear.');
+                settle({ started: opened, completed: false });
+                return;
+              }
+              scheduleRecoveryPoll(SESSION_STREAM_RECOVERY_POLL_DELAY_MS);
+            };
+            void recover();
+          }, delayMs);
+        };
+        const scheduleMaxDurationBackstop = () => {
+          maxDurationTimer = setTimeout(() => {
+            if (settled || !isActiveStream()) return;
+            const recoverOrRelease = async () => {
+              let recovered = false;
+              const recoveryRevision = streamEventRevisionRef.current;
+              try {
+                recovered = await restoreTranscriptSnapshot(
+                  expectedUserTurn,
+                  () => isActiveStream() && streamEventRevisionRef.current === recoveryRevision
+                );
+              } catch {
+                recovered = false;
+              }
+              if (settled || !isActiveStream()) return;
+              if (streamEventRevisionRef.current !== recoveryRevision) {
+                scheduleMaxDurationBackstop();
+                return;
+              }
+              if (startLateRecovery()) return;
+              clientRef.current?.disconnect();
+              activeStreamTokenRef.current = null;
+              streamInFlightRef.current = false;
+              pendingVisibleSimTurnRef.current = null;
+              pendingGamePromptFrameRef.current = null;
+              clearActiveStream(recovered ? 'completed' : 'error');
+              if (recovered) {
+                settle({ started: true, completed: true });
+                return;
+              }
+              setError('The tutor is still working. Reopen this session in a moment if the answer does not appear.');
+              settle({ started: opened, completed: false });
+            };
+            void recoverOrRelease();
+          }, SESSION_STREAM_MAX_DURATION_MS);
+        };
+
+        scheduleRecoveryPoll(SESSION_STREAM_RECOVERY_FIRST_POLL_MS);
+        scheduleMaxDurationBackstop();
 
         const client = new ZiddSSEClient(url, {
           method,
@@ -348,13 +1051,58 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
             opened = true;
           },
           onEvent: (eventName, data) => {
+            if (!isActiveStream()) return;
+            if (eventName !== 'heartbeat') {
+              streamEventRevisionRef.current += 1;
+            }
+            if (eventName !== 'accepted' && eventName !== 'heartbeat' && recoveryTimer) {
+              clearTimeout(recoveryTimer);
+              recoveryTimer = null;
+            }
+            if (eventName === 'accepted') {
+              accepted = true;
+            }
             handleEvent(eventName, data);
+            if (eventName !== 'done' && eventName !== 'accepted' && eventName !== 'heartbeat') {
+              recoveryPollCount = 0;
+              scheduleRecoveryPoll(SESSION_STREAM_RECOVERY_POLL_DELAY_MS);
+            }
             if (eventName === 'accepted') opened = true;
             if (eventName === 'done') settle({ started: true, completed: true });
           },
-          onError: (err) => {
+          onError: async (err) => {
+            if (!isActiveStream()) return;
+            if (
+              err.code === 'session_expired' ||
+              err.status === 401 ||
+              err.status === 403 ||
+              err.status === 410
+            ) {
+              lateRecoveryTokenRef.current = null;
+              activeStreamTokenRef.current = null;
+              streamInFlightRef.current = false;
+              setIsRecoveringTurn(false);
+              clearActiveStream('error');
+              if (err.code === 'session_expired' || err.status === 410) {
+                setNotFound(true);
+                setError('This session has expired. Start a new session from your path.');
+              } else {
+                setError('Your sign-in expired while this answer was processing. Sign in again, then reopen the session.');
+              }
+              settle({ started: accepted, completed: false });
+              return;
+            }
+            if (accepted && expectedUserTurn) {
+              setAvatarEmotion(undefined);
+              setAffect(undefined);
+              setError(TRANSIENT_PROCESSING_MESSAGE);
+              if (startLateRecovery()) return;
+              // Post-accept transport failures do not release learner input.
+              // onComplete or the 150-second backstop owns recovery.
+              return;
+            }
             streamInFlightRef.current = false;
-            setIsStreaming(false);
+            clearActiveStream('error');
             // Clear affect so the avatar doesn't keep showing the prior turn's mood
             // behind an error banner.
             setAvatarEmotion(undefined);
@@ -366,7 +1114,33 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
               setError(opened ? 'The tutor is still working. Reopen this session in a moment if the answer does not appear.' : 'The tutor took too long to start. Please try again.');
             } else if (err.message?.includes('SSE stream idle timeout')) {
               setError('The tutor is still working. Reopen this session in a moment if the answer does not appear.');
-            } else if (err.code === 'turn_version_consumed') {
+            } else if (err.code === 'turn_version_consumed' || err.code === 'turn_in_progress') {
+              if (expectedUserTurn) {
+                const outcome = await restoreTranscriptSnapshotOutcome(
+                  expectedUserTurn,
+                  () => isActiveStream() && activeSessionIdRef.current === sessionId
+                );
+                if (!isActiveStream() || activeSessionIdRef.current !== sessionId) return;
+                if (outcome.completed) {
+                  if (!opened && optimisticUserMessageId) {
+                    setMessages(prev => prev.filter(message => message.id !== optimisticUserMessageId));
+                  }
+                  activeStreamTokenRef.current = null;
+                  settle({ started: true, completed: true });
+                  return;
+                }
+                if (outcome.foundExpectedTurn) {
+                  if (!opened && optimisticUserMessageId) {
+                    setMessages(prev => prev.filter(message => message.id !== optimisticUserMessageId));
+                  }
+                  opened = true;
+                  streamInFlightRef.current = true;
+                  startActiveStream('learner_turn');
+                  setError(TRANSIENT_PROCESSING_MESSAGE);
+                  scheduleRecoveryPoll(SESSION_STREAM_RECOVERY_POLL_DELAY_MS);
+                  return;
+                }
+              }
               setError('That answer is already being handled. Wait for the latest response, then try again if needed.');
             } else if (err.code === 'session_version_conflict') {
               setError('This session changed in another tab. Reload the session before sending another answer.');
@@ -389,27 +1163,56 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
             if (!opened && previousGamePrompt) {
               setGamePrompt(previousGamePrompt);
             }
-            if (!opened) settle({ started: false, completed: false });
+            if (!opened) {
+              activeStreamTokenRef.current = null;
+              settle({ started: false, completed: false });
+            }
           },
           // EOF backstop: clears the streaming lock on every clean stream close,
           // even one that ended without a `done` frame (backend generator died
           // mid-token). Idempotent with the `done` handler on the happy path.
           onComplete: ({ doneSeen }) => {
-            streamInFlightRef.current = false;
-            pendingVisibleSimTurnRef.current = null;
-            if (!doneSeen) {
-              pendingGamePromptFrameRef.current = null;
-            }
-            setIsStreaming(false);
-            setMessages(finalizeOpen);
-            if (!opened && optimisticUserMessageId) {
-              setMessages(prev => prev.filter(message => message.id !== optimisticUserMessageId));
-            }
-            if (!opened && previousGamePrompt) {
-              setGamePrompt(previousGamePrompt);
-            }
-            settle({ started: opened || doneSeen, completed: doneSeen });
+            if (!isActiveStream()) return;
+            const finish = async () => {
+              let recovered = false;
+              if (!doneSeen) {
+                if (opened) {
+                  try {
+                    recovered = await restoreTranscriptSnapshot(
+                      expectedUserTurn,
+                      () => isActiveStream() && activeSessionIdRef.current === sessionId
+                    );
+                  } catch {
+                    recovered = false;
+                  }
+                }
+              }
+              if (!isActiveStream() || activeSessionIdRef.current !== sessionId) return;
+              if (!doneSeen && opened && !recovered && startLateRecovery()) return;
+              if (!doneSeen && accepted && expectedUserTurn && !recovered) {
+                // The backend accepted this learner turn. Keep ownership until
+                // the normal 150-second budget can hand it to late recovery.
+                return;
+              }
+              if (!doneSeen) {
+                pendingGamePromptFrameRef.current = null;
+              }
+              activeStreamTokenRef.current = null;
+              streamInFlightRef.current = false;
+              pendingVisibleSimTurnRef.current = null;
+              clearActiveStream(doneSeen || recovered ? 'completed' : 'error');
+              setMessages(prev => dedupeAdjacentDuplicateMessages(finalizeOpen(prev)));
+              if (!opened && optimisticUserMessageId) {
+                setMessages(prev => prev.filter(message => message.id !== optimisticUserMessageId));
+              }
+              if (!opened && previousGamePrompt) {
+                setGamePrompt(previousGamePrompt);
+              }
+              settle({ started: opened || doneSeen || recovered, completed: doneSeen || recovered });
+            };
+            void finish();
           },
+          idleTimeoutMs: SESSION_STREAM_IDLE_TIMEOUT_MS,
         });
 
         clientRef.current = client;
@@ -418,8 +1221,12 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
 
       return completion;
     } catch {
+      if (!isActiveStream() || activeSessionIdRef.current !== sessionId) {
+        return { started: false, completed: false };
+      }
+      activeStreamTokenRef.current = null;
       streamInFlightRef.current = false;
-      setIsStreaming(false);
+      clearActiveStream('error');
       if (!opened && optimisticUserMessageId) {
         setMessages(prev => prev.filter(message => message.id !== optimisticUserMessageId));
       }
@@ -438,6 +1245,10 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
     state?.block_reason,
     pendingTransition,
     gamePrompt,
+    clearActiveStream,
+    restoreTranscriptSnapshot,
+    restoreTranscriptSnapshotOutcome,
+    startActiveStream,
   ]);
 
   // Mount entry point: rehydrate an existing transcript if the session already
@@ -452,29 +1263,36 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
       return;
     }
     bootstrappedSessionRef.current = bootstrapKey;
+    const bootstrapGeneration = ++bootstrapGenerationRef.current;
+    const ownsBootstrap = () => (
+      bootstrapGenerationRef.current === bootstrapGeneration &&
+      activeSessionIdRef.current === sessionId &&
+      bootstrappedSessionRef.current === bootstrapKey
+    );
+    const bootstrapDeadline = Date.now() + SESSION_STREAM_MAX_DURATION_MS;
     setIsBootstrapping(true);
 
     const applyTranscriptSnapshot = (data: TranscriptResponse) => {
+      if (!ownsBootstrap()) return null;
       const pending = data.pending_transition ?? data.state?.pending_transition ?? null;
       const restoredGamePrompt = data.game_prompt ?? null;
-      const restoredMessages = Array.isArray(data.messages)
-        ? data.messages
-            .filter((m) => {
-              if (!restoredGamePrompt || m.role !== 'assistant') return true;
-              return !String(m.content).includes(restoredGamePrompt.sentence);
-            })
-            .map((m) => ({
-              id: m.id,
-              role: m.role,
-              content: cleanRestoredTranscriptContent(m.content),
-              speaker_name: m.speaker_name ?? undefined,
-              speaker_id: m.speaker_id ?? undefined,
-              node_id: m.node_id ?? undefined,
-              transition_id: m.transition_id ?? undefined,
-              message_kind: m.message_kind ?? undefined,
-              status: m.status ?? undefined,
-            }))
-        : [];
+      const restoredMessages = normalizeTranscriptMessages(data.messages, restoredGamePrompt);
+      const activeTurn = data.active_turn ?? data.state?.active_turn ?? null;
+      const blockReason = data.block_reason ?? data.state?.block_reason;
+      const observedClientTurnId =
+        activeTurn?.status === 'processing' &&
+        blockReason === 'turn_processing' &&
+        !durableTurnSettled(data.state?.last_turn, activeTurn.client_turn_id) &&
+        activeTurn.client_turn_id
+          ? activeTurn.client_turn_id
+          : null;
+      const observedTurnFailed = Boolean(
+        activeTurn?.status === 'processing' &&
+        blockReason === 'turn_processing' &&
+        data.state?.last_turn?.client_turn_id === activeTurn.client_turn_id &&
+        data.state?.last_turn?.status === 'failed'
+      );
+      const recoveredTurn = recoverTurnLockFromTranscript(data);
       const terminalSession = Boolean(
         data.state?.session_over ||
         data.state?.status === 'ended' ||
@@ -486,13 +1304,19 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
           ...data.state,
           session_version: data.session_version ?? data.state.session_version,
           pending_transition: pending,
-          active_turn: data.active_turn ?? data.state.active_turn ?? null,
-          input_allowed: data.input_allowed ?? data.state.input_allowed,
-          block_reason: data.block_reason ?? data.state.block_reason,
+          active_turn: recoveredTurn.activeTurn,
+          input_allowed: recoveredTurn.inputAllowed,
+          block_reason: recoveredTurn.blockReason,
           opening_streamed: data.opening_streamed ?? data.state.opening_streamed,
         });
-        if (data.active_turn?.status === 'processing' || data.state.active_turn?.status === 'processing') {
-          setError('Your last answer is still being processed. Wait here or reload in a moment.');
+        const activeTurn = recoveredTurn.activeTurn;
+        const visibleAssistantReply = restoredMessages.length > 0 && restoredMessages[restoredMessages.length - 1]?.role === 'assistant';
+        if (observedTurnFailed) {
+          setError('The tutor could not finish that answer. Please try again.');
+        } else if (activeTurn?.status === 'processing' && !visibleAssistantReply) {
+          setError(TRANSIENT_PROCESSING_MESSAGE);
+        } else {
+          setError(null);
         }
         if (data.state.simulation_round) {
           setSimTurn(data.state.simulation_round);
@@ -509,6 +1333,7 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
         }
       }
       setPendingTransition(pending);
+      setSessionRecap(data.session_recap ?? null);
       setGamePrompt(restoredGamePrompt);
       if (restoredMessages.length > 0) {
         setMessages(restoredMessages);
@@ -519,6 +1344,7 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
 
       const openingAvailable = Boolean(
         restoredGamePrompt ||
+        hasOpeningTranscriptMessage(restoredMessages) ||
         data.opening_streamed ||
         pending ||
         terminalSession
@@ -528,12 +1354,24 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
         terminalSession,
         openingAvailable,
         shouldStreamOpening: isOpening && !openingAvailable,
+        observedClientTurnId,
       };
     };
 
-    const fetchTranscriptSnapshot = async () => {
-      const headers = await getAuthHeaders();
-      const res = await fetch(`/api/session/${sessionId}/transcript`, { headers });
+    const fetchTranscriptSnapshot = async (deadlineMs: number) => {
+      if (!ownsBootstrap()) return null;
+      const { res, data } = await runBoundedTranscriptRequest(deadlineMs, async (signal) => {
+        const headers = await getAuthHeaders();
+        throwIfAborted(signal);
+        if (!ownsBootstrap()) throw abortError();
+        const response = await fetch(`/api/session/${sessionId}/transcript`, { headers, signal });
+        throwIfAborted(signal);
+        if (!response.ok) return { res: response, data: null };
+        const transcript = (await response.json()) as TranscriptResponse;
+        throwIfAborted(signal);
+        return { res: response, data: transcript };
+      });
+      if (!ownsBootstrap()) return null;
       if (res.status === 404 || res.status === 410) {
         setNotFound(true);
         setIsBootstrapping(false);
@@ -542,59 +1380,135 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
       if (!res.ok) {
         throw new Error(`transcript_restore_failed:${res.status}`);
       }
-      return (await res.json()) as TranscriptResponse;
+      if (!ownsBootstrap()) return null;
+      if (!data) throw new Error('transcript_restore_failed:empty');
+      return data;
     };
 
-    const recoverOpeningFromTranscript = async (): Promise<boolean> => {
-      for (let attempt = 0; attempt < OPENING_RECOVERY_POLL_ATTEMPTS; attempt += 1) {
+    const recoverOpeningFromTranscript = async (recoveryDeadline: number): Promise<boolean> => {
+      for (
+        let attempt = 0;
+        attempt < OPENING_RECOVERY_POLL_ATTEMPTS && Date.now() < recoveryDeadline;
+        attempt += 1
+      ) {
+        if (!ownsBootstrap()) return false;
         if (attempt > 0) {
-          await delay(OPENING_RECOVERY_POLL_DELAY_MS);
+          const remainingMs = recoveryDeadline - Date.now();
+          if (remainingMs <= 0) return false;
+          await delay(Math.min(OPENING_RECOVERY_POLL_DELAY_MS, remainingMs));
+          if (!ownsBootstrap()) return false;
         }
-        const data = await fetchTranscriptSnapshot();
-        if (!data) return true;
-        const snapshot = applyTranscriptSnapshot(data);
-        if (snapshot.terminalSession || snapshot.openingAvailable) {
-          setError(null);
-          return true;
+        try {
+          const data = await fetchTranscriptSnapshot(recoveryDeadline);
+          if (!data) return true;
+          const snapshot = applyTranscriptSnapshot(data);
+          if (!snapshot) return false;
+          if (snapshot.terminalSession || snapshot.openingAvailable) {
+            setError(null);
+            return true;
+          }
+        } catch {
+          continue;
         }
       }
       return false;
     };
 
-    let shouldStreamOpening = isOpening;
+    const recoverRestoredProcessingTurn = async (
+      observedClientTurnId: string
+    ): Promise<void> => {
+      const recoveryToken = crypto.randomUUID();
+      const recoveryDeadline = Date.now() + SESSION_STREAM_LATE_RECOVERY_DURATION_MS;
+      const ownsRestoredRecovery = () => (
+        ownsBootstrap() && lateRecoveryTokenRef.current === recoveryToken
+      );
+
+      lateRecoveryTokenRef.current = recoveryToken;
+      streamInFlightRef.current = true;
+      setIsRecoveringTurn(true);
+      setError(LATE_RECOVERY_MESSAGE);
+
+      const outcome = await runLateTurnRecovery({
+        expectedClientTurnId: observedClientTurnId,
+        deadlineMs: recoveryDeadline,
+        maxPolls: SESSION_STREAM_LATE_RECOVERY_MAX_POLLS,
+        pollDelayMs: SESSION_STREAM_LATE_RECOVERY_POLL_DELAY_MS,
+        isOwner: ownsRestoredRecovery,
+        pollTranscript: (expectedClientTurnId: string, requestDeadlineMs: number) => (
+          restoreTranscriptSnapshotOutcome(
+            { clientTurnId: expectedClientTurnId, userInput: '' },
+            ownsRestoredRecovery,
+            true,
+            requestDeadlineMs
+          )
+        ),
+      });
+      if (!ownsRestoredRecovery() || outcome.status === 'cancelled') return;
+
+      lateRecoveryTokenRef.current = null;
+      streamInFlightRef.current = false;
+      setIsRecoveringTurn(false);
+      if (outcome.status === 'completed') {
+        setError(null);
+      } else if (outcome.status === 'failed') {
+        setError('The tutor could not finish that answer. Please try again.');
+      } else if (outcome.status === 'exhausted') {
+        setError(LATE_RECOVERY_EXHAUSTED_MESSAGE);
+      }
+    };
+
     try {
-      const data = await fetchTranscriptSnapshot();
+      let shouldStreamOpening = isOpening;
+      const data = await fetchTranscriptSnapshot(bootstrapDeadline);
       if (!data) return;
       const snapshot = applyTranscriptSnapshot(data);
+      if (!snapshot) return;
       shouldStreamOpening = snapshot.shouldStreamOpening;
       if (snapshot.terminalSession) {
-        setIsBootstrapping(false);
         return;
       }
-    } catch {
-      shouldStreamOpening = false;
-      bootstrappedSessionRef.current = null;
-      setError('Could not restore this session. Retry from the path or reload this page.');
-    }
-    if (shouldStreamOpening) {
-      const result = await streamTurn();
-      if (!result.completed) {
-        const recovered = await recoverOpeningFromTranscript();
-        if (!recovered) {
-          setError('The opening is still loading. Reload this session in a moment if it does not appear.');
+      if (snapshot.observedClientTurnId) {
+        void recoverRestoredProcessingTurn(snapshot.observedClientTurnId);
+        return;
+      }
+      if (shouldStreamOpening) {
+        const result = await streamTurn();
+        if (!ownsBootstrap()) return;
+        if (!result.completed) {
+          const recovered = await recoverOpeningFromTranscript(bootstrapDeadline);
+          if (!recovered && ownsBootstrap()) {
+            setError('The opening is still loading. Reload this session in a moment if it does not appear.');
+          }
         }
       }
+    } catch {
+      if (ownsBootstrap()) {
+        bootstrappedSessionRef.current = null;
+        setError('Could not restore this session. Retry from the path or reload this page.');
+      }
+    } finally {
+      if (ownsBootstrap()) {
+        setIsBootstrapping(false);
+      }
     }
-    setIsBootstrapping(false);
-  }, [sessionId, isOpening, streamTurn]);
+  }, [isOpening, restoreTranscriptSnapshotOutcome, runBoundedTranscriptRequest, sessionId, streamTurn]);
 
   const disconnect = useCallback(() => {
+    abortTranscriptRequests();
+    bootstrapGenerationRef.current += 1;
+    bootstrappedSessionRef.current = null;
+    activeStreamSettleRef.current?.({ started: false, completed: false });
+    activeStreamSettleRef.current = null;
+    lateRecoveryTokenRef.current = null;
+    setIsRecoveringTurn(false);
+    activeStreamTokenRef.current = null;
     if (clientRef.current) {
       clientRef.current.disconnect();
-      setIsStreaming(false);
+      clientRef.current = null;
     }
+    clearActiveStream('disconnected');
     streamInFlightRef.current = false;
-  }, []);
+  }, [abortTranscriptRequests, clearActiveStream]);
 
   // Close the session server-side and pull the scored simulation report. Safe to
   // await from a render effect OR a manual "End & Score" click: the closingRef
@@ -673,6 +1587,8 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
     error: sessionIdChanged ? null : error,
     notFound: sessionIdChanged ? false : notFound,
     isStreaming: sessionIdChanged ? false : isStreaming,
+    isRecoveringTurn: sessionIdChanged ? false : isRecoveringTurn,
+    activeStreamKind: sessionIdChanged ? null : activeStreamKind,
     isBootstrapping: sessionIdChanged || isBootstrapping,
     bootstrap,
     streamTurn,

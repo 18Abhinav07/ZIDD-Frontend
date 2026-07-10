@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useId, memo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useZiddSession } from '@/hooks/useZiddSession';
+import { slowStreamCopyFor, statusForActiveStream } from '@/lib/sessionStreamPresentation.mjs';
 import { friendlySessionStartErrorMessage, startSessionWithPaywall } from '@/services/billing';
 import { MultipleChoiceCard } from '@/components/cards/MultipleChoiceCard';
 import { FillInTheBlankCard } from '@/components/cards/FillInTheBlankCard';
@@ -61,12 +62,13 @@ export default function SessionPage({ params }: { params: { id: string } }) {
     sessionRecap,
     nodeAdvance,
     pendingTransition,
-    adaptationCue,
     avatarEmotion,
     affect,
     error,
     notFound,
     isStreaming,
+    isRecoveringTurn,
+    activeStreamKind,
     isBootstrapping,
     bootstrap,
     streamTurn,
@@ -81,14 +83,19 @@ export default function SessionPage({ params }: { params: { id: string } }) {
   const [slowStream, setSlowStream] = useState(false);
   const [nextSkillError, setNextSkillError] = useState<string | null>(null);
   const [nextSkillPaywall, setNextSkillPaywall] = useState<PaywallDetail | null>(null);
+  const [checkpointStartAction, setCheckpointStartAction] = useState<'next' | 'practice' | null>(null);
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
   const submittingRef = useRef(false);
   const pendingClientTurnIdRef = useRef<string | null>(null);
   const pendingGameTurnIdRef = useRef<string | null>(null);
   const pendingNextStartIdRef = useRef<string | null>(null);
+  const pendingPracticeStartIdRef = useRef<string | null>(null);
+  const pageRequestGenerationRef = useRef(0);
   const answerInputId = useId();
 
   useEffect(() => {
+    pageRequestGenerationRef.current += 1;
     // Deterministic per session id so the coach never reshuffles on reload.
     setAvatar(getAvatarForSeed(id));
     setInputValue('');
@@ -98,13 +105,18 @@ export default function SessionPage({ params }: { params: { id: string } }) {
     setSlowStream(false);
     setNextSkillError(null);
     setNextSkillPaywall(null);
+    setCheckpointStartAction(null);
     submittingRef.current = false;
     pendingClientTurnIdRef.current = null;
     pendingGameTurnIdRef.current = null;
     pendingNextStartIdRef.current = null;
+    pendingPracticeStartIdRef.current = null;
     // Rehydrate an existing transcript or stream the opening (see hook).
     bootstrap();
-    return () => disconnect();
+    return () => {
+      pageRequestGenerationRef.current += 1;
+      disconnect();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -118,7 +130,23 @@ export default function SessionPage({ params }: { params: { id: string } }) {
   }, [isStreaming]);
 
   useEffect(() => {
-    endOfMessagesRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const anchor = endOfMessagesRef.current;
+    const scroller = anchor?.closest<HTMLElement>('[data-tutor-scroll]');
+    if (!scroller) return;
+    const updateAutoScroll = () => {
+      shouldAutoScrollRef.current = (
+        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 160
+      );
+    };
+    updateAutoScroll();
+    scroller.addEventListener('scroll', updateAutoScroll, { passive: true });
+    return () => scroller.removeEventListener('scroll', updateAutoScroll);
+  }, [id, isBootstrapping]);
+
+  useEffect(() => {
+    if (shouldAutoScrollRef.current) {
+      endOfMessagesRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages, isStreaming, gamePrompt]);
 
   useEffect(() => {
@@ -133,11 +161,30 @@ export default function SessionPage({ params }: { params: { id: string } }) {
     && Boolean(state)
     && state?.opening_streamed === false
     && messages.length === 0;
+  const checkpointReached = Boolean(nodeAdvance || pendingTransition);
+  const moduleComplete = Boolean(sessionRecap)
+    || (state?.status === 'ended' && state?.block_reason === 'module_done');
   const inputBlocked = openingRetryActive
     || isBootstrapping
+    || isRecoveringTurn
     || Boolean(pendingTransition)
     || state?.input_allowed === false
     || Boolean(state?.block_reason);
+  const tutorStatusLabel = moduleComplete
+    ? undefined
+    : isBootstrapping
+    ? 'Preparing'
+    : checkpointReached
+    ? 'Checkpoint reached'
+    : isRecoveringTurn
+    ? 'Reviewing'
+    : isStreaming
+    ? statusForActiveStream(activeStreamKind)
+    : isSubmitting
+    ? 'Reviewing'
+    : inputBlocked
+    ? 'Paused'
+    : 'Ready';
 
   const handleSend = async () => {
     const draft = inputValue.trim();
@@ -146,18 +193,26 @@ export default function SessionPage({ params }: { params: { id: string } }) {
     setIsSubmitting(true);
     const clientTurnId = pendingClientTurnIdRef.current ?? crypto.randomUUID();
     pendingClientTurnIdRef.current = clientTurnId;
+    const sendRequestGeneration = pageRequestGenerationRef.current;
+    const ownsSendRequest = () => (
+      pageRequestGenerationRef.current === sendRequestGeneration
+    );
     setInputValue('');
     try {
       const result = await streamTurn(draft, clientTurnId);
+      if (!ownsSendRequest()) return;
       if (!result.started) {
+        pendingClientTurnIdRef.current = null;
         setInputValue(draft);
       }
-      if (result.completed) {
+      if (result.started) {
         pendingClientTurnIdRef.current = null;
       }
     } finally {
-      submittingRef.current = false;
-      setIsSubmitting(false);
+      if (ownsSendRequest()) {
+        submittingRef.current = false;
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -167,17 +222,24 @@ export default function SessionPage({ params }: { params: { id: string } }) {
     setIsSubmitting(true);
     const clientTurnId = pendingGameTurnIdRef.current ?? crypto.randomUUID();
     pendingGameTurnIdRef.current = clientTurnId;
+    const gameRequestGeneration = pageRequestGenerationRef.current;
+    const ownsGameRequest = () => (
+      pageRequestGenerationRef.current === gameRequestGeneration
+    );
     let accepted = false;
     try {
       const result = await streamTurn(answer, clientTurnId);
+      if (!ownsGameRequest()) return false;
       accepted = result.started;
-      if (result.completed) {
+      if (result.started) {
         pendingGameTurnIdRef.current = null;
       }
       return accepted;
     } finally {
-      submittingRef.current = false;
-      setIsSubmitting(false);
+      if (ownsGameRequest()) {
+        submittingRef.current = false;
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -193,12 +255,19 @@ export default function SessionPage({ params }: { params: { id: string } }) {
     }
   };
 
-  const handleStartNextSkill = async () => {
+  const startCheckpointAction = async (
+    action: 'next' | 'practice',
+    confirm: boolean,
+  ) => {
     if (isBootstrapping || isStreaming || isSubmitting || submittingRef.current) return;
-    const nextNodeId = pendingTransition?.to_node || nodeAdvance?.to_node;
+    const nextNodeId = action === 'practice'
+      ? pendingTransition?.from_node
+      : pendingTransition?.to_node || nodeAdvance?.to_node;
     const transitionId = pendingTransition?.transition_id;
     if (!nextNodeId) {
-      setNextSkillError('I could not find the next skill. Go back to your path and try again.');
+      setNextSkillError(action === 'practice'
+        ? 'I could not restart this skill. Reload the session and try again.'
+        : 'I could not find the next skill. Go back to your path and try again.');
       return;
     }
     if (!transitionId) {
@@ -207,27 +276,90 @@ export default function SessionPage({ params }: { params: { id: string } }) {
     }
     submittingRef.current = true;
     setIsSubmitting(true);
+    setCheckpointStartAction(action);
     setNextSkillError(null);
-    const clientStartId = pendingNextStartIdRef.current ?? crypto.randomUUID();
-    pendingNextStartIdRef.current = clientStartId;
+    const startIdRef = action === 'practice'
+      ? pendingPracticeStartIdRef
+      : pendingNextStartIdRef;
+    const clientStartId = startIdRef.current ?? crypto.randomUUID();
+    startIdRef.current = clientStartId;
+    const checkpointRequestGeneration = pageRequestGenerationRef.current;
+    const ownsCheckpointRequest = () => (
+      pageRequestGenerationRef.current === checkpointRequestGeneration
+    );
     try {
       const result = await startSessionWithPaywall({
         competency_node: nextNodeId,
         test_mode: false,
-        confirm: false,
+        confirm,
+        reattempt_confirmed: action === 'practice',
         client_start_id: clientStartId,
         source_session_id: id,
         source_transition_id: transitionId,
+        source_action: action === 'practice' ? 'reattempt' : 'advance',
       });
+      if (!ownsCheckpointRequest()) return;
       if (result.ok) {
-        pendingNextStartIdRef.current = null;
+        startIdRef.current = null;
+        setCheckpointStartAction(null);
         void loadBalance(true).catch(() => null);
         router.push(`/session/${result.session_id}`);
         return;
       }
       setNextSkillPaywall(result.paywall);
     } catch (err) {
-      setNextSkillError(friendlySessionStartErrorMessage(err, 'Could not start the next skill.'));
+      if (!ownsCheckpointRequest()) return;
+      setNextSkillError(friendlySessionStartErrorMessage(
+        err,
+        action === 'practice' ? 'Could not restart this skill.' : 'Could not start the next skill.',
+      ));
+    } finally {
+      if (ownsCheckpointRequest()) {
+        submittingRef.current = false;
+        setIsSubmitting(false);
+      }
+    }
+  };
+
+  const handleStartNextSkill = async () => {
+    await startCheckpointAction('next', false);
+  };
+
+  const handleKeepPracticing = async () => {
+    await startCheckpointAction('practice', false);
+  };
+
+  const startTerminalPractice = async (confirm: boolean) => {
+    if (isBootstrapping || isStreaming || isSubmitting || submittingRef.current) return;
+    const nodeId = state?.competency_node;
+    if (!nodeId) {
+      setNextSkillError('I could not restart this skill. Return to the path and try again.');
+      return;
+    }
+    submittingRef.current = true;
+    setIsSubmitting(true);
+    setCheckpointStartAction('practice');
+    setNextSkillError(null);
+    const clientStartId = pendingPracticeStartIdRef.current ?? crypto.randomUUID();
+    pendingPracticeStartIdRef.current = clientStartId;
+    try {
+      const result = await startSessionWithPaywall({
+        competency_node: nodeId,
+        test_mode: false,
+        confirm,
+        reattempt_confirmed: true,
+        client_start_id: clientStartId,
+      });
+      if (result.ok) {
+        pendingPracticeStartIdRef.current = null;
+        setCheckpointStartAction(null);
+        void loadBalance(true).catch(() => null);
+        router.push(`/session/${result.session_id}`);
+        return;
+      }
+      setNextSkillPaywall(result.paywall);
+    } catch (err) {
+      setNextSkillError(friendlySessionStartErrorMessage(err, 'Could not restart this skill.'));
     } finally {
       submittingRef.current = false;
       setIsSubmitting(false);
@@ -236,77 +368,71 @@ export default function SessionPage({ params }: { params: { id: string } }) {
 
   const handleConfirmNextSkill = async () => {
     if (isBootstrapping || isStreaming || isSubmitting || submittingRef.current) return;
-    const nextNodeId = pendingTransition?.to_node || nodeAdvance?.to_node;
-    const transitionId = pendingTransition?.transition_id;
-    if (!nextNodeId || !transitionId) {
+    if (!checkpointStartAction) {
       setNextSkillPaywall(null);
       setNextSkillError('I could not confirm this skill transition. Reload the session and try again.');
       return;
     }
-    submittingRef.current = true;
-    setIsSubmitting(true);
-    setNextSkillError(null);
-    const clientStartId = pendingNextStartIdRef.current ?? crypto.randomUUID();
-    pendingNextStartIdRef.current = clientStartId;
-    try {
-      const result = await startSessionWithPaywall({
-        competency_node: nextNodeId,
-        test_mode: false,
-        confirm: true,
-        client_start_id: clientStartId,
-        source_session_id: id,
-        source_transition_id: transitionId,
-      });
-      if (result.ok) {
-        pendingNextStartIdRef.current = null;
-        setNextSkillPaywall(null);
-        void loadBalance(true).catch(() => null);
-        router.push(`/session/${result.session_id}`);
-        return;
-      }
-      setNextSkillPaywall(result.paywall);
-    } catch (err) {
-      setNextSkillError(friendlySessionStartErrorMessage(err, 'Could not start the next skill.'));
-    } finally {
-      submittingRef.current = false;
-      setIsSubmitting(false);
+    if (sessionRecap && checkpointStartAction === 'practice') {
+      await startTerminalPractice(true);
+      return;
     }
+    await startCheckpointAction(checkpointStartAction, true);
   };
 
   const handleNextSkillPaywallClose = () => {
+    if (checkpointStartAction === 'practice') {
+      pendingPracticeStartIdRef.current = null;
+    } else {
+      pendingNextStartIdRef.current = null;
+    }
     setNextSkillPaywall(null);
     setNextSkillError(null);
-    pendingNextStartIdRef.current = null;
+    setCheckpointStartAction(null);
   };
 
-  const isProfessional = ['interview_prep', 'gd_prep', 'interview_test', 'gd_test'].includes(state?.task_type || '');
-  const transitionActive = Boolean(nodeAdvance && !isStreaming);
+  const handleReturnToPath = () => {
+    disconnect();
+    router.push('/map');
+  };
+
+  const isProfessional = Boolean(
+    ['interview_prep', 'gd_prep', 'interview_test', 'gd_test'].includes(state?.task_type || '') ||
+    state?.module_id === 'interview' ||
+    state?.module_id === 'group_discussion' ||
+    state?.competency_node?.startsWith('int_') ||
+    state?.competency_node?.startsWith('gd_')
+  );
+  const transitionActive = checkpointReached;
   const transitionMastered = Boolean(
     pendingTransition?.from_node_mastered
     ?? (!isProfessional || pendingTransition?.from_display_status === 'mastered')
   );
-  const transitionGap = pendingTransition?.from_last_gap;
+  const transitionReady = ['ready_to_advance', 'mastered'].includes(
+    pendingTransition?.from_display_status || ''
+  );
+  const transitionGap = transitionReady ? undefined : pendingTransition?.from_last_gap;
   const visibleNodeTitle = transitionActive && pendingTransition?.from_title
     ? pendingTransition.from_title
     : state?.node_title;
+  const latestProgressMastery = progress?.mastery ?? state?.current_mastery ?? 0;
+  const latestReadiness = progress?.readiness_score ?? state?.readiness_score ?? latestProgressMastery;
+  const transitionReadiness = pendingTransition?.from_readiness_score
+    ?? pendingTransition?.from_mastery
+    ?? (transitionReady ? Math.max(latestReadiness, 0.8) : latestReadiness);
   const visibleMastery = transitionActive
-    ? (transitionMastered ? 1 : progress?.mastery ?? state?.current_mastery ?? 0)
-    : state?.current_mastery ?? progress?.mastery ?? 0;
-  const visibleStreak = transitionActive && progress
-    ? progress.clean_streak
-    : state?.clean_streak || 0;
-  const visibleAttempts = transitionActive && progress
-    ? progress.attempts
-    : state?.attempts || 0;
+    ? (transitionMastered ? 1 : transitionReadiness)
+    : latestReadiness;
   const shellNodeTitle = isBootstrapping && !visibleNodeTitle
     ? 'Loading session'
     : visibleNodeTitle;
   const shellPhase = isBootstrapping && !state?.phase
     ? 'Restoring your path'
     : state?.phase;
+  const slowStreamCopy = slowStreamCopyFor(activeStreamKind);
 
   if (notFound) {
-    return <SessionNotFound onBack={() => router.push(isProfessional ? '/mode' : '/map')} />;
+    return <SessionNotFound onBack={() => router.push('/map')} />;
   }
 
   return (
@@ -314,20 +440,18 @@ export default function SessionPage({ params }: { params: { id: string } }) {
     <TutorShell
       nodeTitle={shellNodeTitle}
       mastery={visibleMastery}
-      streak={visibleStreak}
-      attempts={visibleAttempts}
       phase={shellPhase}
       mode={isProfessional ? 'professional' : 'gamified'}
       characterImg={avatar?.url}
-      characterQuote={avatar?.quote}
       characterBg={avatar?.bg}
       emotion={avatarEmotion}
       affect={affect}
+      statusLabel={tutorStatusLabel}
       onBack={() => setConfirmingExit(true)}
     >
-      <div className="flex flex-col h-full p-6 lg:p-10">
+      <div className="flex h-full min-h-0 flex-col">
         {/* Transcript Area */}
-        <div className="flex-1 flex flex-col gap-8 pb-32">
+        <div data-tutor-scroll className="flex-1 min-h-0 overflow-y-auto scroll-smooth flex flex-col gap-8 p-6 lg:p-10 pb-6">
           <AnimatePresence mode="popLayout">
             {messages.length === 0 && !state && !gamePrompt && (isBootstrapping || isStreaming) && (
                <motion.div 
@@ -364,7 +488,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
                 </div>
                 
                 <div className={cn(
-                  "p-5 md:p-6 rounded-[2rem] text-[15px] md:text-base leading-relaxed font-medium",
+                  "p-5 md:p-6 rounded-[2rem] text-[15px] md:text-base leading-relaxed font-medium whitespace-pre-wrap",
                   msg.role === 'user' 
                     ? "bg-foreground text-background rounded-tr-none shadow-[0_10px_30px_rgba(0,0,0,0.08)]" 
                     : "bg-slate-50 border border-slate-100 text-slate-700 rounded-tl-none"
@@ -374,7 +498,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
               </motion.div>
             ))}
 
-            {nodeAdvance && !isStreaming && (
+            {transitionActive && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -384,33 +508,19 @@ export default function SessionPage({ params }: { params: { id: string } }) {
                    <TargetIcon className="w-8 h-8 text-accent" />
                 </div>
                 <h3 className="font-display text-2xl mb-2 text-slate-800">
-                  {transitionMastered ? 'Skill Mastered!' : 'Ready checkpoint reached'}
+                  {transitionMastered ? 'Skill Mastered!' : 'Practice checkpoint reached'}
                 </h3>
                 <p className="text-slate-500 mb-8">
                   {pendingTransition?.to_title
                     ? `Next up: ${pendingTransition.to_title}.`
                     : transitionMastered
                       ? "You've mastered this skill. Ready to move on?"
-                      : "You can continue practising this skill or proceed in a fresh session."}
+                      : "This checkpoint opens the next skill. Use the current gap below to decide whether to keep practising first."}
                 </p>
                 {!transitionMastered && transitionGap && (
                   <p className="max-w-md mx-auto -mt-4 mb-8 text-sm leading-relaxed text-slate-500">
                     Current gap: {transitionGap}
                   </p>
-                )}
-                {adaptationCue && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="inline-flex flex-col items-center gap-2 max-w-md mx-auto mb-8 px-5 py-4 bg-white/60 border border-accent/15 rounded-2xl"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] uppercase tracking-widest font-bold text-accent">Ready to advance</span>
-                    </div>
-                    <p className="text-[13px] text-slate-500 leading-relaxed">
-                      Start the next skill in a fresh session when you&apos;re ready.
-                    </p>
-                  </motion.div>
                 )}
                 {nextSkillError && (
                   <p className="text-[13px] text-red-500 font-semibold mb-5">
@@ -422,12 +532,32 @@ export default function SessionPage({ params }: { params: { id: string } }) {
                   disabled={isBootstrapping || isStreaming || isSubmitting || Boolean(nextSkillPaywall)}
                   className="px-8 py-4 bg-accent text-white rounded-full font-bold uppercase tracking-widest text-sm hover:scale-105 transition-transform shadow-lg shadow-accent/20 disabled:opacity-60 disabled:cursor-wait"
                 >
-                  {isSubmitting ? 'Starting...' : transitionMastered ? 'Start Next Skill' : 'Proceed to Next Skill'}
+                  {isSubmitting ? 'Starting...' : 'Start Next Skill'}
+                </button>
+                {!transitionMastered && (
+                  <button
+                    type="button"
+                    onClick={handleKeepPracticing}
+                    disabled={isBootstrapping || isStreaming || isSubmitting || Boolean(nextSkillPaywall)}
+                    className="mt-3 px-6 py-3 rounded-full border border-slate-200 bg-white text-slate-600 font-bold uppercase tracking-widest text-xs hover:bg-slate-50 transition-colors"
+                  >
+                    {isSubmitting && checkpointStartAction === 'practice'
+                      ? 'Starting Practice...'
+                      : 'Keep Practicing This Skill'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleReturnToPath}
+                  disabled={isSubmitting}
+                  className="mt-3 px-6 py-3 text-slate-500 font-bold uppercase tracking-widest text-xs hover:text-slate-900 transition-colors disabled:opacity-50"
+                >
+                  Return to Path
                 </button>
               </motion.div>
             )}
 
-            {isStreaming && (
+            {isStreaming && !checkpointReached && (
                <motion.div 
                  key="processing"
                  initial={{ opacity: 0, y: 10 }}
@@ -438,7 +568,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
                   <SessionMessageSkeleton />
                   {slowStream && (
                     <p className="mt-4 max-w-sm rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 text-sm font-semibold leading-relaxed text-slate-500" aria-live="polite">
-                      Still working on this turn. Your answer is saved, and the coach response will appear here.
+                      {slowStreamCopy}
                     </p>
                   )}
                </motion.div>
@@ -452,10 +582,10 @@ export default function SessionPage({ params }: { params: { id: string } }) {
         </div>
 
         {/* Input / Action Area */}
-        <div className="absolute bottom-0 left-0 right-0 pt-12 pb-6 px-6 lg:px-10 bg-gradient-to-t from-white via-white to-transparent z-20">
+        <div className="relative z-20 shrink-0 max-h-[65dvh] overflow-y-auto border-t border-slate-100 bg-white px-4 py-4 sm:px-6 lg:px-10">
            <div className="relative max-w-3xl mx-auto">
               <AnimatePresence>
-                {error && (
+                {error && !checkpointReached && (
                   <motion.div 
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -466,7 +596,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
                   </motion.div>
                 )}
 
-                {nodeAdvance && !isStreaming ? null : openingRetryActive ? (
+                {transitionActive ? null : openingRetryActive ? (
                   <motion.div
                     key="opening-retry"
                     layoutId="action-card"
@@ -508,6 +638,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
                       <MultipleChoiceCard
                         sentence={gamePrompt.sentence}
                         hint={gamePrompt.hint}
+                        context={gamePrompt.context}
                         options={gamePrompt.options}
                         onSubmit={handleGameSubmit}
                         disabled={isStreaming || isSubmitting || inputBlocked}
@@ -516,6 +647,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
                       <SpokenAnswerCard
                         sentence={gamePrompt.sentence}
                         hint={gamePrompt.hint}
+                        context={gamePrompt.context}
                         onSubmit={handleGameSubmit}
                         disabled={isStreaming || isSubmitting || inputBlocked}
                       />
@@ -523,6 +655,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
                       <FillInTheBlankCard
                         sentence={gamePrompt.sentence}
                         hint={gamePrompt.hint}
+                        context={gamePrompt.context}
                         onSubmit={handleGameSubmit}
                         disabled={isStreaming || isSubmitting || inputBlocked}
                       />
@@ -536,15 +669,20 @@ export default function SessionPage({ params }: { params: { id: string } }) {
                   >
                     <div className="flex items-center gap-4 px-6 py-3">
                       <ChatBubbleIcon className="text-slate-300 group-focus-within:text-accent transition-colors w-5 h-5" />
-                      <input
+                      <textarea
                         id={answerInputId}
                         name="tutor-response"
                         value={inputValue}
-                        onChange={e => setInputValue(e.target.value)}
+                        rows={1}
+                        onChange={e => {
+                          setInputValue(e.target.value);
+                          e.currentTarget.style.height = 'auto';
+                          e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, 144)}px`;
+                        }}
                         onInput={e => setInputValue(e.currentTarget.value)}
                         placeholder="Type your response..."
                         disabled={isStreaming || isSubmitting || inputBlocked}
-                        className="flex-1 bg-transparent border-none focus:ring-0 text-[15px] font-medium placeholder:text-slate-300 py-3 text-slate-800 outline-none"
+                        className="flex-1 max-h-36 resize-none bg-transparent border-none focus:ring-0 text-[15px] font-medium leading-relaxed placeholder:text-slate-300 py-3 text-slate-800 outline-none"
                         onKeyDown={e => {
                           if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault();
@@ -556,6 +694,8 @@ export default function SessionPage({ params }: { params: { id: string } }) {
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
                         onClick={handleSend} 
+                        aria-label="Send response"
+                        title="Send response"
                         disabled={isStreaming || isSubmitting || inputBlocked || !inputValue.trim()}
                         className="w-14 h-14 rounded-full bg-accent text-white flex items-center justify-center transition-all disabled:opacity-50 disabled:grayscale"
                       >
@@ -569,7 +709,18 @@ export default function SessionPage({ params }: { params: { id: string } }) {
         </div>
         
         {sessionRecap && recapVisible && (
-          <SessionRecap recap={sessionRecap} onClose={() => setRecapVisible(false)} />
+          <SessionRecap
+            recap={sessionRecap}
+            title={state?.module_id === 'interview'
+              ? 'Interview Prep Complete'
+              : state?.module_id === 'group_discussion'
+                ? 'GD Prep Complete'
+                : 'Session Complete'}
+            onPractice={() => void startTerminalPractice(false)}
+            practiceDisabled={isSubmitting || Boolean(nextSkillPaywall)}
+            onClose={handleReturnToPath}
+            returnLabel="Back to Career Map"
+          />
         )}
       </div>
     </TutorShell>
@@ -594,7 +745,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
               Stay
             </button>
             <button
-              onClick={() => { disconnect(); router.push(isProfessional ? '/mode' : '/map'); }}
+              onClick={() => { disconnect(); router.push('/map'); }}
               className="flex-1 px-6 py-3 rounded-full bg-slate-900 text-white font-bold text-sm hover:bg-slate-800 transition-colors"
             >
               Leave

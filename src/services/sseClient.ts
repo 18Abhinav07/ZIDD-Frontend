@@ -51,6 +51,7 @@ export class ZiddSSEClient {
     let doneSeen = false;
     let startupTimedOut = false;
     let idleTimedOut = false;
+    let opened = false;
     const clearStartupTimer = () => {
       if (startupTimer) clearTimeout(startupTimer);
       startupTimer = null;
@@ -107,6 +108,7 @@ export class ZiddSSEClient {
       if (!response.body) {
         throw new Error('Response body is null');
       }
+      opened = true;
       this.onOpen();
 
       const reader = response.body.getReader();
@@ -181,6 +183,9 @@ export class ZiddSSEClient {
         this.onComplete({ doneSeen });
       } else if (err.name !== 'AbortError') {
         this.onError(err);
+        if (opened) {
+          this.onComplete({ doneSeen });
+        }
       }
     }
   }

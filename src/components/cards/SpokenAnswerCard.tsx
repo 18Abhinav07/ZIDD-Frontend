@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 interface SpokenAnswerCardProps {
   sentence: string;
   hint: string;
+  context?: string;
   onSubmit: (answer: string) => Promise<boolean> | boolean;
   disabled?: boolean;
 }
@@ -15,7 +16,7 @@ interface SpokenAnswerCardProps {
 // yourself' in three sentences…"), not fill-in-the-blank sentences — they carry
 // no `___`, so the blank card would render no input at all. This card gives the
 // learner a free-text area to compose their spoken response.
-export function SpokenAnswerCard({ sentence, hint, onSubmit, disabled }: SpokenAnswerCardProps) {
+export function SpokenAnswerCard({ sentence, hint, context, onSubmit, disabled }: SpokenAnswerCardProps) {
   const [value, setValue] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -50,6 +51,11 @@ export function SpokenAnswerCard({ sentence, hint, onSubmit, disabled }: SpokenA
          <ChatBubbleIcon className="text-accent w-4 h-4" />
          <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-500">{hint}</span>
       </div>
+      {context && (
+        <p className="-mt-3 mb-6 text-sm font-normal leading-6 text-slate-500">
+          <span className="font-semibold text-slate-700">Why this exercise: </span>{context}
+        </p>
+      )}
 
       <p className="text-2xl font-display leading-tight mb-8 text-slate-900">
         {sentence}
@@ -61,7 +67,7 @@ export function SpokenAnswerCard({ sentence, hint, onSubmit, disabled }: SpokenA
         autoFocus
         value={value}
         onChange={e => setValue(e.target.value)}
-        placeholder="Speak your answer here…"
+        placeholder="Type what you would say…"
         rows={4}
         className="w-full mb-8 rounded-[1.5rem] border-[1.5px] border-slate-200/60 bg-slate-50/50 px-6 py-5 text-[15px] font-body font-medium leading-relaxed text-slate-800 placeholder:text-slate-300 outline-none transition-all focus:border-accent/40 focus:bg-white focus:ring-4 focus:ring-accent/10 resize-none disabled:cursor-wait disabled:bg-slate-100 disabled:text-slate-400 disabled:placeholder:text-slate-300"
         onKeyDown={e => {

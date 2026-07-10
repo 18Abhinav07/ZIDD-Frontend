@@ -8,9 +8,7 @@ import type { DoneFrame } from '@/types';
 import {
   ChevronLeftIcon,
   MagicWandIcon,
-  LightningBoltIcon,
   StarIcon,
-  InfoCircledIcon,
   ExitIcon,
 } from '@radix-ui/react-icons';
 import Image from 'next/image';
@@ -29,19 +27,17 @@ interface TutorShellProps {
   children: React.ReactNode;
   nodeTitle?: string;
   mastery: number;
-  streak: number;
-  attempts: number;
   phase?: string;
   mode?: 'professional' | 'gamified';
   onBack: () => void;
   characterImg?: string;
-  characterQuote?: string;
   characterBg?: string;
   emotion?: DoneFrame['avatar_emotion'];
   affect?: DoneFrame['affect'];
+  statusLabel?: string;
 }
 
-const AvatarTile = memo(function AvatarTile({ characterImg, characterQuote, mode, characterBg, emotion, affect }: { characterImg?: string, characterQuote?: string, mode: string, characterBg?: string, emotion?: DoneFrame['avatar_emotion'], affect?: DoneFrame['affect'] }) {
+const AvatarTile = memo(function AvatarTile({ characterImg, mode, characterBg, emotion, affect, statusLabel }: { characterImg?: string, mode: string, characterBg?: string, emotion?: DoneFrame['avatar_emotion'], affect?: DoneFrame['affect'], statusLabel?: string }) {
   const treatment = getEmotionTreatment(emotion);
   const supportNote = getAffectSupportNote(affect);
   return (
@@ -57,7 +53,7 @@ const AvatarTile = memo(function AvatarTile({ characterImg, characterQuote, mode
       {/* Emotion mood chip */}
       <AnimatePresence mode="wait">
         <motion.div
-          key={emotion ?? 'neutral'}
+          key={`${emotion ?? 'neutral'}:${statusLabel ?? ''}`}
           initial={{ opacity: 0, y: -6 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -6 }}
@@ -69,7 +65,7 @@ const AvatarTile = memo(function AvatarTile({ characterImg, characterQuote, mode
             style={{ backgroundColor: treatment.ring }}
           />
           <span className="text-[10px] uppercase tracking-widest font-bold text-slate-600">
-            {treatment.label}
+            {statusLabel ?? treatment.label}
           </span>
         </motion.div>
       </AnimatePresence>
@@ -113,35 +109,19 @@ const AvatarTile = memo(function AvatarTile({ characterImg, characterQuote, mode
         )}
       </AnimatePresence>
 
-      {/* Coaching note floating badge */}
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-        className="mt-auto w-full bg-white/80 backdrop-blur-md rounded-2xl p-5 border border-slate-200/50 shadow-sm relative z-20"
-      >
-        <div className="flex items-center gap-2 mb-2">
-          <InfoCircledIcon className="text-accent w-4 h-4" />
-          <span className="text-[10px] uppercase tracking-widest font-bold text-slate-500">Coach Note</span>
-        </div>
-        <p className="text-sm font-medium leading-relaxed text-slate-700">
-          {characterQuote}
-        </p>
-        <AnimatePresence>
-          {supportNote && (
-            <motion.p
-              key={supportNote}
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.4 }}
-              className="mt-3 text-xs font-medium leading-relaxed text-slate-500"
-            >
-              {supportNote}
-            </motion.p>
-          )}
-        </AnimatePresence>
-      </motion.div>
+      <AnimatePresence>
+        {supportNote && (
+          <motion.div
+            key={supportNote}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 12 }}
+            className="mt-auto w-full rounded-xl border border-white/50 bg-white/85 p-4 text-sm font-medium leading-relaxed text-slate-600 shadow-sm relative z-20"
+          >
+            {supportNote}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 });
@@ -150,74 +130,75 @@ export const TutorShell: React.FC<TutorShellProps> = ({
   children,
   nodeTitle,
   mastery,
-  streak,
-  attempts,
   phase,
   mode = 'gamified',
   onBack,
   characterImg,
-  characterQuote,
   characterBg,
   emotion,
-  affect
+  affect,
+  statusLabel
 }) => {
   const router = useRouter();
   const { data: authSession } = useSession();
   const handleSignOut = () => signOut({ callbackUrl: '/auth/login' });
   const profileImage = authSession?.user?.image || AVATAR_PATHS.casual_male;
+  const progressLabel = mode === 'professional' ? 'Readiness' : 'Mastery';
 
   return (
-    <div className={cn("relative min-h-[100dvh] w-full overflow-hidden flex flex-col font-body bg-background transition-colors duration-500", mode === 'professional' ? 'mode-professional' : 'mode-gamified')}>
+    <div className={cn("relative h-[100dvh] w-full overflow-hidden flex flex-col font-body bg-background transition-colors duration-500", mode === 'professional' ? 'mode-professional' : 'mode-gamified')}>
       <div className="grain-overlay" />
 
       {/* Header - Minimalist */}
-      <header className="relative z-20 px-6 py-5 flex justify-between items-center max-w-[1400px] w-full mx-auto">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={onBack}
-            className="font-sans font-black text-xl tracking-tighter text-foreground hover:opacity-70 transition-opacity"
-          >
+      <header className="relative z-20 shrink-0 px-3 sm:px-6 py-4 sm:py-5 flex justify-between items-center gap-3 max-w-[1400px] w-full mx-auto">
+        <div className="min-w-0 flex flex-1 items-center gap-2 sm:gap-4">
+          <div className="hidden sm:block font-sans font-black text-xl tracking-tighter text-foreground" aria-label="Zidd">
             ZIDD<span className="text-indigo-600">.</span>
-          </button>
+          </div>
 
-          <div className="h-5 w-px bg-white/30" />
+          <div className="hidden sm:block h-5 w-px bg-white/30" />
 
           <button
             onClick={onBack}
-            className="w-10 h-10 rounded-full bg-white/50 backdrop-blur-md border border-slate-200/50 flex items-center justify-center hover:bg-white transition-all active:scale-95 text-slate-700 shadow-sm"
+            aria-label="Leave session"
+            title="Leave session"
+            className="flex w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/50 backdrop-blur-md border border-slate-200/50 items-center justify-center hover:bg-white transition-all active:scale-95 text-slate-700 shadow-sm"
           >
             <ChevronLeftIcon className="w-5 h-5" />
           </button>
 
-          <div>
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 mb-0.5">
-               <MagicWandIcon className="text-accent w-4 h-4" />
-               <h1 className="text-sm font-bold uppercase tracking-[0.1em] text-foreground">{nodeTitle || 'Skill Module'}</h1>
+               <MagicWandIcon className="hidden sm:block text-accent w-4 h-4" />
+               <h1 className="line-clamp-2 text-xs sm:text-sm font-bold uppercase tracking-[0.1em] leading-tight text-foreground">{nodeTitle || 'Skill Module'}</h1>
             </div>
-            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold leading-none">
-              {phase || 'Learning Path'}
+            <p className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-muted-foreground font-bold leading-none">
+              <span className="truncate">{phase || 'Learning Path'}</span>
+              {statusLabel && (
+                <span className="lg:hidden inline-flex items-center gap-1.5 text-accent">
+                  <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                  {statusLabel}
+                </span>
+              )}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="shrink-0 flex items-center gap-2 sm:gap-3">
            {/* Stats Chips */}
            <div className="flex gap-2">
-              <CreditsBadge />
-              <div className="px-4 py-2 rounded-full bg-white/60 backdrop-blur border border-slate-200/50 shadow-sm flex items-center gap-2 text-slate-800">
-                 <LightningBoltIcon className="text-amber-500 w-4 h-4" />
-                 <span className="text-sm font-bold font-mono">{streak}</span>
-              </div>
-              <div className="px-4 py-2 rounded-full bg-white/60 backdrop-blur border border-slate-200/50 shadow-sm flex items-center gap-2 text-slate-800">
+              <div className="hidden sm:block"><CreditsBadge /></div>
+              <div className="flex px-2.5 sm:px-3 py-2 rounded-full bg-white/60 backdrop-blur border border-slate-200/50 shadow-sm items-center gap-1.5 sm:gap-2 text-slate-700" title={`${progressLabel}: ${Math.round(mastery * 100)}%`}>
                  <StarIcon className="text-accent w-4 h-4" />
-                 <span className="text-sm font-bold font-mono">{attempts}</span>
+                 <span className="hidden sm:inline text-xs font-semibold">{progressLabel}</span>
+                 <span className="text-xs font-mono font-semibold tabular-nums">{Math.round(mastery * 100)}%</span>
               </div>
            </div>
            <button
              onClick={() => router.push('/profile')}
              aria-label="Profile"
              title="Profile"
-             className="relative w-10 h-10 rounded-full bg-indigo-50 border border-indigo-100 shadow-sm overflow-hidden hover:scale-105 active:scale-95 transition-all"
+             className="hidden sm:block relative w-10 h-10 rounded-full bg-indigo-50 border border-indigo-100 shadow-sm overflow-hidden hover:scale-105 active:scale-95 transition-all"
            >
              <Image
                src={profileImage}
@@ -239,17 +220,17 @@ export const TutorShell: React.FC<TutorShellProps> = ({
       </header>
 
       {/* Bento Grid Main Layout */}
-      <main className="flex-1 relative z-10 max-w-[1400px] w-full mx-auto p-4 md:p-6 pb-8">
-        <div className="w-full h-full grid grid-cols-1 lg:grid-cols-[380px_1fr_280px] gap-6 xl:gap-8">
+      <main className="flex-1 min-h-0 overflow-hidden relative z-10 max-w-[1400px] w-full mx-auto p-3 sm:p-4 md:p-6">
+	        <div className="w-full h-full min-h-0 grid grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)] gap-6 xl:gap-8">
           
           {/* Left Bento: Avatar/Coach */}
           <motion.aside 
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-            className="hidden lg:block w-full h-[calc(100vh-120px)] sticky top-24"
+            className="hidden lg:block w-full h-full min-h-0"
           >
-            <AvatarTile characterImg={characterImg} characterQuote={characterQuote || '...'} mode={mode} characterBg={characterBg} emotion={emotion} affect={affect} />
+	            <AvatarTile characterImg={characterImg} mode={mode} characterBg={characterBg} emotion={emotion} affect={affect} statusLabel={statusLabel} />
           </motion.aside>
 
           {/* Center Bento: Interactive Content / Transcript */}
@@ -258,50 +239,12 @@ export const TutorShell: React.FC<TutorShellProps> = ({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: 0.1 }}
-            className="relative flex flex-col bg-white rounded-[2.5rem] border border-slate-200/60 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] overflow-hidden h-[calc(100vh-120px)]"
+            className="relative flex h-full min-h-0 flex-col overflow-hidden bg-white sm:rounded-[2.5rem] border border-slate-200/60 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)]"
           >
-            <div className="flex-1 overflow-y-auto overflow-x-hidden scroll-smooth">
+            <div className="flex-1 min-h-0 overflow-hidden">
                {children}
             </div>
           </motion.section>
-
-          {/* Right Bento: Dynamic Stats / Mastery / Context */}
-          <motion.aside 
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
-            className="hidden xl:flex flex-col gap-6 h-[calc(100vh-120px)] sticky top-24"
-          >
-            {/* Mastery Card */}
-            <div className="bg-white rounded-[2rem] p-6 border border-slate-200/60 shadow-sm flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-slate-500 font-bold">
-                  <StarIcon className="text-accent w-4 h-4" />
-                  Mastery
-                </div>
-                <span className="text-xs font-mono font-bold text-slate-800">{Math.round(mastery * 100)}%</span>
-              </div>
-              <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden p-[1px] border border-slate-200/50">
-                 <motion.div 
-                    initial={{ width: 0 }}
-                    animate={{ width: `${mastery * 100}%` }}
-                    transition={{ duration: 1, ease: "easeOut" }}
-                    className="h-full bg-accent rounded-full"
-                 />
-              </div>
-            </div>
-
-            {/* Learner-safe session context */}
-            <div className="flex-1 rounded-[2rem] border border-slate-200/60 bg-slate-50/60 p-6">
-               <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-slate-500 font-bold">
-                  <InfoCircledIcon className="text-accent w-4 h-4" />
-                  Session Notes
-               </div>
-               <p className="mt-4 text-sm leading-relaxed text-slate-500">
-                 I&apos;ll keep adjusting the next prompt based on how this session is going.
-               </p>
-            </div>
-          </motion.aside>
 
         </div>
       </main>

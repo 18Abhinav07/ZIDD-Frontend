@@ -13,12 +13,13 @@ function cn(...inputs: ClassValue[]) {
 interface MultipleChoiceCardProps {
   sentence: string;
   hint: string;
+  context?: string;
   options: string[];
   onSubmit: (answer: string) => Promise<boolean> | boolean;
   disabled?: boolean;
 }
 
-export function MultipleChoiceCard({ sentence, hint, options, onSubmit, disabled }: MultipleChoiceCardProps) {
+export function MultipleChoiceCard({ sentence, hint, context, options, onSubmit, disabled }: MultipleChoiceCardProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -51,6 +52,11 @@ export function MultipleChoiceCard({ sentence, hint, options, onSubmit, disabled
          <MagicWandIcon className="text-accent w-4 h-4" />
          <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-500">{hint}</span>
       </div>
+      {context && (
+        <p className="-mt-3 mb-6 text-sm font-normal leading-6 text-slate-500">
+          <span className="font-semibold text-slate-700">Why this exercise: </span>{context}
+        </p>
+      )}
       
       <p className="text-2xl font-display leading-tight mb-10 text-slate-900">
         {sentence.split('___').map((part, i, arr) => (
