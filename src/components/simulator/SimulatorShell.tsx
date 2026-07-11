@@ -5,12 +5,17 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   PaperPlaneIcon,
   ExclamationTriangleIcon,
-  ExitIcon
+  ExitIcon,
+  ChatBubbleIcon,
+  QuestionMarkCircledIcon,
+  MixerHorizontalIcon,
+  PersonIcon
 } from '@radix-ui/react-icons';
 import Image from 'next/image';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { getAvatarForCharacter, getBgColorForAvatar, getAvatarScaleClass } from '@/lib/avatarRegistry';
+import type { AssessmentClientAction } from '@/types';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -29,6 +34,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   speaker_name?: string;
+  message_kind?: string;
   // Optional inline annotation rendered below this bubble (e.g. tension spike tag)
   annotation?: string;
 }
@@ -42,6 +48,8 @@ interface SimulatorShellProps {
   setInputValue: (val: string) => void;
   onSend: () => void;
   isStreaming: boolean;
+  isInputDisabled?: boolean;
+  statusLabel?: string;
   tension?: number;
   phase?: string;
   error?: string | null;
@@ -57,10 +65,20 @@ interface SimulatorShellProps {
   // to the career home.
   onLeave?: () => void;
   onSaveLater?: () => void;
+  leaveNotice?: string;
   // Inline coaching nudge rendered above the input when the student needs a prompt
   coachingTip?: string;
+  quickActions?: QuickAction[];
+  onQuickAction?: (action: QuickAction) => void;
   // Per-message tension annotations keyed by message id
   tensionAnnotations?: Map<string, string>;
+}
+
+interface QuickAction {
+  label: string;
+  value: string;
+  icon: 'ask' | 'clarify' | 'angle' | 'move';
+  action?: AssessmentClientAction;
 }
 
 const getAvatarConfig = (name: string) => {
@@ -396,7 +414,15 @@ const TranscriptFeed = memo(function TranscriptFeed({
 
           {messages.map((msg) => {
             const isUser = msg.role === 'user';
-            const speakerLabel = msg.speaker_name || (isUser ? 'YOU' : type === 'gd' ? 'Panel' : 'Interviewer');
+            const speakerLabel = msg.speaker_name || (
+              isUser
+                ? 'YOU'
+                : type === 'gd' && msg.message_kind === 'opening'
+                  ? 'Moderator'
+                  : type === 'gd'
+                    ? 'Panel'
+                    : 'Interviewer'
+            );
             const annotation = msg.annotation || tensionAnnotations?.get(msg.id);
             return (
               <motion.div
@@ -455,6 +481,8 @@ const InputBar = memo(function InputBar({
   placeholder,
   type,
   coachingTip,
+  quickActions,
+  onQuickAction,
 }: {
   inputValue: string;
   setInputValue: (v: string) => void;
@@ -463,8 +491,16 @@ const InputBar = memo(function InputBar({
   placeholder: string;
   type: 'interview' | 'gd';
   coachingTip?: string;
+  quickActions?: QuickAction[];
+  onQuickAction?: (action: QuickAction) => void;
 }) {
   const textareaId = useId();
+  const actionIcon = (icon: QuickAction['icon']) => {
+    if (icon === 'clarify') return <QuestionMarkCircledIcon className="w-3.5 h-3.5" />;
+    if (icon === 'angle') return <MixerHorizontalIcon className="w-3.5 h-3.5" />;
+    if (icon === 'ask') return <PersonIcon className="w-3.5 h-3.5" />;
+    return <ChatBubbleIcon className="w-3.5 h-3.5" />;
+  };
 
   return (
     <div className={cn(
@@ -488,12 +524,37 @@ const InputBar = memo(function InputBar({
           </motion.div>
         )}
       </AnimatePresence>
+      {quickActions && quickActions.length > 0 && (
+        <div className="max-w-2xl mx-auto mb-2 flex gap-2 overflow-x-auto scrollbar-hide">
+          {quickActions.map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              disabled={disabled}
+              onClick={() => {
+                onQuickAction?.(action);
+              }}
+              className={cn(
+                "shrink-0 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] transition-all",
+                "disabled:opacity-40 disabled:cursor-not-allowed",
+                type === 'interview'
+                  ? "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                  : "bg-indigo-50 border-indigo-100 text-indigo-700 hover:bg-indigo-100"
+              )}
+            >
+              {actionIcon(action.icon)}
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="flex items-end gap-3 max-w-2xl mx-auto">
         <textarea
           id={textareaId}
           name={`${type}-response`}
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
+          onInput={(e) => setInputValue(e.currentTarget.value)}
           placeholder={placeholder}
           aria-label={placeholder}
           rows={2}
@@ -542,10 +603,12 @@ const LeaveConfirmPanel = memo(function LeaveConfirmPanel({
   onStay,
   onLeave,
   onSaveLater,
+  notice,
 }: {
   onStay: () => void;
   onLeave: () => void;
   onSaveLater?: () => void;
+  notice?: string;
 }) {
   return (
     <motion.div
@@ -556,7 +619,9 @@ const LeaveConfirmPanel = memo(function LeaveConfirmPanel({
       className="absolute inset-x-0 bottom-0 z-40 bg-white border-t border-slate-200 px-8 py-6 shadow-[0_-8px_32px_rgba(0,0,0,0.08)]"
     >
       <h3 className="text-[15px] font-black text-slate-900 mb-1">Leave the session?</h3>
-      <p className="text-[13px] text-slate-500 mb-5">Your transcript is saved. You can return to this session any time.</p>
+      <p className="text-[13px] text-slate-500 mb-5">
+        {notice || 'Your transcript is saved. You can return to this session any time.'}
+      </p>
       <div className="flex gap-3">
         <button
           onClick={onStay}
@@ -595,6 +660,8 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
   setInputValue,
   onSend,
   isStreaming,
+  isInputDisabled,
+  statusLabel,
   tension = 0,
   phase,
   error,
@@ -606,7 +673,10 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
   isComplete = false,
   onLeave,
   onSaveLater,
+  leaveNotice,
   coachingTip,
+  quickActions,
+  onQuickAction,
   tensionAnnotations,
 }) => {
   const [mounted, setMounted] = useState(false);
@@ -660,7 +730,7 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
       : tension > 40
       ? 'Rising tension — you\'re engaging assertively. Keep challenging ideas with specific points.'
       : 'Low tension — build your argument. Try making a direct claim or challenging a point.';
-  const statusLabel = isComplete ? 'Complete' : isClosing ? 'Scoring' : isStreaming ? 'Live' : 'Ready';
+  const resolvedStatusLabel = statusLabel ?? (isComplete ? 'Complete' : isClosing ? 'Scoring' : isStreaming ? 'Live' : 'Ready');
   const statusDotClass = isComplete
     ? 'bg-indigo-500'
     : isClosing
@@ -669,6 +739,7 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
         ? 'bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.5)]'
         : 'bg-slate-300';
   const effectiveCoachingTip = isComplete || isClosing ? undefined : coachingTip;
+  const inputDisabled = Boolean(isInputDisabled) || isStreaming || isClosing || isComplete;
 
   return (
     <div className="relative h-[100dvh] overflow-hidden flex flex-col font-body text-slate-900 selection:bg-indigo-100">
@@ -743,7 +814,7 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
               statusDotClass
             )} />
             <span className="text-[9px] uppercase tracking-[0.2em] font-black text-slate-600">
-              {statusLabel}
+              {resolvedStatusLabel}
             </span>
           </div>
         </div>
@@ -763,10 +834,12 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
                 inputValue={inputValue}
                 setInputValue={setInputValue}
                 onSend={onSend}
-                disabled={isStreaming || isClosing || isComplete}
+                disabled={inputDisabled}
                 placeholder="Contribute to the discussion..."
                 type="gd"
                 coachingTip={effectiveCoachingTip}
+                quickActions={quickActions}
+                onQuickAction={onQuickAction}
               />
             </div>
 
@@ -806,10 +879,12 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
               inputValue={inputValue}
               setInputValue={setInputValue}
               onSend={onSend}
-              disabled={isStreaming || isClosing || isComplete}
+              disabled={inputDisabled}
               placeholder="Contribute to the discussion..."
               type="gd"
               coachingTip={effectiveCoachingTip}
+              quickActions={quickActions}
+              onQuickAction={onQuickAction}
             />
           </div>
         </>
@@ -835,10 +910,12 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
                   inputValue={inputValue}
                   setInputValue={setInputValue}
                   onSend={onSend}
-                  disabled={isStreaming || isClosing || isComplete}
+                    disabled={inputDisabled}
                   placeholder="Speak your response..."
                   type="interview"
                   coachingTip={effectiveCoachingTip}
+                  quickActions={quickActions}
+                  onQuickAction={onQuickAction}
                 />
               </div>
             </div>
@@ -880,10 +957,12 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
               inputValue={inputValue}
               setInputValue={setInputValue}
               onSend={onSend}
-              disabled={isStreaming || isClosing || isComplete}
+                  disabled={inputDisabled}
               placeholder="Speak your response..."
               type="interview"
               coachingTip={effectiveCoachingTip}
+              quickActions={quickActions}
+              onQuickAction={onQuickAction}
             />
           </div>
         </>
@@ -913,6 +992,7 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
             onStay={() => setConfirmLeave(false)}
             onLeave={handleLeave}
             onSaveLater={onSaveLater ? handleSaveLater : undefined}
+            notice={leaveNotice}
           />
         )}
       </AnimatePresence>
