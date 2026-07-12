@@ -43,6 +43,59 @@ test('unknown active streams use neutral processing language', () => {
   assert.equal(statusForActiveStream(null), 'Working');
 });
 
+test('simulator status follows stream ownership and terminal priority', () => {
+  assert.equal(typeof presentation.simulatorStatusFor, 'function');
+  const simulatorStatusFor = presentation.simulatorStatusFor;
+
+  assert.equal(simulatorStatusFor({ isComplete: true, isClosing: true }), 'Complete');
+  assert.equal(simulatorStatusFor({ isClosing: true, isStreaming: true }), 'Scoring');
+  assert.equal(simulatorStatusFor({ isRecoveringTurn: true, isStreaming: true, activeStreamKind: 'opening' }), 'Reviewing');
+  assert.equal(simulatorStatusFor({ isStreaming: true, activeStreamKind: 'opening' }), 'Preparing');
+  assert.equal(simulatorStatusFor({ isStreaming: true, activeStreamKind: 'learner_turn' }), 'Reviewing');
+  assert.equal(simulatorStatusFor({ isStreaming: true, activeStreamKind: null }), 'Working');
+  assert.equal(simulatorStatusFor({ isSubmitting: true }), 'Reviewing');
+  assert.equal(simulatorStatusFor({}), 'Ready');
+});
+
+test('simulator input guard blocks recovery and backend-owned locks', () => {
+  assert.equal(typeof presentation.simulatorInputBlocked, 'function');
+  const simulatorInputBlocked = presentation.simulatorInputBlocked;
+
+  assert.equal(simulatorInputBlocked({ isRecoveringTurn: true }), true);
+  assert.equal(simulatorInputBlocked({ isStreaming: true }), true);
+  assert.equal(simulatorInputBlocked({ isClosing: true }), true);
+  assert.equal(simulatorInputBlocked({ shouldClose: true }), true);
+  assert.equal(simulatorInputBlocked({ isSubmitting: true }), true);
+  assert.equal(simulatorInputBlocked({ inputAllowed: false }), true);
+  assert.equal(simulatorInputBlocked({ blockReason: 'turn_locked' }), true);
+  assert.equal(simulatorInputBlocked({}), false);
+});
+
+test('end evidence treats missing coverage as unknown, never sufficient', () => {
+  assert.equal(typeof presentation.endSessionEvidenceFor, 'function');
+  const endSessionEvidenceFor = presentation.endSessionEvidenceFor;
+  const unknownCoverage = endSessionEvidenceFor({
+    scorableTurns: 6,
+    minScorableTurns: 6,
+  });
+
+  assert.equal(unknownCoverage.coverageKnown, false);
+  assert.equal(unknownCoverage.hasEnoughCoverage, false);
+  assert.equal(unknownCoverage.label, 'Coverage not yet verified');
+  assert.equal(unknownCoverage.actionLabel, 'End & Validate Report');
+  assert.doesNotMatch(unknownCoverage.copy, /coverage.*supports.*score/i);
+
+  const verifiedCoverage = endSessionEvidenceFor({
+    scorableTurns: 6,
+    minScorableTurns: 6,
+    coverageCovered: 4,
+    coverageRequired: 4,
+  });
+  assert.equal(verifiedCoverage.coverageKnown, true);
+  assert.equal(verifiedCoverage.hasEnoughCoverage, true);
+  assert.equal(verifiedCoverage.label, 'Evidence ready for validation');
+});
+
 test('teaching status follows the learner-visible priority contract', () => {
   assert.equal(teachingStatusFor({ moduleComplete: true, teachingBlocked: true }), 'Complete');
   assert.equal(teachingStatusFor({ isBootstrapping: true, checkpointReached: true }), 'Preparing');

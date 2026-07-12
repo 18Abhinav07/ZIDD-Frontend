@@ -35,6 +35,8 @@ interface TutorShellProps {
   emotion?: DoneFrame['avatar_emotion'];
   affect?: DoneFrame['affect'];
   statusLabel?: string;
+  cleanStreak?: number;
+  attempts?: number;
 }
 
 const AvatarTile = memo(function AvatarTile({ characterImg, mode, characterBg, emotion, affect, statusLabel }: { characterImg?: string, mode: string, characterBg?: string, emotion?: DoneFrame['avatar_emotion'], affect?: DoneFrame['affect'], statusLabel?: string }) {
@@ -137,7 +139,9 @@ export const TutorShell: React.FC<TutorShellProps> = ({
   characterBg,
   emotion,
   affect,
-  statusLabel
+  statusLabel,
+  cleanStreak,
+  attempts,
 }) => {
   const router = useRouter();
   const { data: authSession } = useSession();
@@ -172,12 +176,22 @@ export const TutorShell: React.FC<TutorShellProps> = ({
                <MagicWandIcon className="hidden sm:block text-accent w-4 h-4" />
                <h1 className="line-clamp-2 text-xs sm:text-sm font-bold uppercase tracking-[0.1em] leading-tight text-foreground">{nodeTitle || 'Skill Module'}</h1>
             </div>
-            <p className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-muted-foreground font-bold leading-none">
-              <span className="truncate">{phase || 'Learning Path'}</span>
+            <p className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold uppercase leading-tight tracking-widest text-muted-foreground">
+              <span className="min-w-0 max-w-full truncate">{phase || 'Learning Path'}</span>
               {statusLabel && (
                 <span className="lg:hidden inline-flex items-center gap-1.5 text-accent">
                   <span className="w-1.5 h-1.5 rounded-full bg-current" />
                   {statusLabel}
+                </span>
+              )}
+              {typeof attempts === 'number' && typeof cleanStreak === 'number' && (
+                <span
+                  data-progress-evidence="compact"
+                  className="inline-flex min-w-0 max-w-full basis-full flex-wrap items-center gap-x-3 gap-y-1 whitespace-normal break-words normal-case tracking-normal xl:hidden"
+                  title={`Attempts: ${attempts}; Clean passes: ${cleanStreak}`}
+                >
+                  <span className="min-w-0 break-words">Attempts {attempts}</span>
+                  <span className="min-w-0 break-words">Clean passes {cleanStreak}</span>
                 </span>
               )}
             </p>
@@ -193,6 +207,16 @@ export const TutorShell: React.FC<TutorShellProps> = ({
                  <span className="hidden sm:inline text-xs font-semibold">{progressLabel}</span>
                  <span className="text-xs font-mono font-semibold tabular-nums">{Math.round(mastery * 100)}%</span>
               </div>
+              {typeof attempts === 'number' && typeof cleanStreak === 'number' && (
+                <div
+                  data-progress-evidence="wide"
+                  className="hidden min-w-0 items-center gap-2 overflow-hidden rounded-full border border-slate-200/50 bg-white/60 px-3 py-2 text-xs text-slate-600 shadow-sm backdrop-blur xl:flex"
+                >
+                  <span className="whitespace-nowrap">Attempts <strong className="font-semibold tabular-nums text-slate-900">{attempts}</strong></span>
+                  <span className="h-3 w-px shrink-0 bg-slate-200" />
+                  <span className="whitespace-nowrap">Clean passes <strong className="font-semibold tabular-nums text-slate-900">{cleanStreak}</strong></span>
+                </div>
+              )}
            </div>
            <button
              onClick={() => router.push('/profile')}

@@ -12,6 +12,122 @@ export function statusForActiveStream(activeStreamKind) {
 
 /**
  * @param {{
+ *   isComplete?: boolean,
+ *   isClosing?: boolean,
+ *   isRecoveringTurn?: boolean,
+ *   isStreaming?: boolean,
+ *   activeStreamKind?: 'opening' | 'learner_turn' | null,
+ *   isSubmitting?: boolean,
+ * }} state
+ */
+export function simulatorStatusFor({
+  isComplete = false,
+  isClosing = false,
+  isRecoveringTurn = false,
+  isStreaming = false,
+  activeStreamKind = null,
+  isSubmitting = false,
+} = {}) {
+  if (isComplete) return 'Complete';
+  if (isClosing) return 'Scoring';
+  if (isRecoveringTurn) return 'Reviewing';
+  if (isStreaming) return statusForActiveStream(activeStreamKind);
+  if (isSubmitting) return 'Reviewing';
+  return 'Ready';
+}
+
+/**
+ * @param {{
+ *   isStreaming?: boolean,
+ *   isRecoveringTurn?: boolean,
+ *   isClosing?: boolean,
+ *   shouldClose?: boolean,
+ *   isSubmitting?: boolean,
+ *   inputAllowed?: boolean,
+ *   blockReason?: string | null,
+ * }} state
+ */
+export function simulatorInputBlocked({
+  isStreaming = false,
+  isRecoveringTurn = false,
+  isClosing = false,
+  shouldClose = false,
+  isSubmitting = false,
+  inputAllowed = true,
+  blockReason = null,
+} = {}) {
+  return Boolean(
+    isStreaming ||
+    isRecoveringTurn ||
+    isClosing ||
+    shouldClose ||
+    isSubmitting ||
+    inputAllowed === false ||
+    blockReason
+  );
+}
+
+/**
+ * @param {{
+ *   scorableTurns?: number,
+ *   minScorableTurns?: number,
+ *   coverageCovered?: number,
+ *   coverageRequired?: number,
+ *   integrityFlagCount?: number,
+ * }} evidence
+ */
+export function endSessionEvidenceFor({
+  scorableTurns = 0,
+  minScorableTurns = 0,
+  coverageCovered,
+  coverageRequired,
+  integrityFlagCount = 0,
+} = {}) {
+  const hasEnoughAnswers = scorableTurns >= minScorableTurns;
+  const coverageKnown = typeof coverageCovered === 'number' && typeof coverageRequired === 'number';
+  const hasEnoughCoverage = Boolean(
+    coverageKnown && (coverageRequired <= 0 || coverageCovered >= coverageRequired)
+  );
+  const hasIntegrityRisk = integrityFlagCount > 0;
+
+  let label;
+  let copy;
+  if (!hasEnoughAnswers) {
+    label = 'Insufficient answer evidence';
+    copy = 'This attempt may be marked not scored because too few score-eligible answers are available.';
+  } else if (!coverageKnown) {
+    label = 'Coverage not yet verified';
+    copy = 'Answer evidence is available, but coverage has not been reported yet. Backend validation must verify it before assigning report status.';
+  } else if (!hasEnoughCoverage) {
+    label = 'Insufficient coverage';
+    copy = 'Enough answers exist, but the assessed areas are not broad enough for an expected final report.';
+  } else if (hasIntegrityRisk) {
+    label = 'Integrity risk';
+    copy = 'Answer and coverage evidence are present, but simulator integrity flags may make the report partial or invalid.';
+  } else {
+    label = 'Evidence ready for validation';
+    copy = 'Current answer and verified coverage evidence supports an expected scored report.';
+  }
+
+  const actionLabel = hasEnoughAnswers && !coverageKnown
+    ? 'End & Validate Report'
+    : hasEnoughAnswers && hasEnoughCoverage && !hasIntegrityRisk
+      ? 'End & Generate Report'
+      : 'End Anyway';
+
+  return {
+    label,
+    copy,
+    actionLabel,
+    hasEnoughAnswers,
+    coverageKnown,
+    hasEnoughCoverage,
+    hasIntegrityRisk,
+  };
+}
+
+/**
+ * @param {{
  *   moduleComplete?: boolean,
  *   isBootstrapping?: boolean,
  *   isRecoveringTurn?: boolean,

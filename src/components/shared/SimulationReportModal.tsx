@@ -6,6 +6,7 @@ import { SimulationReport } from '@/types';
 import { Award, CheckCircle2, ArrowUpRight, RotateCcw, Quote, AlertTriangle } from 'lucide-react';
 import { clsx } from 'clsx';
 import { getMe, updatePreferences } from '@/services/me';
+import { reportPresentationFor } from '@/lib/simulationReportPresentation.mjs';
 
 function cn(...inputs: (string | undefined | false | null)[]) {
   return clsx(inputs);
@@ -70,35 +71,39 @@ function pct(value: number | null | undefined): string {
 
 function scoreExplanationRows(
   report: SimulationReport,
-  hasScoreBreakdown: boolean,
+  scoreLabel: string,
+  isFinal: boolean,
+  isNotScored: boolean,
 ): Array<{ label: string; text: string; tone: 'neutral' | 'warning' | 'success' }> {
+  if (isNotScored) return [];
   const rows: Array<{ label: string; text: string; tone: 'neutral' | 'warning' | 'success' }> = [];
   const breakdown = report.score_breakdown ?? {};
   const modelScore = typeof breakdown.model_score === 'number' ? pct(breakdown.model_score) : null;
   const roundMean = typeof breakdown.round_quality_mean === 'number' ? pct(breakdown.round_quality_mean) : null;
   const roundWeight = typeof breakdown.round_quality_weight === 'number' ? pct(breakdown.round_quality_weight) : null;
-  if (hasScoreBreakdown && (modelScore || roundMean || roundWeight)) {
+  if (modelScore || roundMean || roundWeight) {
+    const scoreNoun = isFinal ? 'final score' : `${scoreLabel.toLowerCase()} score`;
     rows.push({
-      label: 'Final score blends',
-      text: `The final score blends the session-level read${modelScore ? ` (${modelScore})` : ''}${roundMean ? ` with the average quality of answered turns (${roundMean})` : ''}${roundWeight ? ` using a ${roundWeight} round-quality weight` : ''}.`,
+      label: isFinal ? 'Final score blend' : `${scoreLabel} score blend`,
+      text: `The ${scoreNoun} blends the session-level read${modelScore ? ` (${modelScore})` : ''}${roundMean ? ` with the average quality of answered turns (${roundMean})` : ''}${roundWeight ? ` using a ${roundWeight} round-quality weight` : ''}.`,
       tone: 'neutral',
     });
   }
   if (typeof breakdown.coverage_cap === 'number') {
     rows.push({
-      label: 'Coverage cap lowered',
-      text: `The assessment did not cover enough distinct evidence areas, so the final score could not exceed ${pct(breakdown.coverage_cap)}.`,
+      label: 'Coverage cap',
+      text: `Coverage limited this score to ${pct(breakdown.coverage_cap)} because the session did not cover enough distinct evidence areas.`,
       tone: 'warning',
     });
   }
   if (typeof breakdown.validity_cap === 'number') {
     rows.push({
-      label: 'Simulator integrity cap lowered',
+      label: 'Simulator integrity cap',
       text: `Simulator repairs or invalid panel behavior capped score confidence at ${pct(breakdown.validity_cap)}. This is tracked separately from learner weaknesses.`,
       tone: 'warning',
     });
   }
-  if (report.validity_status === 'final' && rows.length === 0) {
+  if (isFinal && rows.length === 0) {
     rows.push({
       label: 'Final assessment',
       text: 'Enough answered turns and coverage were available, so the final score reflects the assessed rubric evidence.',
@@ -106,96 +111,6 @@ function scoreExplanationRows(
     });
   }
   return rows;
-}
-
-function splitLegacyCaveats(report: SimulationReport): {
-  learner: string[];
-  integrity: string[];
-} {
-  const learner: string[] = [...(report.learner_assessment_caveats ?? [])].filter(Boolean);
-  const integrity: string[] = [...(report.simulator_integrity_notes ?? [])].filter(Boolean);
-  for (const caveat of report.assessment_caveats ?? []) {
-    if (caveat.startsWith('Simulator caveat:')) {
-      integrity.push(caveat.replace(/^Simulator caveat:\s*/i, ''));
-    } else {
-      learner.push(caveat);
-    }
-  }
-  return {
-    learner: Array.from(new Set(learner)),
-    integrity: Array.from(new Set(integrity)),
-  };
-}
-
-function validityCopy(report: SimulationReport): { label: string; detail: string; className: string } {
-  const status = report.validity_status;
-  const coverageCap = typeof report.score_breakdown?.coverage_cap === 'number';
-  const validityCap = typeof report.score_breakdown?.validity_cap === 'number';
-  const hasIntegrityNotes = Boolean(report.simulator_integrity_notes?.length);
-  const covered = report.coverage_map?.unique_covered ?? 0;
-  const needed = report.coverage_map?.required_unique ?? 0;
-  const hasCoverageShortfall = needed > 0 && covered < needed;
-  if (status === 'insufficient_evidence') {
-    return {
-      label: 'Insufficient Evidence',
-      detail: 'This is not a final score. Complete more answered rounds before using this assessment.',
-      className: 'bg-red-50 border-red-200 text-red-700',
-    };
-  }
-  if (status === 'invalid_simulation') {
-    return {
-      label: 'Invalid Simulation',
-      detail: 'The simulator produced invalid panel behavior, so this run should be retried instead of scored.',
-      className: 'bg-red-50 border-red-200 text-red-700',
-    };
-  }
-  if (status === 'partial') {
-    if (coverageCap) {
-      return {
-        label: 'Partial Assessment',
-        detail: 'The score is capped because the session did not cover enough distinct evidence or competencies.',
-        className: 'bg-amber-50 border-amber-200 text-amber-700',
-      };
-    }
-    if (hasCoverageShortfall) {
-      return {
-        label: 'Partial Assessment',
-        detail: 'The session did not cover enough distinct evidence or competencies. Treat this as a partial read, not a final score.',
-        className: 'bg-amber-50 border-amber-200 text-amber-700',
-      };
-    }
-    if (validityCap) {
-      return {
-        label: 'Integrity-Capped Assessment',
-        detail: 'Enough learner evidence was present, but simulator repairs capped score confidence. Review the integrity notes below.',
-        className: 'bg-amber-50 border-amber-200 text-amber-700',
-      };
-    }
-    if (hasIntegrityNotes) {
-      return {
-        label: 'Integrity-Flagged Assessment',
-        detail: 'Enough learner evidence may be present, but simulator repairs or fallbacks were recorded. Review those notes separately from learner weaknesses.',
-        className: 'bg-amber-50 border-amber-200 text-amber-700',
-      };
-    }
-    return {
-      label: 'Partial Assessment',
-      detail: 'This assessment is partial or caveated. Review the evidence and integrity notes before using it as a reliable read.',
-      className: 'bg-amber-50 border-amber-200 text-amber-700',
-    };
-  }
-  if (status === 'final' && !coverageCap && !validityCap && !hasCoverageShortfall) {
-    return {
-      label: 'Final Assessment',
-      detail: 'Enough answered turns and coverage were available for scoring.',
-      className: 'bg-emerald-50 border-emerald-200 text-emerald-700',
-    };
-  }
-  return {
-    label: 'Assessment Status Unverified',
-    detail: 'This report does not include a verified final status. Review its evidence and limits before relying on the score.',
-    className: 'bg-amber-50 border-amber-200 text-amber-800',
-  };
 }
 
 // Returns the dimension with the lowest score — used to label the practice CTA.
@@ -217,10 +132,17 @@ export function SimulationReportModal({
   const [mounted, setMounted] = useState(false);
   const [isFirstSim, setIsFirstSim] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const presentation = reportPresentationFor(report);
 
   useEffect(() => {
     setMounted(true);
     const raf = requestAnimationFrame(() => setShown(true));
+
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  useEffect(() => {
+    if (presentation.isNotScored) return;
 
     getMe()
       .then((me) => {
@@ -230,9 +152,7 @@ export function SimulationReportModal({
         }
       })
       .catch(() => {});
-
-    return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [presentation.isNotScored]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -275,19 +195,23 @@ export function SimulationReportModal({
   const overall = Math.round(report.score * 100);
   const band = scoreBand(overall);
   const dimensions = dimensionsFor(type, report);
-  const isPartialSession = report.validity_status !== 'final'
-    && simTurn !== undefined
+  const isEarlyEnd = simTurn !== undefined
     && maxRounds !== undefined
     && simTurn < maxRounds;
   const isInsufficientEvidence = report.validity_status === 'insufficient_evidence';
   const isInvalidSimulation = report.validity_status === 'invalid_simulation';
-  const isNotScored = isInsufficientEvidence || isInvalidSimulation;
-  const weakest = isNotScored ? null : lowestDimension(dimensions);
-  const validity = validityCopy(report);
-  const splitCaveats = splitLegacyCaveats(report);
+  const isPartialScored = !presentation.isNotScored && !presentation.isFinal;
+  const weakest = presentation.isNotScored ? null : lowestDimension(dimensions);
+  const splitCaveats = presentation.caveats as { learner: string[]; integrity: string[] };
   const scoreBreakdown = report.score_breakdown ?? {};
-  const hasScoreBreakdown = Object.values(scoreBreakdown).some((value) => value !== undefined && value !== null);
-  const scoreRows = scoreExplanationRows(report, hasScoreBreakdown);
+  const hasScoreBreakdown = !presentation.isNotScored
+    && Object.values(scoreBreakdown).some((value) => typeof value === 'number');
+  const scoreRows = scoreExplanationRows(
+    report,
+    presentation.scoreLabel,
+    presentation.isFinal,
+    presentation.isNotScored,
+  );
   const coverage = report.coverage_map;
   const hasCoverage = Boolean(
     report.scorable_turn_count !== undefined ||
@@ -322,7 +246,8 @@ export function SimulationReportModal({
         aria-modal="true"
         aria-labelledby="assessment-report-title"
         tabIndex={-1}
-        className="bg-white border border-slate-200 rounded-2xl w-full max-w-3xl shadow-2xl max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] overflow-y-auto outline-none"
+        data-short-viewport-fallback="dialog-scroll"
+        className="flex max-h-[calc(100dvh-1rem)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl outline-none sm:max-h-[calc(100dvh-2rem)] [@media(max-height:640px)]:block [@media(max-height:640px)]:overflow-y-auto"
       >
 
         {/* Header + overall score ring */}
@@ -330,30 +255,39 @@ export function SimulationReportModal({
           <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center mb-3">
             <Award size={22} />
           </div>
-          <h2 id="assessment-report-title" className="text-xl font-display text-slate-900 mb-1 tracking-tight">Assessment Complete</h2>
-          <p className="text-xs text-slate-500 mb-3">
+          <h2 id="assessment-report-title" className="mb-1 break-words text-center font-display text-xl tracking-tight text-slate-900">{presentation.title}</h2>
+          <p className="mb-3 break-words text-center text-xs text-slate-500">
             {type === 'gd' ? 'Group discussion' : 'Interview'} assessment based on the evidence in this session
           </p>
 
-          <div className={cn("w-full mb-3 rounded-xl border px-4 py-3 text-left", validity.className)}>
+          <div className={cn(
+            "mb-3 w-full rounded-xl border px-4 py-3 text-left",
+            presentation.tone === 'success' && 'border-emerald-200 bg-emerald-50 text-emerald-700',
+            presentation.tone === 'warning' && 'border-amber-200 bg-amber-50 text-amber-800',
+            presentation.tone === 'danger' && 'border-red-200 bg-red-50 text-red-700',
+          )}>
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider">
-              {validity.label === 'Final Assessment' ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}
-              {validity.label}
+              {presentation.isFinal ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}
+              <span className="min-w-0 whitespace-normal break-words">{presentation.validityLabel}</span>
             </div>
-            <p className="mt-1 text-xs leading-relaxed font-normal opacity-90">{validity.detail}</p>
+            <p className="mt-1 whitespace-normal break-words text-xs font-normal leading-relaxed opacity-90">{presentation.validityDetail}</p>
           </div>
 
-          {/* Partial session warning */}
-          {isPartialSession && (
-            <div className="flex items-center gap-2 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-xs font-semibold mb-3 text-center">
-              Session ended early — Round {simTurn} of {maxRounds}. Score reflects partial participation.
-            </div>
+          {isEarlyEnd && (
+            <p className="mb-3 whitespace-normal break-words rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-center text-xs font-medium leading-5 text-amber-800">
+              Session ended early at round {simTurn} of {maxRounds}.{' '}
+              {presentation.isNotScored
+                ? 'Backend validation did not score this report.'
+                : isPartialScored
+                  ? 'The result uses only the measured evidence collected before the session ended.'
+                  : 'Backend validation still found enough measured evidence for a final assessment.'}
+            </p>
           )}
 
           <div className="relative w-28 h-28 flex items-center justify-center shrink-0">
             <svg viewBox="0 0 112 112" aria-hidden="true" className="absolute inset-0 w-full h-full -rotate-90 overflow-visible">
               <circle cx="56" cy="56" r="52" fill="none" stroke="currentColor" strokeWidth="5" className="text-slate-100" />
-              {!isNotScored && (
+              {!presentation.isNotScored && (
                 <circle
                   cx="56" cy="56" r="52"
                   fill="none"
@@ -367,10 +301,10 @@ export function SimulationReportModal({
               )}
             </svg>
             <div className="text-center">
-              {isNotScored ? (
+              {presentation.isNotScored ? (
                 <>
-                  <div className="text-lg font-semibold text-slate-900 leading-tight">Not scored</div>
-                  <div className="text-[9px] uppercase tracking-widest font-bold text-red-600 mt-1">
+                  <div className="break-words text-lg font-semibold leading-tight text-slate-900">{presentation.scoreLabel}</div>
+                  <div className="mt-1 text-[9px] font-semibold uppercase tracking-widest text-red-600">
                     {isInvalidSimulation ? 'Simulation' : 'Evidence'}
                   </div>
                 </>
@@ -379,35 +313,35 @@ export function SimulationReportModal({
                   <div className="text-3xl font-semibold text-slate-900 leading-none tabular-nums">
                     {overall}<span className="text-lg text-slate-400">%</span>
                   </div>
-                  <div className="text-[9px] uppercase tracking-widest font-bold text-indigo-600 mt-1">Overall</div>
-                  <p className={cn("text-[10px] font-bold mt-0.5", band.color)}>{band.label}</p>
+                  <div className="mt-1 text-[9px] font-semibold uppercase tracking-widest text-indigo-600">{presentation.scoreLabel}</div>
+                  <p className={cn("mt-0.5 break-words text-[10px] font-medium", band.color)}>{band.label}</p>
                 </>
               )}
             </div>
           </div>
 
           {/* Baseline message for first-ever completed sim */}
-          {isFirstSim && (
-            <p className="text-[11px] text-slate-400 mt-3 text-center">
-              This is your baseline — the only direction is up.
+          {isFirstSim && !presentation.isNotScored && (
+            <p className="mt-3 break-words text-center text-[11px] text-slate-400">
+              This is your first measured baseline for future attempts.
             </p>
           )}
         </div>
 
         {/* Scrollable body */}
-        <div className="px-5 sm:px-8 py-4 space-y-6 min-w-0">
+        <div className="min-h-0 min-w-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-5 py-4 sm:px-8">
 
           {splitCaveats.learner.length > 0 && (
             <div>
               <h3 className="text-xs uppercase tracking-widest font-semibold text-slate-500 mb-3 border-b border-slate-100 pb-2">Learner Evidence Caveats</h3>
               <div className="space-y-2">
                 {splitCaveats.learner.map((caveat) => (
-                  <div
+                  <p
                     key={caveat}
-                    className="px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-sm font-normal text-left leading-6 whitespace-normal break-words overflow-visible"
+                    className="overflow-visible whitespace-normal break-words rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm font-normal leading-6 text-amber-900"
                   >
                     {caveat}
-                  </div>
+                  </p>
                 ))}
               </div>
             </div>
@@ -416,18 +350,18 @@ export function SimulationReportModal({
           {hasCoverage && (
             <div>
               <h3 className="text-xs uppercase tracking-widest font-semibold text-slate-500 mb-4 border-b border-slate-100 pb-2">Assessment Evidence</h3>
-              <div className="grid grid-cols-3 gap-2">
-                <div className="rounded-2xl bg-slate-50 border border-slate-100 p-3">
-                  <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-500">Answered</p>
-                  <p className="mt-1 text-lg font-semibold text-slate-900 tabular-nums">{report.scorable_turn_count ?? 0}</p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div className="min-w-0 rounded-lg border border-slate-100 bg-slate-50 p-3">
+                  <p className="whitespace-normal break-words text-[10px] font-semibold uppercase tracking-wider text-slate-500">Answered</p>
+                  <p className="mt-1 whitespace-normal break-words text-lg font-semibold tabular-nums text-slate-900">{report.scorable_turn_count ?? 0}</p>
                 </div>
-                <div className="rounded-2xl bg-slate-50 border border-slate-100 p-3">
-                  <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-500">Covered</p>
-                  <p className="mt-1 text-lg font-semibold text-slate-900 tabular-nums">{coverage?.unique_covered ?? 0}</p>
+                <div className="min-w-0 rounded-lg border border-slate-100 bg-slate-50 p-3">
+                  <p className="whitespace-normal break-words text-[10px] font-semibold uppercase tracking-wider text-slate-500">Covered</p>
+                  <p className="mt-1 whitespace-normal break-words text-lg font-semibold tabular-nums text-slate-900">{coverage?.unique_covered ?? 0}</p>
                 </div>
-                <div className="rounded-2xl bg-slate-50 border border-slate-100 p-3">
-                  <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-500">Needed</p>
-                  <p className="mt-1 text-lg font-semibold text-slate-900 tabular-nums">{coverage?.required_unique ?? 0}</p>
+                <div className="min-w-0 rounded-lg border border-slate-100 bg-slate-50 p-3">
+                  <p className="whitespace-normal break-words text-[10px] font-semibold uppercase tracking-wider text-slate-500">Needed</p>
+                  <p className="mt-1 whitespace-normal break-words text-lg font-semibold tabular-nums text-slate-900">{coverage?.required_unique ?? 0}</p>
                 </div>
               </div>
               {coverage?.repeated_prompt_count ? (
@@ -438,28 +372,52 @@ export function SimulationReportModal({
             </div>
           )}
 
-          {hasScoreBreakdown && (
+          {hasScoreBreakdown && !presentation.isNotScored && (
             <div>
               <h3 className="text-xs uppercase tracking-widest font-semibold text-slate-500 mb-4 border-b border-slate-100 pb-2">Score Breakdown</h3>
-              <div className="grid grid-cols-3 gap-2">
-                <div className="rounded-lg bg-slate-50 border border-slate-100 p-3">
-                  <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-500">Model</p>
-                  <p className="mt-1 text-base font-semibold text-slate-900 tabular-nums">{pct(scoreBreakdown.model_score)}</p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                {typeof scoreBreakdown.model_score === 'number' && (
+                  <div className="min-w-0 rounded-lg border border-slate-100 bg-slate-50 p-3">
+                    <p className="whitespace-normal break-words text-[10px] font-semibold uppercase tracking-wider text-slate-500">Model</p>
+                    <p className="mt-1 whitespace-normal break-words text-base font-semibold tabular-nums text-slate-900">{pct(scoreBreakdown.model_score)}</p>
+                  </div>
+                )}
+                {typeof scoreBreakdown.round_quality_mean === 'number' && (
+                  <div className="min-w-0 rounded-lg border border-slate-100 bg-slate-50 p-3">
+                    <p className="whitespace-normal break-words text-[10px] font-semibold uppercase tracking-wider text-slate-500">Round Mean</p>
+                    <p className="mt-1 whitespace-normal break-words text-base font-semibold tabular-nums text-slate-900">{pct(scoreBreakdown.round_quality_mean)}</p>
+                  </div>
+                )}
+                <div className={cn(
+                  "min-w-0 rounded-lg border p-3",
+                  presentation.isFinal
+                    ? 'border-slate-900 bg-slate-900 text-white'
+                    : 'border-amber-200 bg-amber-50 text-amber-900',
+                )}>
+                  <p className={cn(
+                    "whitespace-normal break-words text-[10px] font-semibold uppercase tracking-wider",
+                    presentation.isFinal ? 'text-white/70' : 'text-amber-700',
+                  )}>{presentation.scoreLabel}</p>
+                  <p className="mt-1 whitespace-normal break-words text-base font-semibold tabular-nums">{pct(scoreBreakdown.final_score ?? report.score)}</p>
                 </div>
-                <div className="rounded-lg bg-slate-50 border border-slate-100 p-3">
-                  <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-500">Round Mean</p>
-                  <p className="mt-1 text-base font-semibold text-slate-900 tabular-nums">{pct(scoreBreakdown.round_quality_mean)}</p>
-                </div>
-                <div className="rounded-lg bg-slate-900 border border-slate-900 p-3 text-white">
-                  <p className="text-[10px] uppercase tracking-wider font-semibold text-white/70">Final</p>
-                  <p className="mt-1 text-base font-semibold tabular-nums">{pct(scoreBreakdown.final_score ?? report.score)}</p>
-                </div>
+                {typeof scoreBreakdown.coverage_cap === 'number' && (
+                  <div className="min-w-0 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900">
+                    <p className="whitespace-normal break-words text-[10px] font-semibold uppercase tracking-wider text-amber-700">Coverage Cap</p>
+                    <p className="mt-1 whitespace-normal break-words text-base font-semibold tabular-nums">{pct(scoreBreakdown.coverage_cap)}</p>
+                  </div>
+                )}
+                {typeof scoreBreakdown.validity_cap === 'number' && (
+                  <div className="min-w-0 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900">
+                    <p className="whitespace-normal break-words text-[10px] font-semibold uppercase tracking-wider text-amber-700">Validity Cap</p>
+                    <p className="mt-1 whitespace-normal break-words text-base font-semibold tabular-nums">{pct(scoreBreakdown.validity_cap)}</p>
+                  </div>
+                )}
               </div>
               {(typeof scoreBreakdown.round_quality_weight === 'number'
                 || typeof scoreBreakdown.coverage_cap === 'number'
                 || typeof scoreBreakdown.validity_cap === 'number') && (
                 <div className="mt-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-600">
-                  <span className="font-semibold text-slate-800">Assessment calculation: </span>
+                  <span className="whitespace-normal break-words font-medium text-slate-800">Assessment calculation: </span>
                   {typeof scoreBreakdown.round_quality_weight === 'number' && (
                     <span>{pct(scoreBreakdown.round_quality_weight)} of the blend comes from answered-turn quality. </span>
                   )}
@@ -516,7 +474,7 @@ export function SimulationReportModal({
           )}
 
           {/* Rubric sub-scores */}
-          {!isNotScored && (
+          {!presentation.isNotScored && (
           <div>
             <h3 className="text-xs uppercase tracking-widest font-semibold text-slate-500 mb-4 border-b border-slate-100 pb-2">Rubric</h3>
             <ul className="space-y-4">
@@ -526,8 +484,8 @@ export function SimulationReportModal({
                 return (
                   <li key={d.label}>
                     <div className="flex items-baseline justify-between mb-1.5">
-                      <span className="text-sm font-bold text-slate-700">{d.label}</span>
-                      <span className="text-sm font-semibold text-slate-900 tabular-nums">{pct}%</span>
+                      <span className="min-w-0 whitespace-normal break-words text-sm font-medium text-slate-700">{d.label}</span>
+                      <span className="shrink-0 whitespace-normal break-words text-sm font-medium tabular-nums text-slate-900">{pct}%</span>
                     </div>
                     <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
                       <div
@@ -545,7 +503,7 @@ export function SimulationReportModal({
           </div>
           )}
 
-          {!isNotScored && scoreAdjustmentEntries.length > 0 && (
+          {!presentation.isNotScored && scoreAdjustmentEntries.length > 0 && (
             <div>
               <h3 className="text-xs uppercase tracking-widest font-semibold text-slate-500 mb-4 border-b border-slate-100 pb-2">Score Adjustments</h3>
               <ul className="space-y-3">
@@ -567,18 +525,18 @@ export function SimulationReportModal({
               </p>
               <div className="space-y-2">
                 {splitCaveats.integrity.map((note) => (
-                  <div
+                  <p
                     key={note}
-                    className="px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-600 text-sm font-normal text-left leading-6 whitespace-normal break-words overflow-visible"
+                    className="overflow-visible whitespace-normal break-words rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-normal leading-6 text-slate-600"
                   >
                     {note}
-                  </div>
+                  </p>
                 ))}
               </div>
             </div>
           )}
 
-          {isNotScored && (
+          {presentation.isNotScored && (
             <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
               <h3 className="text-xs uppercase tracking-widest font-semibold text-red-600 mb-2">Rubric not scored</h3>
               <p className="text-sm text-red-700 leading-relaxed">
@@ -645,7 +603,7 @@ export function SimulationReportModal({
         </div>
 
         {/* Footer — recovery CTAs + return */}
-        <div className="sticky bottom-0 z-10 px-5 sm:px-8 py-4 space-y-3 border-t border-slate-100 bg-white/95 backdrop-blur">
+        <div className="z-10 shrink-0 space-y-3 border-t border-slate-100 bg-white/95 px-5 py-4 backdrop-blur sm:px-8">
           {onPracticeAgain && (
             <button
               className="w-full py-3 rounded-xl bg-indigo-600 text-white font-semibold text-sm transition-all hover:bg-indigo-700 active:scale-95"

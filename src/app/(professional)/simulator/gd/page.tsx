@@ -11,6 +11,7 @@ import { SessionNotFound } from '@/components/shared/SessionNotFound';
 import { CreditsBadge } from '@/components/billing/CreditsBadge';
 import { EndSessionConfirmModal } from '@/components/simulator/EndSessionConfirmModal';
 import { AssessmentClientAction, SimPersona } from '@/types';
+import { simulatorInputBlocked, simulatorStatusFor } from '@/lib/sessionStreamPresentation.mjs';
 
 const FALLBACK_MODERATOR_PERSONA: SimPersona = {
   speaker_id: 'moderator',
@@ -57,6 +58,8 @@ function GDContent() {
     error,
     notFound,
     isStreaming,
+    isRecoveringTurn,
+    activeStreamKind,
     isBootstrapping,
     bootstrap,
     streamTurn,
@@ -72,6 +75,16 @@ function GDContent() {
   const submittingRef = useRef(false);
   const pendingClientTurnIdRef = useRef<string | null>(null);
   const autoEndAttemptedRef = useRef(false);
+  const inputDisabled = simulatorInputBlocked({
+    isStreaming,
+    isRecoveringTurn,
+    isClosing,
+    shouldClose,
+    isSubmitting,
+    inputAllowed: state?.input_allowed,
+    blockReason: state?.block_reason,
+  });
+  const isEndDisabled = isStreaming || isSubmitting || isRecoveringTurn;
 
   useEffect(() => {
     if (!sessionId) return;
@@ -82,21 +95,23 @@ function GDContent() {
   }, [sessionId, briefingDismissed]);
 
   const handleEnd = () => {
+    if (isEndDisabled) return;
     setConfirmEndOpen(true);
   };
 
   const handleConfirmEnd = () => {
+    if (isEndDisabled) return;
     setConfirmEndOpen(false);
     disconnect();
     void endSession();
   };
 
   useEffect(() => {
-    if (shouldClose && !isStreaming && !report && !isClosing && !autoEndAttemptedRef.current) {
+    if (shouldClose && !isEndDisabled && !report && !isClosing && !autoEndAttemptedRef.current) {
       autoEndAttemptedRef.current = true;
       setConfirmEndOpen(true);
     }
-  }, [shouldClose, isStreaming, report, isClosing]);
+  }, [shouldClose, isEndDisabled, report, isClosing]);
 
   const handleInputChange = (value: string) => {
     setInputValue(value);
@@ -104,8 +119,7 @@ function GDContent() {
   };
 
   const submitDraft = async (draft: string, actionForTurn: AssessmentClientAction | null) => {
-    const inputBlocked = state?.input_allowed === false || Boolean(state?.block_reason);
-    if (!draft || isStreaming || isClosing || shouldClose || isSubmitting || submittingRef.current || inputBlocked) return;
+    if (!draft || inputDisabled || submittingRef.current) return;
     submittingRef.current = true;
     setIsSubmitting(true);
     const clientTurnId = pendingClientTurnIdRef.current ?? crypto.randomUUID();
@@ -128,6 +142,7 @@ function GDContent() {
   };
 
   const handleQuickAction = (action: { value: string; action?: AssessmentClientAction }) => {
+    if (inputDisabled) return;
     const actionForTurn = action.action ?? null;
     if (!inputValue.trim()) {
       setInputValue(action.value.trim());
@@ -142,11 +157,6 @@ function GDContent() {
   };
 
   const handleLeave = () => {
-    disconnect();
-    router.push('/map');
-  };
-
-  const handleSaveLater = () => {
     disconnect();
     router.push('/map');
   };
@@ -222,20 +232,27 @@ function GDContent() {
     },
   ];
   const isComplete = Boolean(report || (state?.status === 'ended' && state?.simulation_report));
-  const simulatorStatusLabel = isComplete
-    ? 'Complete'
-    : isClosing
-    ? 'Scoring'
-    : isSubmitting || isStreaming
-    ? 'Reviewing'
-    : 'Ready';
+  const simulatorStatusLabel = simulatorStatusFor({
+    isComplete,
+    isClosing,
+    isRecoveringTurn,
+    isStreaming,
+    activeStreamKind,
+    isSubmitting,
+  });
   const scorableTurns = backendScorableTurns(state);
   const minScorableTurns = state?.assessment_state?.progress?.min_scorable_turns ?? 5;
+  const coverageMap = state?.assessment_state?.progress?.coverage_map;
+  const coverageCovered = typeof coverageMap?.unique_covered === 'number'
+    ? coverageMap.unique_covered
+    : undefined;
+  const coverageRequired = typeof coverageMap?.required_unique === 'number'
+    ? coverageMap.required_unique
+    : undefined;
+  const integrityFlagCount = state?.assessment_state?.validity_flags?.length ?? 0;
   const leaveNotice = scorableTurns >= minScorableTurns
     ? `Your transcript is saved, but leaving now will not generate the scored GD report. Use End & Score if you want the report for this attempt. Current evidence: ${scorableTurns}/${minScorableTurns} score-eligible answers.`
     : `Your transcript is saved, but leaving now will not generate a reliable scored GD report. Current evidence: ${scorableTurns}/${minScorableTurns} score-eligible answers.`;
-  const inputDisabled = isStreaming || shouldClose || isSubmitting || state?.input_allowed === false || Boolean(state?.block_reason);
-
   if (!sessionId || notFound) {
     return <SessionNotFound onBack={() => router.push('/map')} />;
   }
@@ -269,6 +286,7 @@ function GDContent() {
         round={simTurn}
         isClosing={isClosing}
         isComplete={isComplete}
+        isEndDisabled={isEndDisabled}
         messages={messages.map(m => ({
           id: m.id,
           role: m.role as 'user' | 'assistant',
@@ -289,7 +307,6 @@ function GDContent() {
         onQuickAction={handleQuickAction}
         headerExtra={<CreditsBadge refreshOnMount />}
         onLeave={handleLeave}
-        onSaveLater={handleSaveLater}
         leaveNotice={leaveNotice}
       />
 
@@ -316,7 +333,11 @@ function GDContent() {
         maxRounds={MAX_SIM_ROUNDS}
         scorableTurns={scorableTurns}
         minScorableTurns={minScorableTurns}
+        coverageCovered={coverageCovered}
+        coverageRequired={coverageRequired}
+        integrityFlagCount={integrityFlagCount}
         isClosing={isClosing}
+        isBusy={isEndDisabled}
         showCancel={!shouldClose}
         onCancel={() => setConfirmEndOpen(false)}
         onConfirm={handleConfirmEnd}

@@ -61,10 +61,10 @@ interface SimulatorShellProps {
   maxRounds?: number;
   isClosing?: boolean;
   isComplete?: boolean;
+  isEndDisabled?: boolean;
   // Exit flow — called when learner wants to leave. If not provided, falls back
   // to the career home.
   onLeave?: () => void;
-  onSaveLater?: () => void;
   leaveNotice?: string;
   // Inline coaching nudge rendered above the input when the student needs a prompt
   coachingTip?: string;
@@ -602,12 +602,10 @@ const InputBar = memo(function InputBar({
 const LeaveConfirmPanel = memo(function LeaveConfirmPanel({
   onStay,
   onLeave,
-  onSaveLater,
   notice,
 }: {
   onStay: () => void;
   onLeave: () => void;
-  onSaveLater?: () => void;
   notice?: string;
 }) {
   return (
@@ -629,19 +627,11 @@ const LeaveConfirmPanel = memo(function LeaveConfirmPanel({
         >
           Stay
         </button>
-        {onSaveLater && (
-          <button
-            onClick={onSaveLater}
-            className="flex-1 py-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-700 font-black text-sm hover:bg-amber-100 transition-all active:scale-95"
-          >
-            Save for Later
-          </button>
-        )}
         <button
           onClick={onLeave}
           className="flex-1 py-3 rounded-2xl bg-slate-900 text-white font-black text-sm hover:bg-slate-800 transition-all active:scale-95"
         >
-          Leave
+          Leave Session
         </button>
       </div>
     </motion.div>
@@ -671,8 +661,8 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
   maxRounds = 10,
   isClosing = false,
   isComplete = false,
+  isEndDisabled = false,
   onLeave,
-  onSaveLater,
   leaveNotice,
   coachingTip,
   quickActions,
@@ -696,7 +686,7 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
   const latestMsg = messages[messages.length - 1];
 
   const handleLogoClick = () => {
-    if (onLeave || onSaveLater) {
+    if (onLeave) {
       setConfirmLeave(true);
     } else {
       window.location.href = '/career';
@@ -706,17 +696,6 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
   const handleLeave = () => {
     setConfirmLeave(false);
     if (onLeave) {
-      onLeave();
-    } else {
-      window.location.href = '/career';
-    }
-  };
-
-  const handleSaveLater = () => {
-    setConfirmLeave(false);
-    if (onSaveLater) {
-      onSaveLater();
-    } else if (onLeave) {
       onLeave();
     } else {
       window.location.href = '/career';
@@ -795,8 +774,8 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
                 <button
                   type="button"
                   onClick={onEnd}
-                  disabled={isClosing}
-                  aria-label="End the session and get my score"
+                  disabled={isClosing || isEndDisabled}
+                  aria-label="End the session and request a report"
                   className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-900 text-white text-[9px] font-black uppercase tracking-[0.18em] hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:pointer-events-none"
                 >
                   {isClosing ? 'Scoring…' : 'End & Score'}
@@ -991,7 +970,6 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
           <LeaveConfirmPanel
             onStay={() => setConfirmLeave(false)}
             onLeave={handleLeave}
-            onSaveLater={onSaveLater ? handleSaveLater : undefined}
             notice={leaveNotice}
           />
         )}

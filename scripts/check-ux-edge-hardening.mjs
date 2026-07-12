@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { teachingStatusFor } from '../src/lib/sessionStreamPresentation.mjs';
 
 const root = process.cwd();
@@ -18,12 +19,23 @@ const onboardingPage = read('src/app/onboarding/page.tsx');
 const creditsBadge = read('src/components/billing/CreditsBadge.tsx');
 const paywallModal = read('src/components/billing/PaywallModal.tsx');
 const reportModal = read('src/components/shared/SimulationReportModal.tsx');
+const reportPresentationPath = path.join(root, 'src/lib/simulationReportPresentation.mjs');
+const reportPresentationSource = fs.existsSync(reportPresentationPath)
+  ? fs.readFileSync(reportPresentationPath, 'utf8')
+  : '';
+const reportPresentation = fs.existsSync(reportPresentationPath)
+  ? await import(pathToFileURL(reportPresentationPath))
+  : null;
 const sessionRecap = read('src/components/shared/SessionRecap.tsx');
 const pathMap = read('src/components/shared/PathMap.tsx');
 const scenarioPicker = read('src/components/shared/ScenarioPicker.tsx');
 const sessionPage = read('src/app/session/[id]/page.tsx');
 const sessionStreamPresentation = read('src/lib/sessionStreamPresentation.mjs');
 const tutorShell = read('src/components/tutor/TutorShell.tsx');
+const simulatorShell = read('src/components/simulator/SimulatorShell.tsx');
+const endSessionConfirm = read('src/components/simulator/EndSessionConfirmModal.tsx');
+const gdSimulatorPage = read('src/app/(professional)/simulator/gd/page.tsx');
+const interviewSimulatorPage = read('src/app/(professional)/simulator/interview/page.tsx');
 const spokenCard = read('src/components/cards/SpokenAnswerCard.tsx');
 const fillBlankCard = read('src/components/cards/FillInTheBlankCard.tsx');
 const multipleChoiceCard = read('src/components/cards/MultipleChoiceCard.tsx');
@@ -211,105 +223,166 @@ if (!paywallModal.includes('const handleClose = () =>') || !paywallModal.include
   failures.push('PaywallModal must not allow backdrop/close dismissal while a confirmed start is in flight.');
 }
 
+const reportSources = `${reportModal}\n${reportPresentationSource}`;
 for (const token of ['learner_assessment_caveats', 'simulator_integrity_notes', 'score_breakdown', 'Learner Evidence Caveats', 'Simulator Integrity Notes', 'Score Breakdown']) {
-  if (!reportModal.includes(token)) {
+  if (!reportSources.includes(token)) {
     failures.push(`SimulationReportModal must render split assessment/report contract with ${token}.`);
   }
 }
 
-for (const token of ['max-h-[calc(100dvh-2rem)]', 'overflow-y-auto space-y-6 flex-1 min-h-0 overscroll-contain', 'whitespace-normal break-words overflow-visible']) {
+for (const token of ['max-h-[calc(100dvh-2rem)]', 'shrink-0']) {
   if (!reportModal.includes(token)) {
-    failures.push(`SimulationReportModal must keep long reports scrollable/readable with ${token}.`);
+    failures.push(`SimulationReportModal must keep only its body scrollable while header/footer stay stable with ${token}.`);
   }
 }
-
-const reportWrapChecks = [
-  [
-    'learner caveats',
-    /Learner Evidence Caveats[\s\S]{0,900}className="px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-xs font-semibold text-left leading-relaxed whitespace-normal break-words overflow-visible"/,
-  ],
-  [
-    'simulator integrity notes',
-    /Simulator Integrity Notes[\s\S]{0,900}className="px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 text-xs font-semibold text-left leading-relaxed whitespace-normal break-words overflow-visible"/,
-  ],
-  [
-    'evidence quotes',
-    /Evidence Quotes[\s\S]{0,900}<span className="text-sm text-slate-600 leading-relaxed break-words min-w-0">\{quote\}<\/span>/,
-  ],
-  [
-    'rubric explanations',
-    /Rubric[\s\S]{0,1200}<p className="text-\[11px\] text-slate-500 mt-1\.5 leading-relaxed break-words min-w-0">\{explanation\}<\/p>/,
-  ],
-  [
-    'score adjustment explanations',
-    /Score Adjustments[\s\S]{0,900}<p className="mt-1 text-sm leading-relaxed text-slate-700 break-words min-w-0">\{explanation\}<\/p>/,
-  ],
-  [
-    'strength rows',
-    /What Landed[\s\S]{0,900}<span className="break-words min-w-0">\{s\}<\/span>/,
-  ],
-  [
-    'improvement rows',
-    /Work On Next[\s\S]{0,900}<span className="text-sm text-slate-700 leading-relaxed break-words min-w-0">\{s\}<\/span>/,
-  ],
-  [
-    'read observations',
-    /The Read[\s\S]{0,1400}<span className="break-words min-w-0">\{obs\}<\/span>/,
-  ],
-  [
-    'read summary',
-    /<p className="text-sm text-slate-600 leading-relaxed break-words min-w-0">\{report\.summary\}<\/p>/,
-  ],
-];
-
-for (const [label, pattern] of reportWrapChecks) {
-  if (!pattern.test(reportModal)) {
-    failures.push(`SimulationReportModal ${label} must bind wrapping classes to the rendered text node.`);
-  }
+if (!/className="[^"]*flex[^"]*flex-col[^"]*overflow-hidden/.test(reportModal)) {
+  failures.push('SimulationReportModal dialog must be a flex column with overflow contained.');
+}
+if (!/className="[^"]*min-h-0[^"]*flex-1[^"]*overflow-y-auto[^"]*overscroll-contain/.test(reportModal)) {
+  failures.push('SimulationReportModal body must own vertical scrolling and overscroll containment.');
 }
 
-for (const token of ['scoreExplanationRows', 'Why this score', 'Final score blends', 'Coverage cap lowered', 'Simulator integrity cap lowered']) {
+for (const token of ['scoreExplanationRows', 'Why this score', 'Coverage cap', 'Simulator integrity cap']) {
   if (!reportModal.includes(token)) {
     failures.push(`SimulationReportModal must explain score adjustments in learner-readable language with ${token}.`);
   }
 }
 
-for (const token of ['Integrity-Capped Assessment', 'Integrity-Flagged Assessment', 'simulator repairs capped score confidence', 'partial read, not a final score']) {
-  if (!reportModal.includes(token)) {
-    failures.push(`SimulationReportModal must distinguish coverage partials from simulator-integrity partials with ${token}.`);
+if (!reportPresentation?.reportPresentationFor || !reportPresentation?.splitAssessmentCaveats) {
+  failures.push('Simulation report presentation must be derived by a pure, testable helper.');
+} else {
+  const insufficient = reportPresentation.reportPresentationFor({ validity_status: 'insufficient_evidence' });
+  const invalid = reportPresentation.reportPresentationFor({ validity_status: 'invalid_simulation' });
+  const provisional = reportPresentation.reportPresentationFor({ validity_status: 'partial' });
+  const capped = reportPresentation.reportPresentationFor({ validity_status: 'partial', score_breakdown: { coverage_cap: 0.7 } });
+  const finalWithNotes = reportPresentation.reportPresentationFor({
+    validity_status: 'final',
+    assessment_caveats: ['sImUlAtOr CaVeAt: repaired speaker routing'],
+  });
+  const split = reportPresentation.splitAssessmentCaveats({
+    learner_assessment_caveats: ['Short answer'],
+    assessment_caveats: [
+      'SIMULATOR CAVEAT: repaired speaker routing',
+      'simulator INTEGRITY: fallback response inserted',
+    ],
+  });
+
+  if (insufficient.title !== 'Session Review' || insufficient.scoreLabel !== 'Not scored' || !insufficient.isNotScored) {
+    failures.push('Insufficient-evidence reports must present Session Review / Not scored.');
+  }
+  if (invalid.title !== 'Session Review' || invalid.scoreLabel !== 'Not scored' || !invalid.isNotScored) {
+    failures.push('Invalid simulations must present Session Review / Not scored.');
+  }
+  if (provisional.title !== 'Assessment Review' || provisional.scoreLabel !== 'Provisional') {
+    failures.push('Uncapped partial reports must present Assessment Review / Provisional.');
+  }
+  if (capped.title !== 'Assessment Review' || capped.scoreLabel !== 'Capped') {
+    failures.push('Numerically capped partial reports must present Assessment Review / Capped.');
+  }
+  if (finalWithNotes.title !== 'Assessment Complete' || finalWithNotes.scoreLabel !== 'Final' || !/Integrity Notes/i.test(finalWithNotes.validityLabel)) {
+    failures.push('Final reports with merged integrity caveats must remain final while naming the integrity notes.');
+  }
+  if (
+    split.learner.some((note) => /simulator (?:caveat|integrity):/i.test(note))
+    || !split.integrity.includes('repaired speaker routing')
+    || !split.integrity.includes('fallback response inserted')
+  ) {
+    failures.push('Legacy simulator caveat/integrity prefixes must merge case-insensitively into integrity notes, never learner caveats.');
   }
 }
 
-if (/if \(explicitLearner\.length \|\| explicitIntegrity\.length\)[\s\S]{0,220}return/.test(reportModal)) {
-  failures.push('SimulationReportModal must merge legacy assessment_caveats with explicit learner/integrity arrays instead of returning early.');
+for (const token of ['presentation.title', 'presentation.scoreLabel', '!presentation.isNotScored', '!presentation.isFinal', 'isFirstSim && !presentation.isNotScored']) {
+  if (!reportModal.includes(token)) {
+    failures.push(`SimulationReportModal must render validity-derived report semantics with ${token}.`);
+  }
 }
 
-if (!/if \(coverageCap\) \{[\s\S]{0,260}score is capped/.test(reportModal)) {
-  failures.push('SimulationReportModal must use coverage cap language only inside the numeric coverageCap branch.');
+if (reportModal.includes('>Assessment Complete<') || reportModal.includes('Score reflects partial participation')) {
+  failures.push('SimulationReportModal must not hard-code final or partial-score language outside validity-derived presentation.');
 }
 
-if (/if \(hasCoverageShortfall\) \{[\s\S]{0,260}score is capped/.test(reportModal)) {
-  failures.push('SimulationReportModal must not say coverage shortfall capped the score unless score_breakdown.coverage_cap is numeric.');
+if (!/if \(presentation\.isNotScored\) return;[\s\S]{0,240}getMe\(\)/.test(reportModal)) {
+  failures.push('SimulationReportModal must consume first_sim_complete only after a scored report is presented.');
 }
 
-if (!/if \(validityCap\) \{[\s\S]{0,320}Integrity-Capped Assessment[\s\S]{0,260}capped score confidence/.test(reportModal)) {
-  failures.push('SimulationReportModal must use simulator integrity cap language only inside the numeric validityCap branch.');
-}
-
-if (/if \(hasIntegrityNotes\) \{[\s\S]{0,320}capped/.test(reportModal)) {
-  failures.push('SimulationReportModal must not say simulator integrity notes capped the score unless score_breakdown.validity_cap is numeric.');
-}
-
-if (/score is capped or caveated/.test(reportModal)) {
-  failures.push('SimulationReportModal generic partial copy must not blur capped and caveated states.');
-}
-
-if (!/typeof scoreBreakdown\.coverage_cap === 'number' && \([\s\S]{0,260}Coverage Cap/.test(reportModal)) {
+if (!/typeof scoreBreakdown\.coverage_cap === 'number' && \([\s\S]{0,420}Coverage Cap/.test(reportModal)) {
   failures.push('SimulationReportModal must render the Coverage Cap card only when coverage_cap is numeric.');
 }
 
-if (!/typeof scoreBreakdown\.validity_cap === 'number' && \([\s\S]{0,260}Validity Cap/.test(reportModal)) {
+if (!/typeof scoreBreakdown\.validity_cap === 'number' && \([\s\S]{0,420}Validity Cap/.test(reportModal)) {
   failures.push('SimulationReportModal must render the Validity Cap card only when validity_cap is numeric.');
+}
+
+if (!/grid-cols-1[\s\S]{0,100}sm:grid-cols-3/.test(reportModal)) {
+  failures.push('SimulationReportModal evidence and score grids must collapse to one column on narrow screens.');
+}
+
+for (const token of ['coverageCovered?: number', 'coverageRequired?: number', 'integrityFlagCount?: number', 'Backend validation decides', 'Insufficient answer evidence', 'Insufficient coverage', 'Integrity risk', 'Evidence ready for validation']) {
+  if (!`${endSessionConfirm}\n${sessionStreamPresentation}`.includes(token)) {
+    failures.push(`EndSessionConfirmModal must distinguish backend validation evidence with ${token}.`);
+  }
+}
+
+for (const token of ['Coverage not yet verified', 'End & Validate Report', 'endSessionEvidenceFor']) {
+  if (!`${endSessionConfirm}\n${sessionStreamPresentation}`.includes(token)) {
+    failures.push(`End-session evidence must represent unknown coverage explicitly with ${token}.`);
+  }
+}
+
+for (const token of ['dialogRef', 'previousFocus', "event.key !== 'Tab'", "event.key === 'Escape'", 'querySelectorAll<HTMLElement>', 'previousFocus?.focus()', 'tabIndex={-1}']) {
+  if (!endSessionConfirm.includes(token)) {
+    failures.push(`EndSessionConfirmModal must own a complete keyboard focus lifecycle with ${token}.`);
+  }
+}
+if (!/event\.key === 'Escape'[\s\S]{0,180}showCancel/.test(endSessionConfirm)) {
+  failures.push('EndSessionConfirmModal Escape handling must cancel only when cancellation is available.');
+}
+
+if (simulatorShell.includes('onSaveLater') || simulatorShell.includes('Save for Later')) {
+  failures.push('SimulatorShell must have one clear Leave action because leaving already preserves the transcript.');
+}
+
+for (const token of ['isEndDisabled?: boolean', 'disabled={isClosing || isEndDisabled}']) {
+  if (!simulatorShell.includes(token)) {
+    failures.push(`SimulatorShell must use an explicit end-action busy contract with ${token}.`);
+  }
+}
+
+for (const token of ['isBusy?: boolean', 'disabled={isClosing || isBusy}']) {
+  if (!endSessionConfirm.includes(token)) {
+    failures.push(`EndSessionConfirmModal must block confirmation while recovery settles with ${token}.`);
+  }
+}
+
+for (const [name, source] of [['GD', gdSimulatorPage], ['Interview', interviewSimulatorPage]]) {
+  for (const token of ['activeStreamKind', 'isRecoveringTurn', 'const isEndDisabled =', 'const inputDisabled = simulatorInputBlocked({', 'isEndDisabled={isEndDisabled}', 'isBusy={isEndDisabled}', 'simulatorStatusFor({', 'coverageCovered={coverageCovered}', 'coverageRequired={coverageRequired}', 'integrityFlagCount={integrityFlagCount}']) {
+    if (!source.includes(token)) failures.push(`${name} simulator must wire ${token}.`);
+  }
+  if (!/simulatorStatusFor\(\{[\s\S]{0,180}isRecoveringTurn/.test(source)) {
+    failures.push(`${name} simulator status must surface turn recovery as Reviewing.`);
+  }
+  if (!/const submitDraft[\s\S]{0,320}inputDisabled/.test(source)) {
+    failures.push(`${name} simulator submitDraft must use the shared recovery-aware input guard.`);
+  }
+  if (!/const handleQuickAction[\s\S]{0,180}if \(inputDisabled\) return;/.test(source)) {
+    failures.push(`${name} simulator quick actions must be inert while recovery owns the turn.`);
+  }
+  if (!/const handleConfirmEnd = \(\) => \{[\s\S]{0,120}if \(isEndDisabled\) return;/.test(source)) {
+    failures.push(`${name} simulator must reject modal confirmation while end actions are busy.`);
+  }
+  if (source.includes('handleSaveLater') || source.includes('onSaveLater=')) {
+    failures.push(`${name} simulator must remove the duplicate save-later path.`);
+  }
+}
+
+const shortViewportDialogClasses = reportModal.match(
+  /data-short-viewport-fallback="dialog-scroll"[\s\S]{0,260}className="([^"]+)"/,
+)?.[1] ?? '';
+if (
+  !shortViewportDialogClasses.includes('[@media(max-height:640px)]:block')
+  || !shortViewportDialogClasses.includes('[@media(max-height:640px)]:overflow-y-auto')
+) {
+  failures.push('SimulationReportModal must switch to a reachable dialog-scroll fallback on short viewports.');
 }
 
 for (const token of ['practiceIsReturnAction', '!practiceIsReturnAction']) {
@@ -360,6 +433,12 @@ for (const token of ['latestProgressMastery', 'progress?.mastery ?? state?.curre
   }
 }
 
+for (const token of ['cleanStreak={visibleCleanStreak}', 'attempts={visibleAttempts}']) {
+  if (!sessionPage.includes(token)) {
+    failures.push(`Session page must pass visible completed-node evidence into TutorShell with ${token}.`);
+  }
+}
+
 for (const token of [
   'progress?.readiness_score ?? state?.readiness_score',
   'pendingTransition?.from_readiness_score',
@@ -393,6 +472,37 @@ if (
   || !tutorShell.includes('{progressLabel}')
 ) {
   failures.push('TutorShell must label professional prep progress as Readiness while preserving Mastery for non-professional learning flows.');
+}
+
+for (const token of ['cleanStreak?: number', 'attempts?: number', 'Attempts', 'Clean passes', 'min-w-0', 'overflow-hidden']) {
+  if (!tutorShell.includes(token)) {
+    failures.push(`TutorShell must present compact, overflow-safe attempt evidence with ${token}.`);
+  }
+}
+
+const compactEvidenceClasses = tutorShell.match(
+  /data-progress-evidence="compact"[\s\S]{0,120}className="([^"]+)"/,
+)?.[1] ?? '';
+const wideEvidenceClasses = tutorShell.match(
+  /data-progress-evidence="wide"[\s\S]{0,120}className="([^"]+)"/,
+)?.[1] ?? '';
+if (
+  tutorShell.includes('A {attempts}')
+  || !compactEvidenceClasses.includes('inline-flex')
+  || !compactEvidenceClasses.includes('basis-full')
+  || !compactEvidenceClasses.includes('flex-wrap')
+  || !compactEvidenceClasses.includes('xl:hidden')
+  || compactEvidenceClasses.includes('min-[')
+  || compactEvidenceClasses.split(/\s+/).includes('hidden')
+) {
+  failures.push('TutorShell compact attempt evidence must stay visible and wrap safely from 320px through large widths.');
+}
+if (
+  !wideEvidenceClasses.includes('hidden')
+  || !wideEvidenceClasses.includes('xl:flex')
+  || /(?:sm|md|lg):flex/.test(wideEvidenceClasses)
+) {
+  failures.push('TutorShell wide attempt evidence chip must not activate before the xl breakpoint.');
 }
 
 if (

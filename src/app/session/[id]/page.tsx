@@ -418,6 +418,8 @@ export default function SessionPage({ params }: { params: { id: string } }) {
     ? pendingTransition.from_title
     : state?.node_title;
   const latestProgressMastery = progress?.mastery ?? state?.current_mastery ?? 0;
+  const latestProgressStreak = progress?.clean_streak ?? state?.clean_streak ?? 0;
+  const latestProgressAttempts = progress?.attempts ?? state?.attempts ?? 0;
   const latestReadiness = progress?.readiness_score ?? state?.readiness_score ?? latestProgressMastery;
   const transitionReadiness = pendingTransition?.from_readiness_score
     ?? pendingTransition?.from_mastery
@@ -425,6 +427,12 @@ export default function SessionPage({ params }: { params: { id: string } }) {
   const visibleMastery = transitionActive
     ? (transitionMastered ? 1 : transitionReadiness)
     : latestReadiness;
+  const visibleCleanStreak = transitionActive
+    ? (pendingTransition?.from_clean_streak ?? latestProgressStreak)
+    : latestProgressStreak;
+  const visibleAttempts = transitionActive
+    ? (pendingTransition?.from_attempts ?? latestProgressAttempts)
+    : latestProgressAttempts;
   const shellNodeTitle = isBootstrapping && !visibleNodeTitle
     ? 'Loading session'
     : visibleNodeTitle;
@@ -442,6 +450,8 @@ export default function SessionPage({ params }: { params: { id: string } }) {
     <TutorShell
       nodeTitle={shellNodeTitle}
       mastery={visibleMastery}
+      cleanStreak={visibleCleanStreak}
+      attempts={visibleAttempts}
       phase={shellPhase}
       mode={isProfessional ? 'professional' : 'gamified'}
       characterImg={avatar?.url}
