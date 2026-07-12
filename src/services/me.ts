@@ -110,11 +110,41 @@ export interface LearningEventSummary {
   caveats?: string[];
 }
 
+export interface CareerMemoryItem {
+  skill_id: string;
+  module_id?: ModuleId | string;
+  task_type?: string;
+  status: 'active_gap' | 'improving' | 'resolved' | 'mastered' | string;
+  readiness: number;
+  confidence: number;
+  attempts: number;
+  gap?: string;
+  latest_evidence?: string;
+  recommended_next_action?: string;
+  repeat_count?: number;
+}
+
+export interface CareerMemoryContext {
+  active_gaps: CareerMemoryItem[];
+  improving_gaps: CareerMemoryItem[];
+  resolved_gaps: CareerMemoryItem[];
+  mastered_skills: CareerMemoryItem[];
+  repeated_issue_counts: Record<string, number>;
+  recent_reports: Array<{
+    task_type?: string;
+    status?: string;
+    score?: number;
+    summary?: string;
+    recommended_actions?: string[];
+  }>;
+}
+
 export interface MeLearningGraph {
   career_profile: CareerProfile;
   profiles: CareerLearningGraphNode[];
   reports: SessionReportSummary[];
   events: LearningEventSummary[];
+  memory_context: CareerMemoryContext;
   degraded?: boolean;
 }
 

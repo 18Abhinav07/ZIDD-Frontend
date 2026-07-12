@@ -9,9 +9,12 @@ import { AppHeader } from '@/components/shared/AppHeader';
 import { CareerHomeSkeleton } from '@/components/shared/RouteSkeletons';
 import { useAppSession } from '@/components/shared/AppSessionProvider';
 import {
+  getMeLearningGraph,
   myPathForMe,
   updatePreferences,
+  type CareerMemoryItem,
   type MeActivity,
+  type MeLearningGraph,
   type MeResponse,
   type ModuleId,
 } from '@/services/me';
@@ -25,6 +28,36 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+function percent(value: number): string {
+  return `${Math.round(value * 100)}%`;
+}
+
+function formatSkillLabel(value?: string): string {
+  const text = (value || '').trim();
+  if (!text) return 'Career skill';
+  return text
+    .replace(/^(gd|int)_\d+_/, '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function formatStatusLabel(value?: string): string {
+  const text = (value || '').trim();
+  if (!text) return 'Tracked';
+  return text
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function careerModuleFromMemory(item: CareerMemoryItem): ModuleId | null {
+  if (item.module_id === 'interview' || item.task_type?.startsWith('interview')) {
+    return 'interview';
+  }
+  if (item.module_id === 'group_discussion' || item.task_type?.startsWith('gd')) {
+    return 'group_discussion';
+  }
+  return null;
+}
 
 const PATHS: { id: ModuleId; label: string; blurb: string }[] = [
   { id: 'interview', label: 'Interview', blurb: 'Pitch, handle pressure, negotiate, and close strong.' },
@@ -36,7 +69,9 @@ export default function CareerPage() {
   const { me: cachedMe, loadMe, loadActivity, loadingActivity } = useAppSession();
   const [me, setMe] = useState<MeResponse | null>(null);
   const [activity, setActivity] = useState<MeActivity | null>(null);
+  const [careerLearningGraph, setCareerLearningGraph] = useState<MeLearningGraph | null>(null);
   const [activityError, setActivityError] = useState('');
+  const [careerLearningGraphError, setCareerLearningGraphError] = useState('');
   const [moduleAvatars, setModuleAvatars] = useState<Record<string, AvatarData>>({});
   const [openingModule, setOpeningModule] = useState<ModuleId | null>(null);
   const [actionError, setActionError] = useState('');
@@ -87,6 +122,21 @@ export default function CareerPage() {
               setActivityError('Activity summary is temporarily unavailable. Your career paths still work.');
             }
           });
+        getMeLearningGraph()
+          .then((nextGraph) => {
+            if (!cancelled) {
+              setCareerLearningGraph(nextGraph);
+              if (nextGraph.degraded) {
+                setCareerLearningGraphError('Career growth evidence is partially unavailable. Your paths still work.');
+              }
+            }
+          })
+          .catch(() => {
+            if (!cancelled) {
+              setCareerLearningGraph(null);
+              setCareerLearningGraphError('Career growth evidence is temporarily unavailable. Your paths still work.');
+            }
+          });
       } catch (err: unknown) {
         if (!cancelled) {
           const raw = err instanceof Error ? err.message : '';
@@ -134,6 +184,19 @@ export default function CareerPage() {
       setActionError('Could not save your selected path. Please try again.');
       setOpeningModule(null);
     }
+  };
+
+  const careerMemory = careerLearningGraph?.memory_context;
+  const careerFocus = careerMemory?.active_gaps?.[0] ?? careerMemory?.improving_gaps?.[0] ?? null;
+  const focusModule = careerFocus ? careerModuleFromMemory(careerFocus) : null;
+  const latest_evidence = careerFocus?.latest_evidence?.trim();
+  const repeat_count = Number(careerFocus?.repeat_count || 0);
+  const focusStatus = formatStatusLabel(careerFocus?.status);
+  const focusReadiness = careerFocus ? percent(careerFocus.readiness || 0) : '';
+
+  const onPracticeCareerFocus = async () => {
+    if (!focusModule) return;
+    await openPath(focusModule);
   };
 
   const pathHref = myPathForMe(me);
@@ -214,6 +277,53 @@ export default function CareerPage() {
                 {loadingActivity && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 Retry
               </button>
+            </div>
+          </div>
+        )}
+
+        {(careerFocus || careerLearningGraphError) && (
+          <div className="mt-8 rounded-[1.5rem] border border-slate-200/80 bg-white px-5 py-5 shadow-[0_18px_45px_rgba(15,23,42,0.06)]">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div className="max-w-2xl">
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Career focus</p>
+                {careerFocus ? (
+                  <>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <h2 className="font-display text-2xl tracking-tight text-slate-950">{formatSkillLabel(careerFocus.skill_id)}</h2>
+                      <span className="rounded-full bg-amber-100 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-amber-700">
+                        {focusStatus}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                      {careerFocus.gap || careerFocus.recommended_next_action || 'Keep building evidence on this skill.'}
+                    </p>
+                    {latest_evidence && (
+                      <p className="mt-3 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-600 break-words">
+                        Evidence: {latest_evidence}
+                      </p>
+                    )}
+                    <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.13em] text-slate-400">
+                      <span>Status: {focusStatus}</span>
+                      <span>Readiness: {focusReadiness}</span>
+                      <span>{careerFocus.attempts || 0} attempt{careerFocus.attempts === 1 ? '' : 's'}</span>
+                      <span>{repeat_count} repeated issue{repeat_count === 1 ? '' : 's'}</span>
+                    </div>
+                  </>
+                ) : (
+                  <p className="mt-2 text-sm font-semibold text-amber-800">{careerLearningGraphError}</p>
+                )}
+              </div>
+              {focusModule && (
+                <button
+                  type="button"
+                  onClick={onPracticeCareerFocus}
+                  disabled={openingModule !== null}
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-slate-900 px-5 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-white transition-colors hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60"
+                >
+                  {openingModule === focusModule && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  Practice this gap
+                </button>
+              )}
             </div>
           </div>
         )}

@@ -12,12 +12,15 @@ import {
 import {
   BookOpen,
   BriefcaseBusiness,
+  AlertTriangle,
   CheckCircle2,
   FileText,
   IdCard,
   Loader2,
   Mail,
   Target,
+  TrendingUp,
+  Trophy,
   UserRound,
 } from 'lucide-react';
 import { AppHeader } from '@/components/shared/AppHeader';
@@ -25,9 +28,12 @@ import { canShowDevCreditGrant, devGrantCredits } from '@/services/billing';
 import {
   getMe,
   getMeActivity,
+  getMeLearningGraph,
   invalidateMeCache,
   updatePreferences,
+  type CareerMemoryItem,
   type MeActivity,
+  type MeLearningGraph,
   type MeResponse,
   type ModuleId,
 } from '@/services/me';
@@ -49,13 +55,35 @@ function percent(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
 
+function formatSkillLabel(value?: string): string {
+  const text = (value || '').trim();
+  if (!text) return 'Career skill';
+  return text
+    .replace(/^(gd|int)_\d+_/, '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function careerModuleFromMemory(item: CareerMemoryItem): ModuleId | null {
+  if (item.module_id === 'interview' || item.task_type?.startsWith('interview')) {
+    return 'interview';
+  }
+  if (item.module_id === 'group_discussion' || item.task_type?.startsWith('gd')) {
+    return 'group_discussion';
+  }
+  return null;
+}
+
 export default function ProfilePage() {
   const router = useRouter();
   const { loadBalance, loadMe } = useAppSession();
   const [me, setMe] = useState<MeResponse | null>(null);
   const [activity, setActivity] = useState<MeActivity | null>(null);
+  const [learningGraph, setLearningGraph] = useState<MeLearningGraph | null>(null);
   const [activityError, setActivityError] = useState('');
+  const [learningGraphError, setLearningGraphError] = useState('');
   const [activityLoading, setActivityLoading] = useState(false);
+  const [learningGraphLoading, setLearningGraphLoading] = useState(false);
   const [granting, setGranting] = useState(false);
   const [switching, setSwitching] = useState<string | null>(null);
   const [switchError, setSwitchError] = useState('');
@@ -75,6 +103,23 @@ export default function ProfilePage() {
     }
   }, []);
 
+  const loadCareerGrowth = useCallback(async () => {
+    setLearningGraphError('');
+    setLearningGraphLoading(true);
+    try {
+      const nextGraph = await getMeLearningGraph();
+      setLearningGraph(nextGraph);
+      if (nextGraph.degraded) {
+        setLearningGraphError('Career growth evidence is partially unavailable. Recent profile details are still visible.');
+      }
+    } catch {
+      setLearningGraph(null);
+      setLearningGraphError('Career growth evidence is temporarily unavailable. Profile details are still available.');
+    } finally {
+      setLearningGraphLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     setMounted(true);
     let cancelled = false;
@@ -84,7 +129,9 @@ export default function ProfilePage() {
         if (cancelled) return;
         setMe(profile);
         setActivityError('');
+        setLearningGraphError('');
         setActivityLoading(true);
+        setLearningGraphLoading(true);
         getMeActivity()
           .then((nextActivity) => {
             if (!cancelled) setActivity(nextActivity);
@@ -97,6 +144,24 @@ export default function ProfilePage() {
           })
           .finally(() => {
             if (!cancelled) setActivityLoading(false);
+          });
+        getMeLearningGraph()
+          .then((nextGraph) => {
+            if (!cancelled) {
+              setLearningGraph(nextGraph);
+              if (nextGraph.degraded) {
+                setLearningGraphError('Career growth evidence is partially unavailable. Recent profile details are still visible.');
+              }
+            }
+          })
+          .catch(() => {
+            if (!cancelled) {
+              setLearningGraph(null);
+              setLearningGraphError('Career growth evidence is temporarily unavailable. Profile details are still available.');
+            }
+          })
+          .finally(() => {
+            if (!cancelled) setLearningGraphLoading(false);
           });
       } catch {
         if (!cancelled) {
@@ -150,6 +215,12 @@ export default function ProfilePage() {
     }
   };
 
+  const onPracticeCareerGap = async (item: CareerMemoryItem) => {
+    const moduleId = careerModuleFromMemory(item);
+    if (!moduleId) return;
+    await openCareer(moduleId);
+  };
+
   const credits = me?.demo_unlimited ? '∞' : (me?.credits ?? '—');
   const displayName = me?.name?.trim() || me?.user_id || 'there';
   const primaryMotive = me?.onboarding?.primary_motive;
@@ -159,6 +230,7 @@ export default function ProfilePage() {
   const interviewGoalChips = careerProfile.interview_goals ?? [];
   const gdTopicChips = (careerProfile.gd_topic_ids ?? []).map(labelGdTopic);
   const customGdTopicChips = careerProfile.custom_gd_topics ?? [];
+  const careerMemory = learningGraph?.memory_context;
   const hasCareerProfileDetails = [
     targetRoleChips,
     interviewGoalChips,
@@ -253,6 +325,23 @@ export default function ProfilePage() {
           </div>
         )}
 
+        {learningGraphError && (
+          <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="font-semibold">{learningGraphError}</p>
+              <button
+                type="button"
+                onClick={() => void loadCareerGrowth()}
+                disabled={learningGraphLoading}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-amber-800 transition-colors hover:bg-amber-100 disabled:cursor-wait disabled:opacity-60"
+              >
+                {learningGraphLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Retry growth
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="mt-5 grid grid-cols-1 lg:grid-cols-2 gap-5">
           <section className="rounded-[1.75rem] border border-slate-200/70 bg-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
             <div className="flex items-center gap-2 text-indigo-500">
@@ -319,6 +408,68 @@ export default function ProfilePage() {
           </section>
         </div>
 
+        <section className="mt-5 rounded-[1.75rem] border border-slate-200/70 bg-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-slate-500">
+                <TrendingUp className="w-4 h-4" />
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em]">Career growth</span>
+              </div>
+              <h2 className="mt-3 font-display text-3xl leading-tight text-slate-950">Evidence the tutor is tracking</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-500">
+                Recent career-session evidence, grouped by what needs work next and what has stronger proof.
+              </p>
+            </div>
+            {learningGraphLoading && (
+              <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Loading
+              </div>
+            )}
+          </div>
+
+          {careerMemory ? (
+            <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <GrowthBucket
+                title="Active gaps"
+                tone="rose"
+                icon={<AlertTriangle className="w-4 h-4" />}
+                items={careerMemory.active_gaps}
+                empty="No active career gaps tracked yet."
+                onPractice={onPracticeCareerGap}
+              />
+              <GrowthBucket
+                title="Improving"
+                tone="amber"
+                icon={<TrendingUp className="w-4 h-4" />}
+                items={careerMemory.improving_gaps}
+                empty="No improving gaps yet."
+                onPractice={onPracticeCareerGap}
+              />
+              <GrowthBucket
+                title="Resolved"
+                tone="emerald"
+                icon={<CheckCircle2 className="w-4 h-4" />}
+                items={careerMemory.resolved_gaps}
+                empty="No resolved gaps yet."
+                onPractice={onPracticeCareerGap}
+              />
+              <GrowthBucket
+                title="Mastered"
+                tone="indigo"
+                icon={<Trophy className="w-4 h-4" />}
+                items={careerMemory.mastered_skills}
+                empty="No sustained mastery evidence yet."
+                onPractice={onPracticeCareerGap}
+              />
+            </div>
+          ) : (
+            <div className="mt-6 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-5 text-sm leading-relaxed text-slate-500">
+              Complete prep turns or scored tests to build the career growth graph.
+            </div>
+          )}
+        </section>
+
         <section className="mt-5 rounded-[1.75rem] border border-slate-200/70 bg-slate-900 text-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.08)]">
           <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-white/50">Recommendations</span>
           <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -381,6 +532,129 @@ function ChipGroup({ label, items }: { label: string; items: string[] }) {
           </span>
         ))}
       </div>
+    </div>
+  );
+}
+
+const GROWTH_TONES: Record<string, { wrap: string; label: string; chip: string }> = {
+  rose: {
+    wrap: 'border-rose-100 bg-rose-50/70',
+    label: 'text-rose-700',
+    chip: 'bg-rose-100 text-rose-700',
+  },
+  amber: {
+    wrap: 'border-amber-100 bg-amber-50/70',
+    label: 'text-amber-700',
+    chip: 'bg-amber-100 text-amber-800',
+  },
+  emerald: {
+    wrap: 'border-emerald-100 bg-emerald-50/70',
+    label: 'text-emerald-700',
+    chip: 'bg-emerald-100 text-emerald-700',
+  },
+  indigo: {
+    wrap: 'border-indigo-100 bg-indigo-50/70',
+    label: 'text-indigo-700',
+    chip: 'bg-indigo-100 text-indigo-700',
+  },
+};
+
+function GrowthBucket({
+  title,
+  tone,
+  icon,
+  items,
+  empty,
+  onPractice,
+}: {
+  title: string;
+  tone: keyof typeof GROWTH_TONES;
+  icon: ReactNode;
+  items: CareerMemoryItem[];
+  empty: string;
+  onPractice: (item: CareerMemoryItem) => void;
+}) {
+  const styles = GROWTH_TONES[tone];
+
+  return (
+    <div className={`rounded-2xl border px-4 py-4 ${styles.wrap}`}>
+      <div className={`flex items-center gap-2 ${styles.label}`}>
+        {icon}
+        <h3 className="text-[11px] font-black uppercase tracking-[0.18em]">{title}</h3>
+      </div>
+      {items.length ? (
+        <div className="mt-4 space-y-3">
+          {items.slice(0, 3).map((item) => (
+            <GrowthItem key={`${title}-${item.skill_id}`} item={item} chipClass={styles.chip} onPractice={onPractice} />
+          ))}
+        </div>
+      ) : (
+        <p className="mt-4 text-sm leading-relaxed text-slate-500">{empty}</p>
+      )}
+    </div>
+  );
+}
+
+function GrowthItem({
+  item,
+  chipClass,
+  onPractice,
+}: {
+  item: CareerMemoryItem;
+  chipClass: string;
+  onPractice: (item: CareerMemoryItem) => void;
+}) {
+  const latest_evidence = item.latest_evidence?.trim();
+  const repeat_count = Number(item.repeat_count || 0);
+  const careerModule = careerModuleFromMemory(item);
+  const moduleLabel = careerModule === 'group_discussion'
+    ? 'Group Discussion'
+    : careerModule === 'interview'
+      ? 'Interview'
+      : '';
+  const displaySkill = item.task_type?.endsWith('_test')
+    ? item.gap || item.skill_id
+    : item.skill_id;
+  const secondaryGap = item.task_type?.endsWith('_test')
+    ? item.recommended_next_action
+    : item.gap || item.recommended_next_action;
+  const statusLabel =
+    item.status === 'mastered'
+      ? 'Mastered'
+      : item.status === 'resolved'
+        ? 'Resolved'
+        : `${percent(item.readiness || 0)} ready`;
+
+  return (
+    <div className="rounded-xl border border-white/70 bg-white/80 px-4 py-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-sm font-black leading-tight text-slate-900">{formatSkillLabel(displaySkill)}</p>
+          <p className="mt-1 text-xs leading-relaxed text-slate-500">{secondaryGap || 'Keep collecting evidence.'}</p>
+        </div>
+        <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${chipClass}`}>
+          {statusLabel}
+        </span>
+      </div>
+      {latest_evidence && (
+        <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600 break-words">
+          Evidence: {latest_evidence}
+        </p>
+      )}
+      <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+        {moduleLabel && <span>{moduleLabel}</span>}
+        <span>{item.attempts || 0} attempt{item.attempts === 1 ? '' : 's'}</span>
+        {repeat_count > 1 && <span>{repeat_count} repeated issues</span>}
+      </div>
+      {careerModule && (
+        <button
+          type="button"
+          onClick={() => onPractice(item)}
+          className="mt-3 inline-flex items-center justify-center rounded-full bg-slate-900 px-3 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-white transition-colors hover:bg-slate-800"
+        >
+          Practice this
+        </button>
+      )}
     </div>
   );
 }
