@@ -61,6 +61,12 @@ for (const token of ['ACCESS_TOKEN_CACHE_MS', 'cachedAccessToken', 'sessionReque
   }
 }
 
+for (const token of ['getAccessToken(force = false)', 'getAuthHeaders(force = false)', 'fetchWithOneAuthRetry', 'invalidateAuth: invalidateAuthCache']) {
+  if (!api.includes(token)) {
+    failures.push(`api helper must retry auth header resolution once before global sign-out; missing ${token}.`);
+  }
+}
+
 for (const [label, source] of [
   ['NextAuth backend token exchange', nextAuthRoute],
   ['session start with paywall', billingService],
@@ -129,6 +135,12 @@ if (!meService.includes('pending_module') || !meService.includes('active_module'
 
 if (!appHeader.includes('myPathForMe') || appHeader.includes('destinationForPreferences')) {
   failures.push('AppHeader My Path should use myPathForMe, not route directly to the raw progression map.');
+}
+
+for (const token of ["message === 'Unauthorized'", 'router.push(destination(me))']) {
+  if (!appHeader.includes(token)) {
+    failures.push(`AppHeader navigation must only redirect to login for real Unauthorized errors and reuse cached profile on transient failures; missing ${token}.`);
+  }
 }
 
 if (!mapPage.includes('nodes.length === 0') || mapPage.includes('Choose mode')) {

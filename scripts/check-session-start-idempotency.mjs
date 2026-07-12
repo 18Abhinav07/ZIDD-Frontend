@@ -52,12 +52,72 @@ if (!mapPage.includes('clearStartId') || !mapPage.includes('startIntentKey')) {
   failures.push('career map page must clear only the completed/cancelled start intent and key ids by intent.');
 }
 
+for (const token of [
+  "type StartNodeResult = 'navigated' | 'paywall' | 'ignored'",
+  'startInFlightRef = useRef(false)',
+  "if (startInFlightRef.current) return 'ignored';",
+  'startInFlightRef.current = true;',
+  'startInFlightRef.current = false;',
+]) {
+  if (!mapPage.includes(token)) {
+    failures.push(`career map page must guard all /session/start attempts with ${token}.`);
+  }
+}
+
+if (!/const handleNodeClick = async[\s\S]{0,420}setError\(''\)/.test(mapPage)) {
+  failures.push('career map node starts must clear stale PATH ERROR state before a fresh start or paywall.');
+}
+
+if (!/const handleConfirmStart = async[\s\S]{0,180}confirming[\s\S]{0,180}startInFlightRef\.current/.test(mapPage)) {
+  failures.push('career map paywall confirm must synchronously guard duplicate confirm clicks.');
+}
+
+if (!/const handleReattemptConfirm = async[\s\S]{0,180}startInFlightRef\.current/.test(mapPage)) {
+  failures.push('career map reattempt confirm must synchronously guard duplicate reattempt starts.');
+}
+
+if (!/const handleReattemptConfirm = async[\s\S]{0,420}startNode\(\s*reattemptNode\.node_id,\s*false,\s*true,/.test(mapPage)) {
+  failures.push('career map reattempt decision must request an unconfirmed start so metered attempts show their price before charging.');
+}
+
+if (!/if \(result\.ok\)[\s\S]{0,420}routeToSession[\s\S]{0,80}return 'navigated'/.test(mapPage)) {
+  failures.push('career map startNode must return explicit navigated status only after successful session navigation.');
+}
+
+if (!/setPaywall\(result\.paywall\)[\s\S]{0,220}return 'paywall'/.test(mapPage)) {
+  failures.push('career map startNode must return explicit paywall status only when a paywall is surfaced.');
+}
+
+if (!/setPaywall\(result\.paywall\)[\s\S]{0,220}failedStartRef\.current = null/.test(mapPage)) {
+  failures.push('career map must clear stale failed-start retry state when a newer paywall intent is active.');
+}
+
+if (!/const handlePaywallClose = \(\) => \{[\s\S]{0,220}failedStartRef\.current = null/.test(mapPage)) {
+  failures.push('career map must clear stale failed-start retry state when paywall intent is cancelled.');
+}
+
 if (!classPage.includes('clearStartId')) {
   failures.push('school class page must clear the stable start id after success or terminal failure.');
 }
 
-if (!sessionPage.includes('pendingNextStartIdRef.current = clientStartId') || /catch \(err\)[\s\S]{0,120}pendingNextStartIdRef\.current = null/.test(sessionPage)) {
+if (!sessionPage.includes('startIdRef.current = clientStartId') || /catch \(err\)[\s\S]{0,120}startIdRef\.current = null/.test(sessionPage)) {
   failures.push('next-skill session page must preserve the stable client_start_id after timeout/error so retry can replay the completed paid start.');
+}
+
+for (const token of [
+  'handleKeepPracticing',
+  "reattempt_confirmed: action === 'practice'",
+  "source_action: action === 'practice' ? 'reattempt' : 'advance'",
+  'source_session_id: id',
+  'source_transition_id: transitionId',
+]) {
+  if (!sessionPage.includes(token)) {
+    failures.push(`checkpoint Keep Practicing must start a same-skill source-transition reattempt with ${token}.`);
+  }
+}
+
+if (/Keep Practicing This Skill[\s\S]{0,220}router\.push\('\/map'\)/.test(sessionPage)) {
+  failures.push('checkpoint Keep Practicing must not navigate to the map without starting practice.');
 }
 
 if (failures.length) {

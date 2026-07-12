@@ -39,6 +39,16 @@ if (!hook.includes('setSimTurn(pendingVisibleSimTurnRef.current)')) {
   failures.push('useZiddSession must promote the pending simulation round when a visible assistant message starts streaming.');
 }
 
+for (const token of [
+  'roundFromDoneFrame',
+  'done.assessment_state?.progress?.round_count',
+  'setSimTurn(doneRound)',
+]) {
+  if (!hook.includes(token)) {
+    failures.push(`useZiddSession must recover the simulator round from the terminal done frame when the simulation_state SSE frame is missed; missing ${token}.`);
+  }
+}
+
 if (!hook.includes("data.state?.simulation_report")) {
   failures.push('useZiddSession bootstrap must treat a persisted simulation_report as terminal reload state.');
 }
@@ -51,7 +61,7 @@ if (!hook.includes('closingRef.current = true')) {
   failures.push('useZiddSession bootstrap must latch completed simulations so reload does not auto-score or reset them.');
 }
 
-const restoredMessageMatch = hook.match(/const restoredMessages = Array\.isArray\(data\.messages\)[\s\S]*?: \[\];/);
+const restoredMessageMatch = hook.match(/function normalizeTranscriptMessages[\s\S]*?function hasOpeningTranscriptMessage/);
 const restoredMessageBlock = restoredMessageMatch?.[0] ?? '';
 for (const field of ['speaker_id', 'node_id', 'transition_id', 'message_kind', 'status']) {
   if (!restoredMessageBlock.includes(field)) {
@@ -63,7 +73,10 @@ if (!hook.includes('closingRef.current = false') || !hook.includes('Could not sc
   failures.push('useZiddSession endSession must release its close latch and surface a retryable scoring error on /end failure.');
 }
 
-if (!/(if\s*\(terminalSession\)|if\s*\(snapshot\.terminalSession\))\s*\{[^}]*setIsBootstrapping\(false\);[^}]*return;[^}]*\}/s.test(hook)) {
+if (
+  !/(if\s*\(terminalSession\)|if\s*\(snapshot\.terminalSession\))\s*\{[^}]*return;[^}]*\}/s.test(hook) ||
+  !/finally\s*\{[^}]*setIsBootstrapping\(false\)/s.test(hook)
+) {
   failures.push('useZiddSession must stop bootstrapping and return when a terminal session is restored.');
 }
 
@@ -134,6 +147,10 @@ if (!simulatorShell.includes('useId') || !simulatorShell.includes('id={textareaI
   failures.push('SimulatorShell textarea must have stable id/name attributes so forms, browser autofill, and accessibility tooling have a real input contract.');
 }
 
+if (!simulatorShell.includes('onInput={(e) => setInputValue(e.currentTarget.value)}')) {
+  failures.push('SimulatorShell textarea must listen to onInput as well as onChange so browser-filled GD/interview answers enable Send reliably.');
+}
+
 if (gdBriefingCard.includes('each participant contributes once per round')) {
   failures.push('GD briefing must not promise that every participant contributes once per round; backend routes one primary speaker plus optional reactors.');
 }
@@ -142,9 +159,40 @@ if (!simulatorShell.includes('isComplete?: boolean') || !simulatorShell.includes
   failures.push('SimulatorShell must render a distinct Complete status for scored sessions.');
 }
 
+if (!simulatorShell.includes('statusLabel?: string') || !simulatorShell.includes('resolvedStatusLabel = statusLabel ??')) {
+  failures.push('SimulatorShell must accept an explicit statusLabel so submitting/waiting states do not render as Live.');
+}
+
+if (!simulatorShell.includes('isInputDisabled?: boolean') || !simulatorShell.includes('const inputDisabled = Boolean(isInputDisabled)')) {
+  failures.push('SimulatorShell must distinguish network streaming from input-disabled state.');
+}
+
+if (gdPage.includes('isStreaming={isStreaming || shouldClose') || interviewPage.includes('isStreaming={isStreaming || shouldClose')) {
+  failures.push('Simulator pages must not pass shouldClose as isStreaming; round-cap/end states should not show Live.');
+}
+
+for (const [name, source] of [
+  ['Interview simulator', interviewPage],
+  ['GD simulator', gdPage],
+]) {
+  if (!source.includes('simulatorStatusLabel') || !source.includes('statusLabel={simulatorStatusLabel}') || !source.includes("'Reviewing'")) {
+    failures.push(`${name} must pass explicit Ready/Reviewing/Scoring/Complete status labels to SimulatorShell.`);
+  }
+}
+
+if (!gdPage.includes('backendScorableTurns') || !interviewPage.includes('backendScorableTurns')) {
+  failures.push('Simulator end confirmation must use backend-owned assessment progress counts.');
+}
+
 for (const required of ['validity_status', 'scorable_turn_count', 'coverage_map', 'Assessment Evidence', 'Insufficient Evidence', 'Invalid Simulation']) {
   if (!simulationReportModal.includes(required)) {
     failures.push(`SimulationReportModal must render assessment validity and evidence field: ${required}`);
+  }
+}
+
+for (const required of ['Score Adjustments', 'Object.entries(report.score_explanations ?? {})']) {
+  if (!simulationReportModal.includes(required)) {
+    failures.push(`SimulationReportModal must render backend score adjustment explanations; missing ${required}.`);
   }
 }
 
@@ -156,6 +204,18 @@ for (const required of ['isInsufficientEvidence', 'isInvalidSimulation', 'isNotS
 
 if (!simulationReportModal.includes("weakest = isNotScored ? null")) {
   failures.push('SimulationReportModal must not derive weakest rubric-dimension CTA from not-scored reports.');
+}
+
+if (
+  !simulationReportModal.includes('Learner Evidence Caveats') ||
+  !simulationReportModal.includes('Simulator Integrity Notes') ||
+  !simulationReportModal.includes('break-words') ||
+  !simulationReportModal.includes('max-h-[calc(100dvh-2rem)]') ||
+  !simulationReportModal.includes('flex flex-col') ||
+  !simulationReportModal.includes('overflow-y-auto space-y-6 flex-1 min-h-0') ||
+  simulationReportModal.includes('scrollbar-hide space-y-7 flex-1 min-h-0')
+) {
+  failures.push('SimulationReportModal must keep its header/footer inside the viewport and render caveats in a real scrollable body with wrapping.');
 }
 
 if (!simulatorShell.includes('{!isComplete && (')) {
@@ -205,7 +265,7 @@ for (const [name, source] of [
   if (!source.includes('setInputValue(\'\');')) {
     failures.push(`${name} must clear the textarea immediately after a guarded send starts.`);
   }
-  if (!source.includes('streamTurn(draft, clientTurnId)')) {
+  if (!/streamTurn\(draft,\s*clientTurnId(?:,|\))/.test(source)) {
     failures.push(`${name} must pass the stable client turn id into streamTurn.`);
   }
   if (!source.includes('if (!result.started) {') || !source.includes('setInputValue(draft);')) {
@@ -216,6 +276,12 @@ for (const [name, source] of [
   }
   if (!source.includes('Boolean(state?.block_reason)')) {
     failures.push(`${name} must block input when backend block_reason is set.`);
+  }
+  if (!source.includes('state?.assessment_state?.progress?.min_scorable_turns')) {
+    failures.push(`${name} must use backend-owned min_scorable_turns in end confirmation.`);
+  }
+  if (source.includes('minScorableTurns={6}') || source.includes('minScorableTurns={5}')) {
+    failures.push(`${name} must not hard-code end-confirmation scoring thresholds.`);
   }
 }
 

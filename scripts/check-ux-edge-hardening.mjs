@@ -11,13 +11,22 @@ const classPage = read('src/app/subjects/class/[classNo]/page.tsx');
 const testPage = read('src/app/subjects/test/[testId]/page.tsx');
 const careerPage = read('src/app/career/page.tsx');
 const profilePage = read('src/app/profile/page.tsx');
+const meService = read('src/services/me.ts');
 const loginPage = read('src/app/auth/login/page.tsx');
 const onboardingPage = read('src/app/onboarding/page.tsx');
 const creditsBadge = read('src/components/billing/CreditsBadge.tsx');
 const paywallModal = read('src/components/billing/PaywallModal.tsx');
+const reportModal = read('src/components/shared/SimulationReportModal.tsx');
+const sessionRecap = read('src/components/shared/SessionRecap.tsx');
+const pathMap = read('src/components/shared/PathMap.tsx');
+const scenarioPicker = read('src/components/shared/ScenarioPicker.tsx');
+const sessionPage = read('src/app/session/[id]/page.tsx');
+const sessionStreamPresentation = read('src/lib/sessionStreamPresentation.mjs');
+const tutorShell = read('src/components/tutor/TutorShell.tsx');
 const spokenCard = read('src/components/cards/SpokenAnswerCard.tsx');
 const fillBlankCard = read('src/components/cards/FillInTheBlankCard.tsx');
 const multipleChoiceCard = read('src/components/cards/MultipleChoiceCard.tsx');
+const types = read('src/types/index.ts');
 
 const failures = [];
 
@@ -109,6 +118,54 @@ for (const token of ['targetRoleChips', 'interviewGoalChips', 'gdTopicChips', 'c
   }
 }
 
+if (!meService.includes('memory_context')) {
+  failures.push('me service must type /me/learning-graph memory_context so the profile can render canonical career growth buckets.');
+}
+
+for (const token of ['getMeLearningGraph', 'learningGraph', 'Career growth', 'Active gaps', 'Improving', 'Resolved', 'Mastered', 'latest_evidence', 'repeat_count', 'Practice this', 'onPracticeCareerGap']) {
+  if (!profilePage.includes(token)) {
+    failures.push(`profile page must render canonical career growth graph from /me/learning-graph with ${token}`);
+  }
+}
+
+for (const token of ['getMeLearningGraph', 'careerLearningGraph', 'memory_context', 'Career focus', 'active_gaps', 'improving_gaps', 'latest_evidence', 'repeat_count', 'Practice this gap', 'onPracticeCareerFocus']) {
+  if (!careerPage.includes(token)) {
+    failures.push(`career home must surface canonical career learning focus from /me/learning-graph with ${token}`);
+  }
+}
+
+if (!/getMeLearningGraph\(\)[\s\S]{0,320}setCareerLearningGraph\(nextGraph\)/.test(careerPage)) {
+  failures.push('career home must populate careerLearningGraph from getMeLearningGraph(), not from unrelated source tokens.');
+}
+
+if (!/const careerMemory = careerLearningGraph\?\.memory_context;[\s\S]{0,220}careerMemory\?\.active_gaps\?\.\[0\][\s\S]{0,120}careerMemory\?\.improving_gaps\?\.\[0\]/.test(careerPage)) {
+  failures.push('career home focus must derive from memory_context.active_gaps before improving_gaps.');
+}
+
+if (!careerPage.includes('{(careerFocus || careerLearningGraphError) && (')) {
+  failures.push('career home must render the focus panel when a focus item exists or the learning graph degraded.');
+}
+
+if (!/const onPracticeCareerFocus = async \(\) => \{[\s\S]{0,180}openPath\(focusModule\)/.test(careerPage)) {
+  failures.push('career home focus CTA must use the existing openPath flow.');
+}
+
+if (!/updatePreferences\(\{ pending_module: moduleId, active_module: null, test_mode: null \}\)[\s\S]{0,180}router\.push\('\/mode'\)/.test(careerPage)) {
+  failures.push('career home openPath flow must preserve updatePreferences -> /mode routing.');
+}
+
+if (!/<span>Status: \{focusStatus\}<\/span>[\s\S]{0,120}<span>Readiness: \{focusReadiness\}<\/span>/.test(careerPage)) {
+  failures.push('career home focus panel must render Status and Readiness as separate visible fields inside the focus metadata row.');
+}
+
+if (/repeat_count > 0 &&/.test(careerPage)) {
+  failures.push('career home focus panel must show repeated issue count even when it is zero.');
+}
+
+if (!/<span>\{repeat_count\} repeated issue\{repeat_count === 1 \? '' : 's'\}<\/span>/.test(careerPage)) {
+  failures.push('career home focus panel must render the repeated issue count directly, including zero.');
+}
+
 for (const [label, source] of [
   ['login page', loginPage],
   ['onboarding page', onboardingPage],
@@ -141,8 +198,245 @@ for (const token of ['slowConfirming', 'Still starting your session', 'not charg
   }
 }
 
+if (!paywallModal.includes('{open && !packsOpen && (')) {
+  failures.push('PaywallModal must replace the paywall overlay with PacksModal during top-up instead of stacking both overlays.');
+}
+
+if (!/onPurchased=\{\(granted\) => \{[\s\S]{0,180}setPacksOpen\(false\)[\s\S]{0,120}void onConfirm\(\)/.test(paywallModal)) {
+  failures.push('PaywallModal must close the packs overlay before retrying the gated start after purchase.');
+}
+
 if (!paywallModal.includes('const handleClose = () =>') || !paywallModal.includes('if (!confirming) onClose();')) {
   failures.push('PaywallModal must not allow backdrop/close dismissal while a confirmed start is in flight.');
+}
+
+for (const token of ['learner_assessment_caveats', 'simulator_integrity_notes', 'score_breakdown', 'Learner Evidence Caveats', 'Simulator Integrity Notes', 'Score Breakdown']) {
+  if (!reportModal.includes(token)) {
+    failures.push(`SimulationReportModal must render split assessment/report contract with ${token}.`);
+  }
+}
+
+for (const token of ['max-h-[calc(100dvh-2rem)]', 'overflow-y-auto space-y-6 flex-1 min-h-0 overscroll-contain', 'whitespace-normal break-words overflow-visible']) {
+  if (!reportModal.includes(token)) {
+    failures.push(`SimulationReportModal must keep long reports scrollable/readable with ${token}.`);
+  }
+}
+
+const reportWrapChecks = [
+  [
+    'learner caveats',
+    /Learner Evidence Caveats[\s\S]{0,900}className="px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-xs font-semibold text-left leading-relaxed whitespace-normal break-words overflow-visible"/,
+  ],
+  [
+    'simulator integrity notes',
+    /Simulator Integrity Notes[\s\S]{0,900}className="px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 text-xs font-semibold text-left leading-relaxed whitespace-normal break-words overflow-visible"/,
+  ],
+  [
+    'evidence quotes',
+    /Evidence Quotes[\s\S]{0,900}<span className="text-sm text-slate-600 leading-relaxed break-words min-w-0">\{quote\}<\/span>/,
+  ],
+  [
+    'rubric explanations',
+    /Rubric[\s\S]{0,1200}<p className="text-\[11px\] text-slate-500 mt-1\.5 leading-relaxed break-words min-w-0">\{explanation\}<\/p>/,
+  ],
+  [
+    'score adjustment explanations',
+    /Score Adjustments[\s\S]{0,900}<p className="mt-1 text-sm leading-relaxed text-slate-700 break-words min-w-0">\{explanation\}<\/p>/,
+  ],
+  [
+    'strength rows',
+    /What Landed[\s\S]{0,900}<span className="break-words min-w-0">\{s\}<\/span>/,
+  ],
+  [
+    'improvement rows',
+    /Work On Next[\s\S]{0,900}<span className="text-sm text-slate-700 leading-relaxed break-words min-w-0">\{s\}<\/span>/,
+  ],
+  [
+    'read observations',
+    /The Read[\s\S]{0,1400}<span className="break-words min-w-0">\{obs\}<\/span>/,
+  ],
+  [
+    'read summary',
+    /<p className="text-sm text-slate-600 leading-relaxed break-words min-w-0">\{report\.summary\}<\/p>/,
+  ],
+];
+
+for (const [label, pattern] of reportWrapChecks) {
+  if (!pattern.test(reportModal)) {
+    failures.push(`SimulationReportModal ${label} must bind wrapping classes to the rendered text node.`);
+  }
+}
+
+for (const token of ['scoreExplanationRows', 'Why this score', 'Final score blends', 'Coverage cap lowered', 'Simulator integrity cap lowered']) {
+  if (!reportModal.includes(token)) {
+    failures.push(`SimulationReportModal must explain score adjustments in learner-readable language with ${token}.`);
+  }
+}
+
+for (const token of ['Integrity-Capped Assessment', 'Integrity-Flagged Assessment', 'simulator repairs capped score confidence', 'partial read, not a final score']) {
+  if (!reportModal.includes(token)) {
+    failures.push(`SimulationReportModal must distinguish coverage partials from simulator-integrity partials with ${token}.`);
+  }
+}
+
+if (/if \(explicitLearner\.length \|\| explicitIntegrity\.length\)[\s\S]{0,220}return/.test(reportModal)) {
+  failures.push('SimulationReportModal must merge legacy assessment_caveats with explicit learner/integrity arrays instead of returning early.');
+}
+
+if (!/if \(coverageCap\) \{[\s\S]{0,260}score is capped/.test(reportModal)) {
+  failures.push('SimulationReportModal must use coverage cap language only inside the numeric coverageCap branch.');
+}
+
+if (/if \(hasCoverageShortfall\) \{[\s\S]{0,260}score is capped/.test(reportModal)) {
+  failures.push('SimulationReportModal must not say coverage shortfall capped the score unless score_breakdown.coverage_cap is numeric.');
+}
+
+if (!/if \(validityCap\) \{[\s\S]{0,320}Integrity-Capped Assessment[\s\S]{0,260}capped score confidence/.test(reportModal)) {
+  failures.push('SimulationReportModal must use simulator integrity cap language only inside the numeric validityCap branch.');
+}
+
+if (/if \(hasIntegrityNotes\) \{[\s\S]{0,320}capped/.test(reportModal)) {
+  failures.push('SimulationReportModal must not say simulator integrity notes capped the score unless score_breakdown.validity_cap is numeric.');
+}
+
+if (/score is capped or caveated/.test(reportModal)) {
+  failures.push('SimulationReportModal generic partial copy must not blur capped and caveated states.');
+}
+
+if (!/typeof scoreBreakdown\.coverage_cap === 'number' && \([\s\S]{0,260}Coverage Cap/.test(reportModal)) {
+  failures.push('SimulationReportModal must render the Coverage Cap card only when coverage_cap is numeric.');
+}
+
+if (!/typeof scoreBreakdown\.validity_cap === 'number' && \([\s\S]{0,260}Validity Cap/.test(reportModal)) {
+  failures.push('SimulationReportModal must render the Validity Cap card only when validity_cap is numeric.');
+}
+
+for (const token of ['practiceIsReturnAction', '!practiceIsReturnAction']) {
+  if (!reportModal.includes(token)) {
+    failures.push(`SimulationReportModal must collapse duplicate return CTAs with ${token}.`);
+  }
+}
+
+if (sessionRecap.includes('Accuracy') || !sessionRecap.includes('Readiness')) {
+  failures.push('SessionRecap must label prep completion as Readiness, not Accuracy.');
+}
+
+if (sessionRecap.includes('Milestones Hit') || !sessionRecap.includes('Skills Practiced')) {
+  failures.push('SessionRecap must call completed prep nodes Skills Practiced, not Milestones Hit.');
+}
+
+if (!sessionRecap.includes('returnLabel') || !sessionPage.includes('returnLabel="Back to Career Map"')) {
+  failures.push('SessionRecap must allow career prep to use an explicit Back to Career Map return label.');
+}
+
+if (!sessionPage.includes("router.push('/map')") || sessionPage.includes("router.push(isProfessional ? '/mode' : '/map')")) {
+  failures.push('Prep session leave/not-found/recap routes must return to /map, not /mode.');
+}
+
+for (const token of ['Setting up your prompt...', 'Reviewing your answer...', 'statusLabel={tutorStatusLabel}']) {
+  if (!`${sessionPage}\n${sessionStreamPresentation}`.includes(token)) {
+    failures.push(`Session page must expose correct prep processing copy/status with ${token}.`);
+  }
+}
+
+const checkpointStatusContract = [
+  'const checkpointReached = Boolean(nodeAdvance || pendingTransition);',
+  ': checkpointReached',
+  "? 'Complete'",
+  ': inputBlocked',
+  "? 'Blocked'",
+].every((token) => sessionPage.includes(token));
+if (!checkpointStatusContract) {
+  failures.push('A successful pending next-skill transition must show Complete, while true blocked states remain Blocked.');
+}
+
+for (const token of ['latestProgressMastery', 'progress?.mastery ?? state?.current_mastery', 'latestProgressStreak', 'latestProgressAttempts']) {
+  if (!sessionPage.includes(token)) {
+    failures.push(`Session page must render latest progress frames before stale done-state progress with ${token}.`);
+  }
+}
+
+for (const token of [
+  'progress?.readiness_score ?? state?.readiness_score',
+  'pendingTransition?.from_readiness_score',
+  'pendingTransition?.from_clean_streak',
+  'pendingTransition?.from_attempts',
+  "pendingTransition?.from_display_status || ''",
+]) {
+  if (!sessionPage.includes(token)) {
+    failures.push(`Prep readiness and transition reloads must use immutable completed-node evidence with ${token}.`);
+  }
+}
+
+for (const forbidden of ['Ready checkpoint reached', 'Ready to advance', 'Proceed to Next Skill']) {
+  if (sessionPage.includes(forbidden)) {
+    failures.push(`Professional transition copy must not imply mastery/advancement while a current gap may exist: remove "${forbidden}".`);
+  }
+}
+
+for (const token of ['Practice checkpoint reached', 'Next Skill', 'Keep Practicing This Skill']) {
+  if (!sessionPage.includes(token)) {
+    failures.push(`Session transition card must use clearer practice-vs-next-skill wording with ${token}.`);
+  }
+}
+
+if (!tutorShell.includes('statusLabel?: string') || !tutorShell.includes('statusLabel ?? treatment.label')) {
+  failures.push('TutorShell must allow state-based status labels so disabled inputs do not show Listening.');
+}
+
+if (
+  !tutorShell.includes('const progressLabel = mode === \'professional\' ? \'Readiness\' : \'Mastery\'')
+  || !tutorShell.includes('{progressLabel}')
+) {
+  failures.push('TutorShell must label professional prep progress as Readiness while preserving Mastery for non-professional learning flows.');
+}
+
+if (
+  !types.includes('module_id?: string')
+  || !sessionPage.includes("['interview_prep', 'gd_prep', 'interview_test', 'gd_test'].includes(state?.task_type || '')")
+  || !sessionPage.includes("state?.module_id === 'interview'")
+  || !sessionPage.includes("state?.module_id === 'group_discussion'")
+  || !sessionPage.includes("state?.competency_node?.startsWith('int_')")
+  || !sessionPage.includes("state?.competency_node?.startsWith('gd_')")
+) {
+  failures.push('Session page must classify professional career prep from task_type, module_id, and node prefix so restored sessions show Readiness.');
+}
+
+if (
+  pathMap.includes('Next skill ready')
+  || !pathMap.includes('Ready for next skill')
+  || !pathMap.includes('Sustained Mastery')
+  || pathMap.includes('Complete every skill to arrive')
+) {
+  failures.push('PathMap must distinguish ready-to-advance from sustained mastery in visible labels and destination copy.');
+}
+
+if (pathMap.includes('aria-label={`${node.title} ${status}`') || !pathMap.includes('statusDescription')) {
+  failures.push('PathMap aria labels must use learner-facing status text, not raw backend status enums.');
+}
+
+if (
+  !pathMap.includes("const isActive = status === 'active' || status === 'in_progress'")
+  || !pathMap.includes('const isNeedsPractice')
+  || !pathMap.includes("Needs practice")
+) {
+  failures.push('PathMap must not treat needs_remediation or other unlocked non-ready statuses as the active node.');
+}
+
+if (scenarioPicker.includes('>Ready<') || !scenarioPicker.includes('Ready for next skill')) {
+  failures.push('ScenarioPicker ready status must say Ready for next skill, not generic Ready.');
+}
+
+if (
+  !scenarioPicker.includes('const status = node.display_status ?? node.status')
+  || !scenarioPicker.includes("status === 'mastered'")
+  || !scenarioPicker.includes('const ready = !mastered')
+) {
+  failures.push('ScenarioPicker must derive mastered/ready badges from normalized display_status precedence.');
+}
+
+if (!mapPage.includes('node.completed || mastered') || !mapPage.includes("status === 'ready_to_advance'")) {
+  failures.push('Career map completed-node clicks must trigger reattempt confirmation for completed/ready nodes, not only mastered nodes.');
 }
 
 if (!/const answer\s*=\s*value\.trim\(\)/.test(spokenCard)) {
