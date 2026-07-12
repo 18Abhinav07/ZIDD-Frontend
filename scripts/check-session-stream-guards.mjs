@@ -581,7 +581,7 @@ if (!hook.includes('isRecoveringTurn: sessionIdChanged ? false : isRecoveringTur
   failures.push('useZiddSession must return the public late-turn recovery state to the session page.');
 }
 
-if (!sessionPage.includes('isRecoveringTurn,') || !/isRecoveringTurn\s*\?\s*'Reviewing'/.test(sessionPage)) {
+if (!sessionPage.includes('isRecoveringTurn,') || !sessionPage.includes('teachingStatusFor({')) {
   failures.push('Session page must consume late recovery state and show a non-spinner Reviewing status.');
 }
 

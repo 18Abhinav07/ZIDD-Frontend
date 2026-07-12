@@ -60,7 +60,6 @@ export const CreditsBadge = forwardRef<CreditsBadgeHandle, CreditsBadgeProps>(
     const label = unlimited ? '∞' : balance ? String(balance.credits) : '';
     const unavailable = loadFailed && !balance;
     const loading = loadingBalance && !balance && !unavailable;
-
     return (
       <>
         <button
@@ -76,7 +75,6 @@ export const CreditsBadge = forwardRef<CreditsBadgeHandle, CreditsBadgeProps>(
             unavailable ? 'border-amber-300/70' : 'border-slate-200/50',
             className
           )}
-          aria-label="Credit balance — open packs"
           title={unavailable ? 'Credit balance unavailable — retry' : unlimited ? 'Unlimited credits (demo)' : 'Credit balance'}
         >
           <LightningBoltIcon className="text-accent w-4 h-4" />
@@ -88,10 +86,19 @@ export const CreditsBadge = forwardRef<CreditsBadgeHandle, CreditsBadgeProps>(
             <span className="text-sm font-bold font-mono leading-none">{label}</span>
           )}
           {!unlimited && (
-            <span className="text-[9px] uppercase tracking-widest font-bold text-slate-400 leading-none">
+            <span className="text-[11px] uppercase tracking-widest font-bold text-slate-600 leading-none">
               credits
             </span>
           )}
+          <span className="sr-only">
+            {unavailable
+              ? ', credit balance unavailable, retry'
+              : loading
+                ? ', loading credit balance, open credit packs'
+                : unlimited
+                  ? ', unlimited credits, open credit packs'
+                  : ', open credit packs'}
+          </span>
         </button>
 
         <PacksModal

@@ -10,6 +10,38 @@ export function statusForActiveStream(activeStreamKind) {
   return 'Working';
 }
 
+/**
+ * @param {{
+ *   moduleComplete?: boolean,
+ *   isBootstrapping?: boolean,
+ *   isRecoveringTurn?: boolean,
+ *   isStreaming?: boolean,
+ *   activeStreamKind?: 'opening' | 'learner_turn' | null,
+ *   isSubmitting?: boolean,
+ *   teachingBlocked?: boolean,
+ *   checkpointReached?: boolean,
+ * }} state
+ */
+export function teachingStatusFor({
+  moduleComplete = false,
+  isBootstrapping = false,
+  isRecoveringTurn = false,
+  isStreaming = false,
+  activeStreamKind = null,
+  isSubmitting = false,
+  teachingBlocked = false,
+  checkpointReached = false,
+} = {}) {
+  if (moduleComplete) return 'Complete';
+  if (isBootstrapping) return 'Preparing';
+  if (isRecoveringTurn) return 'Reviewing';
+  if (isStreaming) return statusForActiveStream(activeStreamKind);
+  if (isSubmitting) return 'Reviewing';
+  if (teachingBlocked) return 'Blocked';
+  if (checkpointReached) return 'Complete';
+  return 'Ready';
+}
+
 export function openingSnapshotComplete({
   openingStreamed = false,
   hasOpeningMessage = false,

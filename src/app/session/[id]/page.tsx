@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useId, memo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useZiddSession } from '@/hooks/useZiddSession';
-import { slowStreamCopyFor, statusForActiveStream } from '@/lib/sessionStreamPresentation.mjs';
+import { slowStreamCopyFor, teachingStatusFor } from '@/lib/sessionStreamPresentation.mjs';
 import { friendlySessionStartErrorMessage, startSessionWithPaywall } from '@/services/billing';
 import { MultipleChoiceCard } from '@/components/cards/MultipleChoiceCard';
 import { FillInTheBlankCard } from '@/components/cards/FillInTheBlankCard';
@@ -164,27 +164,29 @@ export default function SessionPage({ params }: { params: { id: string } }) {
   const checkpointReached = Boolean(nodeAdvance || pendingTransition);
   const moduleComplete = Boolean(sessionRecap)
     || (state?.status === 'ended' && state?.block_reason === 'module_done');
+  const backendBlocked = Boolean(
+    state?.block_reason
+    && !['awaiting_next_skill', 'module_done'].includes(state.block_reason)
+  );
+  const teachingBlocked = openingRetryActive
+    || backendBlocked
+    || (state?.input_allowed === false && !checkpointReached && !moduleComplete);
   const inputBlocked = openingRetryActive
     || isBootstrapping
     || isRecoveringTurn
     || Boolean(pendingTransition)
     || state?.input_allowed === false
     || Boolean(state?.block_reason);
-  const tutorStatusLabel = moduleComplete
-    ? undefined
-    : isBootstrapping
-    ? 'Preparing'
-    : checkpointReached
-    ? 'Checkpoint reached'
-    : isRecoveringTurn
-    ? 'Reviewing'
-    : isStreaming
-    ? statusForActiveStream(activeStreamKind)
-    : isSubmitting
-    ? 'Reviewing'
-    : inputBlocked
-    ? 'Paused'
-    : 'Ready';
+  const tutorStatusLabel = teachingStatusFor({
+    moduleComplete,
+    isBootstrapping,
+    isRecoveringTurn,
+    isStreaming,
+    activeStreamKind,
+    isSubmitting,
+    teachingBlocked,
+    checkpointReached,
+  });
 
   const handleSend = async () => {
     const draft = inputValue.trim();
@@ -403,7 +405,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
     state?.competency_node?.startsWith('int_') ||
     state?.competency_node?.startsWith('gd_')
   );
-  const transitionActive = checkpointReached;
+  const transitionActive = checkpointReached && !moduleComplete && !teachingBlocked;
   const transitionMastered = Boolean(
     pendingTransition?.from_node_mastered
     ?? (!isProfessional || pendingTransition?.from_display_status === 'mastered')
@@ -508,7 +510,11 @@ export default function SessionPage({ params }: { params: { id: string } }) {
                    <TargetIcon className="w-8 h-8 text-accent" />
                 </div>
                 <h3 className="font-display text-2xl mb-2 text-slate-800">
-                  {transitionMastered ? 'Skill Mastered!' : 'Practice checkpoint reached'}
+                  {transitionMastered
+                    ? 'Skill mastered'
+                    : transitionReady
+                      ? 'Ready for next skill'
+                      : 'Practice checkpoint passed'}
                 </h3>
                 <p className="text-slate-500 mb-8">
                   {pendingTransition?.to_title

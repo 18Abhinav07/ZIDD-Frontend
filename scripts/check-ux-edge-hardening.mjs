@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { teachingStatusFor } from '../src/lib/sessionStreamPresentation.mjs';
 
 const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
@@ -339,15 +340,18 @@ for (const token of ['Setting up your prompt...', 'Reviewing your answer...', 's
   }
 }
 
-const checkpointStatusContract = [
-  'const checkpointReached = Boolean(nodeAdvance || pendingTransition);',
-  ': checkpointReached',
-  "? 'Complete'",
-  ': inputBlocked',
-  "? 'Blocked'",
-].every((token) => sessionPage.includes(token));
-if (!checkpointStatusContract) {
+if (
+  teachingStatusFor({ teachingBlocked: true, checkpointReached: true }) !== 'Blocked'
+  || teachingStatusFor({ checkpointReached: true }) !== 'Complete'
+  || !sessionPage.includes('teachingStatusFor({')
+) {
   failures.push('A successful pending next-skill transition must show Complete, while true blocked states remain Blocked.');
+}
+
+for (const forbidden of ["? 'Paused'", "? 'Checkpoint reached'", 'statusForActiveStream(activeStreamKind)']) {
+  if (sessionPage.includes(forbidden)) {
+    failures.push(`Teaching status must use Preparing, Reviewing, Ready, Complete, or Blocked; remove ${forbidden}.`);
+  }
 }
 
 for (const token of ['latestProgressMastery', 'progress?.mastery ?? state?.current_mastery', 'latestProgressStreak', 'latestProgressAttempts']) {
@@ -374,7 +378,7 @@ for (const forbidden of ['Ready checkpoint reached', 'Ready to advance', 'Procee
   }
 }
 
-for (const token of ['Practice checkpoint reached', 'Next Skill', 'Keep Practicing This Skill']) {
+for (const token of ['Practice checkpoint passed', 'Next Skill', 'Keep Practicing This Skill']) {
   if (!sessionPage.includes(token)) {
     failures.push(`Session transition card must use clearer practice-vs-next-skill wording with ${token}.`);
   }

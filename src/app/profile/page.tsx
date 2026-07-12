@@ -260,20 +260,20 @@ export default function ProfilePage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
         >
-          <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-indigo-500">Profile</span>
+          <span className="text-[11px] font-bold uppercase tracking-[0.3em] text-indigo-700">Profile</span>
           <h1 className="mt-3 font-display text-5xl md:text-6xl leading-[1]">
             {displayName}
           </h1>
-          <p className="mt-4 text-slate-500 text-[15px] max-w-xl">
+          <p className="mt-4 text-slate-600 text-[15px] max-w-xl">
             Account identity, learning profile, credits, activity, and module switching.
           </p>
         </motion.div>
 
         <div className="mt-10 grid grid-cols-1 lg:grid-cols-3 gap-5">
           <section className="lg:col-span-2 rounded-[1.75rem] border border-slate-200/70 bg-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
-            <div className="flex items-center gap-2 text-slate-400">
+            <div className="flex items-center gap-2 text-slate-500">
               <IdCard className="w-4 h-4" />
-              <span className="text-[10px] font-bold uppercase tracking-[0.2em]">Account</span>
+              <span className="text-[11px] font-bold uppercase tracking-[0.2em]">Account</span>
             </div>
             <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
               <InfoRow icon={<UserRound className="w-4 h-4" />} label="Username" value={me.name || 'Not set'} />
@@ -284,12 +284,12 @@ export default function ProfilePage() {
           </section>
 
           <section className="rounded-[1.75rem] border border-slate-200/70 bg-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
-            <div className="flex items-center gap-2 text-slate-400">
+            <div className="flex items-center gap-2 text-slate-500">
               <LightningBoltIcon className="w-4 h-4" />
-              <span className="text-[10px] font-bold uppercase tracking-[0.2em]">Wallet</span>
+              <span className="text-[11px] font-bold uppercase tracking-[0.2em]">Wallet</span>
             </div>
             <p className="mt-4 font-display text-5xl leading-none">{credits}</p>
-            <p className="mt-1 text-xs text-slate-400 font-medium">credits available</p>
+            <p className="mt-1 text-xs text-slate-500 font-medium">credits available</p>
             {mounted && canShowDevCreditGrant() && !me.demo_unlimited && (
               <button
                 onClick={topUp}
@@ -344,9 +344,9 @@ export default function ProfilePage() {
 
         <div className="mt-5 grid grid-cols-1 lg:grid-cols-2 gap-5">
           <section className="rounded-[1.75rem] border border-slate-200/70 bg-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
-            <div className="flex items-center gap-2 text-indigo-500">
+            <div className="flex items-center gap-2 text-indigo-700">
               <BookOpen className="w-4 h-4" />
-              <span className="text-[10px] font-bold uppercase tracking-[0.2em]">School profile</span>
+              <span className="text-[11px] font-bold uppercase tracking-[0.2em]">School profile</span>
             </div>
             <p className="mt-4 text-sm font-semibold text-slate-900">
               {schoolProfile.school_name || 'No school profile added yet'}
@@ -372,9 +372,9 @@ export default function ProfilePage() {
           </section>
 
           <section className="rounded-[1.75rem] border border-slate-200/70 bg-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
-            <div className="flex items-center gap-2 text-emerald-600">
+            <div className="flex items-center gap-2 text-emerald-700">
               <BriefcaseBusiness className="w-4 h-4" />
-              <span className="text-[10px] font-bold uppercase tracking-[0.2em]">Career profile</span>
+              <span className="text-[11px] font-bold uppercase tracking-[0.2em]">Career profile</span>
             </div>
             <div className="mt-4 flex items-center gap-2 text-sm font-bold text-slate-800">
               {careerProfile.resume_present ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <FileText className="w-4 h-4 text-slate-400" />}
@@ -413,7 +413,7 @@ export default function ProfilePage() {
             <div>
               <div className="flex items-center gap-2 text-slate-500">
                 <TrendingUp className="w-4 h-4" />
-                <span className="text-[10px] font-bold uppercase tracking-[0.2em]">Career growth</span>
+                <span className="text-[11px] font-bold uppercase tracking-[0.2em]">Career growth</span>
               </div>
               <h2 className="mt-3 font-display text-3xl leading-tight text-slate-950">Evidence the tutor is tracking</h2>
               <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-500">
@@ -471,7 +471,7 @@ export default function ProfilePage() {
         </section>
 
         <section className="mt-5 rounded-[1.75rem] border border-slate-200/70 bg-slate-900 text-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.08)]">
-          <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-white/50">Recommendations</span>
+          <span className="text-[11px] font-bold uppercase tracking-[0.25em] text-white/70">Recommendations</span>
           <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
             {(activity?.recommendations.length
               ? activity.recommendations
@@ -510,9 +510,9 @@ function InfoRow({
 }) {
   return (
     <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-      <div className="flex items-center gap-2 text-slate-400">
+      <div className="flex items-center gap-2 text-slate-500">
         {icon}
-        <span className="text-[10px] font-bold uppercase tracking-[0.18em]">{label}</span>
+        <span className="text-[11px] font-bold uppercase tracking-[0.18em]">{label}</span>
       </div>
       <p className={`mt-2 text-sm font-bold text-slate-800 break-words ${mono ? 'font-mono' : ''}`}>{value}</p>
     </div>
@@ -524,7 +524,7 @@ function ChipGroup({ label, items }: { label: string; items: string[] }) {
 
   return (
     <div>
-      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">{label}</p>
+      <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</p>
       <div className="mt-2 flex flex-wrap gap-2">
         {items.map((item) => (
           <span key={`${label}-${item}`} className="rounded-full bg-emerald-50 border border-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">
@@ -589,7 +589,7 @@ function GrowthBucket({
           ))}
         </div>
       ) : (
-        <p className="mt-4 text-sm leading-relaxed text-slate-500">{empty}</p>
+        <p className="mt-4 text-sm leading-relaxed text-slate-600">{empty}</p>
       )}
     </div>
   );
@@ -632,7 +632,7 @@ function GrowthItem({
           <p className="text-sm font-black leading-tight text-slate-900">{formatSkillLabel(displaySkill)}</p>
           <p className="mt-1 text-xs leading-relaxed text-slate-500">{secondaryGap || 'Keep collecting evidence.'}</p>
         </div>
-        <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${chipClass}`}>
+        <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] ${chipClass}`}>
           {statusLabel}
         </span>
       </div>
@@ -641,7 +641,7 @@ function GrowthItem({
           Evidence: {latest_evidence}
         </p>
       )}
-      <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+      <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
         {moduleLabel && <span>{moduleLabel}</span>}
         <span>{item.attempts || 0} attempt{item.attempts === 1 ? '' : 's'}</span>
         {repeat_count > 1 && <span>{repeat_count} repeated issues</span>}

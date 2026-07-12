@@ -10,6 +10,7 @@ import {
   runLateTurnRecovery,
   slowStreamCopyFor,
   statusForActiveStream,
+  teachingStatusFor,
 } from '../src/lib/sessionStreamPresentation.mjs';
 
 test('durable completed turn releases the matching client turn only', () => {
@@ -40,6 +41,20 @@ test('learner turns use review language', () => {
 test('unknown active streams use neutral processing language', () => {
   assert.equal(slowStreamCopyFor(null), 'Working on this turn...');
   assert.equal(statusForActiveStream(null), 'Working');
+});
+
+test('teaching status follows the learner-visible priority contract', () => {
+  assert.equal(teachingStatusFor({ moduleComplete: true, teachingBlocked: true }), 'Complete');
+  assert.equal(teachingStatusFor({ isBootstrapping: true, checkpointReached: true }), 'Preparing');
+  assert.equal(teachingStatusFor({ isStreaming: true, activeStreamKind: 'opening' }), 'Preparing');
+  assert.equal(teachingStatusFor({ isStreaming: true, activeStreamKind: 'learner_turn' }), 'Reviewing');
+  assert.equal(teachingStatusFor({ teachingBlocked: true, checkpointReached: true }), 'Blocked');
+  assert.equal(teachingStatusFor({ checkpointReached: true }), 'Complete');
+  assert.equal(teachingStatusFor({}), 'Ready');
+});
+
+test('teaching status keeps an unknown active stream neutral', () => {
+  assert.equal(teachingStatusFor({ isStreaming: true, activeStreamKind: null }), 'Working');
 });
 
 test('opening ownership survives tokens and clears on completion', () => {
