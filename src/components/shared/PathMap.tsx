@@ -7,6 +7,7 @@ import { LockClosedIcon, CheckIcon } from '@radix-ui/react-icons';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { AVATAR_PATHS, getAvatarScaleClass } from '@/lib/avatarRegistry';
+import { deriveCareerPathPresentation } from '@/lib/careerPathPresentation.mjs';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -25,6 +26,7 @@ export interface ProgressNode {
   display_status?: 'not_started' | 'in_progress' | 'ready_to_advance' | 'proficient' | 'mastered' | 'needs_remediation' | 'active' | 'locked' | string;
   last_gap?: string;
   clean_streak: number;
+  attempts?: number;
   status: 'locked' | 'active' | 'mastered' | 'ready_to_advance' | 'proficient' | 'needs_remediation' | 'in_progress' | string;
 }
 
@@ -77,12 +79,12 @@ function statusDescription({
 
 export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
   
-  // Calculate how far down the active node is to fill the SVG path
-  const activeIndex = nodes.findIndex(n => {
-    const state = n.display_status ?? n.status;
-    return state === 'active' || state === 'in_progress';
-  });
-  const pathFillPercentage = activeIndex === -1 ? 100 : (activeIndex / Math.max(1, nodes.length - 1)) * 100;
+  const {
+    hasPathActivity,
+    headline,
+    lastProgressIndex,
+    pathFillPercentage,
+  } = deriveCareerPathPresentation(nodes);
 
   return (
     <div className="relative flex flex-col items-center py-20 px-4 w-full max-w-5xl mx-auto min-h-[1200px]">
@@ -114,7 +116,7 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
       {/* Active Glowing Path Overlay */}
       <div 
          className="absolute top-0 left-1/2 -translate-x-1/2 w-[300px] pointer-events-none transition-all duration-1000 ease-out overflow-hidden"
-         style={{ height: `${pathFillPercentage + 10}%` }}
+         style={{ height: `${Math.min(100, pathFillPercentage + (hasPathActivity ? 10 : 0))}%` }}
       >
         <svg width="100%" height="1800px" preserveAspectRatio="none" className="absolute top-0 left-0">
           <path 
@@ -136,7 +138,9 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
           transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
           className="flex flex-col items-center gap-2 -mb-24 select-none"
         >
-          <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-400">Your journey begins</span>
+          <span className="text-[11px] font-bold uppercase tracking-[0.3em] text-slate-500">
+            {headline}
+          </span>
           <div className="w-3 h-3 rounded-full bg-white border-2 border-slate-300 shadow-[0_0_0_4px_rgba(148,163,184,0.12)]" />
         </motion.div>
 
@@ -144,7 +148,7 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
           const isEven = index % 2 === 0;
           const status = node.display_status ?? node.status;
           const isLocked = status === 'locked';
-          const isMastered = Boolean(node.mastered ?? node.node_mastered ?? status === 'mastered');
+          const isMastered = Boolean(node.mastered || node.node_mastered || status === 'mastered');
           const isReady = !isMastered && (status === 'ready_to_advance' || status === 'proficient');
           const isActive = status === 'active' || status === 'in_progress';
           const isNeedsPractice = !isLocked && !isMastered && !isReady && !isActive;
@@ -255,7 +259,7 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
                     /* Muted name tag: the upcoming skill is NAMED, not an anonymous ghost */
                     <div className={cn(
                        "flex items-center gap-2 bg-white/70 backdrop-blur-sm border border-slate-200/70 rounded-full pl-2 pr-4 py-1.5 shadow-sm max-w-[240px]",
-                       index === activeIndex + 1 && "ring-1 ring-slate-200"
+                       index === lastProgressIndex + 1 && "ring-1 ring-slate-200"
                     )}>
                        <span className="flex-shrink-0 w-5 h-5 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center">
                           <LockClosedIcon className="w-3 h-3" />

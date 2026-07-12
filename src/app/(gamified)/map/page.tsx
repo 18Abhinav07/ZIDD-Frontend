@@ -226,10 +226,11 @@ export default function MapPage() {
     if (loading || startInFlightRef.current) return;
     setError('');
     const status = node.display_status ?? node.status;
-    const mastered = Boolean(node.mastered ?? node.node_mastered ?? status === 'mastered');
-    const completed = Boolean(node.completed || mastered || status === 'ready_to_advance' || status === 'proficient');
+    const mastered = Boolean(node.mastered || node.node_mastered || status === 'mastered');
+    const readyForNextSkill = !mastered && (status === 'ready_to_advance' || status === 'proficient');
+    const reattemptable = Boolean(node.completed || mastered || readyForNextSkill);
     if (status === 'locked') return;
-    if (completed) {
+    if (reattemptable) {
       setReattemptNode(node);
       return;
     }
@@ -247,6 +248,16 @@ export default function MapPage() {
       setLoading(false);
     }
   };
+
+  const reattemptStatus = reattemptNode?.display_status ?? reattemptNode?.status;
+  const reattemptMastered = Boolean(
+    reattemptNode && (reattemptNode.mastered || reattemptNode.node_mastered || reattemptStatus === 'mastered')
+  );
+  const reattemptReady = Boolean(
+    reattemptNode
+    && !reattemptMastered
+    && (reattemptStatus === 'ready_to_advance' || reattemptStatus === 'proficient')
+  );
 
   // TEST mode: every scenario is independently startable (the backend gates on
   // the attempt meter, not on prep mastery), so there is NO locked-node guard —
@@ -476,10 +487,14 @@ export default function MapPage() {
       {reattemptNode && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/40 backdrop-blur-sm px-4">
           <div className="w-full max-w-sm rounded-3xl bg-white border border-slate-200 p-7 shadow-2xl">
-            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-emerald-600">Completed</p>
-            <h2 className="mt-2 font-display text-3xl tracking-tight text-slate-900">Reattempt this level?</h2>
+            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-emerald-700">
+              {reattemptReady ? 'Ready for next skill' : reattemptMastered ? 'Mastered' : 'Practice checkpoint passed'}
+            </p>
+            <h2 className="mt-2 font-display text-3xl tracking-tight text-slate-900">Practice this skill again?</h2>
             <p className="mt-3 text-sm leading-relaxed text-slate-500">
-              Your completed progress stays saved. This starts a fresh practice attempt for {reattemptNode.title}.
+              {reattemptMastered
+                ? `Your mastery status stays saved. This starts another practice attempt for ${reattemptNode.title}.`
+                : `Your checkpoint stays saved. Practice ${reattemptNode.title} again without changing its current progress status.`}
             </p>
             <div className="mt-7 flex gap-3">
               <button
@@ -495,7 +510,7 @@ export default function MapPage() {
                 onClick={handleReattemptConfirm}
                 className="flex-1 rounded-full bg-slate-900 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800"
               >
-                Reattempt
+                Practice again
               </button>
             </div>
           </div>

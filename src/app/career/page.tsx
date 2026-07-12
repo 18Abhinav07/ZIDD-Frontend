@@ -334,7 +334,7 @@ export default function CareerPage() {
           </div>
         )}
 
-        {/* Resume CTA — only shown after mount because auth-backed data is client-only */}
+        {/* Continue CTA — only shown after mount because auth-backed data is client-only */}
         {mounted && activeModule && (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
@@ -346,7 +346,7 @@ export default function CareerPage() {
               onClick={() => router.push(pathHref)}
               className="group w-full sm:w-auto inline-flex items-center gap-3 bg-slate-900 text-white rounded-2xl px-8 py-4 text-sm font-bold uppercase tracking-widest hover:bg-slate-800 hover:-translate-y-0.5 hover:shadow-[0_16px_40px_rgba(15,23,42,0.15)] transition-all"
             >
-              Resume {activeLabel ?? 'your path'}
+              Continue {activeLabel ?? 'your'} path
               <ArrowRightIcon className="w-4 h-4 transition-transform group-hover:translate-x-1" />
             </button>
           </motion.div>
