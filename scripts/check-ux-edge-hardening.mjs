@@ -387,8 +387,8 @@ for (const token of ['practiceIsReturnAction', '!practiceIsReturnAction']) {
   }
 }
 
-if (sessionRecap.includes('Accuracy') || !sessionRecap.includes('Readiness')) {
-  failures.push('SessionRecap must label prep completion as Readiness, not Accuracy.');
+if (sessionRecap.includes('Accuracy') || !sessionRecap.includes('Overall prep readiness')) {
+  failures.push('SessionRecap must label the professional completion metric Overall prep readiness, not Accuracy or a generic readiness label.');
 }
 
 if (sessionRecap.includes('Milestones Hit') || !sessionRecap.includes('Skills Practiced')) {
@@ -397,6 +397,57 @@ if (sessionRecap.includes('Milestones Hit') || !sessionRecap.includes('Skills Pr
 
 if (!sessionRecap.includes('returnLabel') || !sessionPage.includes('returnLabel="Back to Career Map"')) {
   failures.push('SessionRecap must allow career prep to use an explicit Back to Career Map return label.');
+}
+
+for (const title of ['Interview Prep Recap', 'GD Prep Recap', 'Session Recap']) {
+  if (!`${sessionPage}\n${sessionRecap}`.includes(title)) {
+    failures.push(`Completed teaching sessions must use the non-status recap title ${title}.`);
+  }
+}
+for (const duplicateStatusTitle of ['Interview Prep Complete', 'GD Prep Complete', 'Session Complete']) {
+  if (`${sessionPage}\n${sessionRecap}`.includes(duplicateStatusTitle)) {
+    failures.push(`Completed teaching screens must keep Complete as the lifecycle status instead of repeating it in ${duplicateStatusTitle}.`);
+  }
+}
+
+const recapBodyClasses = sessionRecap.match(
+  /data-session-recap-scroll="body"[\s\S]{0,120}className="([^"]+)"/,
+)?.[1] ?? '';
+const recapActionClasses = sessionRecap.match(
+  /data-session-recap-actions="footer"[\s\S]{0,120}className="([^"]+)"/,
+)?.[1] ?? '';
+const recapPracticeActionClasses = sessionRecap.match(
+  /data-session-recap-action="practice"[\s\S]{0,180}className="([^"]+)"/,
+)?.[1] ?? '';
+const recapReturnActionClasses = sessionRecap.match(
+  /data-session-recap-action="return"[\s\S]{0,180}className="([^"]+)"/,
+)?.[1] ?? '';
+if (
+  !recapBodyClasses.includes('min-h-0')
+  || !recapBodyClasses.includes('flex-1')
+  || !recapBodyClasses.includes('overflow-y-auto')
+  || !recapBodyClasses.includes('overscroll-contain')
+  || !recapActionClasses.includes('shrink-0')
+  || !recapActionClasses.includes('space-y-3')
+  || !recapPracticeActionClasses.includes('whitespace-normal break-words')
+  || !recapReturnActionClasses.includes('whitespace-normal break-words')
+) {
+  failures.push('SessionRecap must keep a scroll-contained body and separated, wrapping actions on narrow or short viewports.');
+}
+if (
+  !sessionRecap.includes('data-session-recap-scroll="body"')
+  || !sessionRecap.includes('tabIndex={0}')
+  || !sessionRecap.includes('aria-label="Session recap details"')
+) {
+  failures.push('SessionRecap must make its inner scrolling body keyboard-focusable.');
+}
+if (/data-recap-focus-item[\s\S]{0,120}className="[^"]*(?:rounded|shadow|bg-slate)/.test(sessionRecap)) {
+  failures.push('SessionRecap focus areas must stay unframed instead of nesting cards inside the dialog.');
+}
+for (const token of ['role="dialog"', 'aria-modal="true"', 'aria-labelledby="session-recap-title"', 'dialogRef', 'previousFocus?.focus()']) {
+  if (!sessionRecap.includes(token)) {
+    failures.push(`SessionRecap must preserve its accessible dialog and focus lifecycle with ${token}.`);
+  }
 }
 
 if (!sessionPage.includes("router.push('/map')") || sessionPage.includes("router.push(isProfessional ? '/mode' : '/map')")) {
@@ -464,10 +515,33 @@ if (!tutorShell.includes('statusLabel?: string') || !tutorShell.includes('status
 }
 
 if (
-  !tutorShell.includes('const progressLabel = mode === \'professional\' ? \'Readiness\' : \'Mastery\'')
+  !tutorShell.includes("const progressLabel = mode === 'professional' ? 'Current skill readiness' : 'Mastery'")
   || !tutorShell.includes('{progressLabel}')
 ) {
-  failures.push('TutorShell must label professional prep progress as Readiness while preserving Mastery for non-professional learning flows.');
+  failures.push('TutorShell must label professional prep progress Current skill readiness while preserving Mastery for gamified learning flows.');
+}
+
+if (
+  !tutorShell.includes('const phaseMatchesStatus = Boolean(')
+  || !tutorShell.includes('phase.trim().toLocaleLowerCase() === statusLabel.trim().toLocaleLowerCase()')
+  || !tutorShell.includes('{!phaseMatchesStatus && (')
+) {
+  failures.push('TutorShell must suppress a phase label only when it duplicates the lifecycle status text.');
+}
+
+if (
+  !sessionPage.includes('const visibleProgress = isProfessional')
+  || !sessionPage.includes('? (transitionActive ? transitionReadiness : latestReadiness)')
+  || !sessionPage.includes(': latestProgressMastery')
+  || !sessionPage.includes('mastery={visibleProgress}')
+  || sessionPage.includes('transitionMastered ? 1 : transitionReadiness')
+) {
+  failures.push('Session page must display evidence-derived readiness for professional prep and actual mastery for gamified sessions.');
+}
+for (const token of ['role="meter"', 'aria-valuenow', 'aria-valuemin={0}', 'aria-valuemax={100}']) {
+  if (!tutorShell.includes(token)) {
+    failures.push(`TutorShell progress must preserve accessible meter semantics with ${token}.`);
+  }
 }
 
 for (const token of ['cleanStreak?: number', 'attempts?: number', 'Attempts', 'Clean passes', 'min-w-0', 'overflow-hidden']) {

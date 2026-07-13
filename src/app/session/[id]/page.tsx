@@ -451,9 +451,10 @@ export default function SessionPage({ params }: { params: { id: string } }) {
   const transitionReadiness = pendingTransition?.from_readiness_score
     ?? pendingTransition?.from_mastery
     ?? (transitionReady ? Math.max(latestReadiness, 0.8) : latestReadiness);
-  const visibleMastery = transitionActive
-    ? (transitionMastered ? 1 : transitionReadiness)
-    : latestReadiness;
+  const transitionMastery = pendingTransition?.from_mastery ?? latestProgressMastery;
+  const visibleProgress = isProfessional
+    ? (transitionActive ? transitionReadiness : latestReadiness)
+    : (transitionActive ? transitionMastery : latestProgressMastery);
   const visibleCleanStreak = transitionActive
     ? (pendingTransition?.from_clean_streak ?? latestProgressStreak)
     : latestProgressStreak;
@@ -476,7 +477,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
     <>
     <TutorShell
       nodeTitle={shellNodeTitle}
-      mastery={visibleMastery}
+      mastery={visibleProgress}
       cleanStreak={visibleCleanStreak}
       attempts={visibleAttempts}
       phase={shellPhase}
@@ -755,10 +756,10 @@ export default function SessionPage({ params }: { params: { id: string } }) {
           <SessionRecap
             recap={sessionRecap}
             title={state?.module_id === 'interview'
-              ? 'Interview Prep Complete'
+              ? 'Interview Prep Recap'
               : state?.module_id === 'group_discussion'
-                ? 'GD Prep Complete'
-                : 'Session Complete'}
+                ? 'GD Prep Recap'
+                : 'Session Recap'}
             onPractice={() => void startTerminalPractice(false)}
             practiceDisabled={isSubmitting || Boolean(nextSkillPaywall)}
             onClose={handleReturnToPath}

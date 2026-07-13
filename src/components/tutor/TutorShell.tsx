@@ -60,6 +60,9 @@ const AvatarTile = memo(function AvatarTile({ characterImg, mode, characterBg, e
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -6 }}
           transition={{ duration: 0.4 }}
+          role="status"
+          aria-live="polite"
+          aria-label={`Session status: ${statusLabel ?? treatment.label}`}
           className="absolute top-4 right-4 z-20 flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/70 backdrop-blur-md border border-slate-200/50 shadow-sm"
         >
           <span
@@ -147,7 +150,12 @@ export const TutorShell: React.FC<TutorShellProps> = ({
   const { data: authSession } = useSession();
   const handleSignOut = () => signOut({ callbackUrl: '/auth/login' });
   const profileImage = authSession?.user?.image || AVATAR_PATHS.casual_male;
-  const progressLabel = mode === 'professional' ? 'Readiness' : 'Mastery';
+  const progressLabel = mode === 'professional' ? 'Current skill readiness' : 'Mastery';
+  const phaseMatchesStatus = Boolean(
+    phase
+    && statusLabel
+    && phase.trim().toLocaleLowerCase() === statusLabel.trim().toLocaleLowerCase()
+  );
 
   return (
     <div className={cn("relative h-[100dvh] w-full overflow-hidden flex flex-col font-body bg-background transition-colors duration-500", mode === 'professional' ? 'mode-professional' : 'mode-gamified')}>
@@ -177,9 +185,15 @@ export const TutorShell: React.FC<TutorShellProps> = ({
                <h1 className="line-clamp-2 text-xs sm:text-sm font-bold uppercase tracking-[0.1em] leading-tight text-foreground">{nodeTitle || 'Skill Module'}</h1>
             </div>
             <p className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold uppercase leading-tight tracking-widest text-muted-foreground">
-              <span className="min-w-0 max-w-full truncate">{phase || 'Learning Path'}</span>
+              {!phaseMatchesStatus && (
+                <span className="min-w-0 max-w-full truncate">{phase || 'Learning Path'}</span>
+              )}
               {statusLabel && (
-                <span className="lg:hidden inline-flex items-center gap-1.5 text-accent">
+                <span
+                  role="status"
+                  aria-live="polite"
+                  className="lg:hidden inline-flex items-center gap-1.5 text-accent"
+                >
                   <span className="w-1.5 h-1.5 rounded-full bg-current" />
                   {statusLabel}
                 </span>
@@ -202,9 +216,17 @@ export const TutorShell: React.FC<TutorShellProps> = ({
            {/* Stats Chips */}
            <div className="flex gap-2">
               <div className="hidden sm:block"><CreditsBadge /></div>
-              <div className="flex px-2.5 sm:px-3 py-2 rounded-full bg-white/60 backdrop-blur border border-slate-200/50 shadow-sm items-center gap-1.5 sm:gap-2 text-slate-700" title={`${progressLabel}: ${Math.round(mastery * 100)}%`}>
+              <div
+                role="meter"
+                className="flex px-2.5 sm:px-3 py-2 rounded-full bg-white/60 backdrop-blur border border-slate-200/50 shadow-sm items-center gap-1.5 sm:gap-2 text-slate-700"
+                title={`${progressLabel}: ${Math.round(mastery * 100)}%`}
+                aria-label={`${progressLabel}: ${Math.round(mastery * 100)}%`}
+                aria-valuenow={Math.round(mastery * 100)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
                  <StarIcon className="text-accent w-4 h-4" />
-                 <span className="hidden sm:inline text-xs font-semibold">{progressLabel}</span>
+                 <span className="hidden lg:inline text-xs font-semibold">{progressLabel}</span>
                  <span className="text-xs font-mono font-semibold tabular-nums">{Math.round(mastery * 100)}%</span>
               </div>
               {typeof attempts === 'number' && typeof cleanStreak === 'number' && (
