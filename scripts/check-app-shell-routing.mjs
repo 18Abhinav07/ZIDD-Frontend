@@ -16,6 +16,7 @@ const modePage = read('src/app/(gamified)/mode/page.tsx');
 const profile = read('src/app/profile/page.tsx');
 const pathMap = read('src/components/shared/PathMap.tsx');
 const sessionPage = read('src/app/session/[id]/page.tsx');
+const sessionHook = read('src/hooks/useZiddSession.ts');
 const creditsBadge = read('src/components/billing/CreditsBadge.tsx');
 const gd = read('src/app/(professional)/simulator/gd/page.tsx');
 const interview = read('src/app/(professional)/simulator/interview/page.tsx');
@@ -188,6 +189,14 @@ for (const token of ['ME_ACTIVITY_CACHE_MS', 'activityRequest', 'invalidateMeAct
   if (!meService.includes(token)) {
     failures.push(`me service is missing ${token} for /me/activity caching.`);
   }
+}
+if (
+  !sessionHook.includes('invalidateMeLearningGraphCache')
+  || !sessionHook.includes('function invalidateCareerEvidenceCaches')
+  || (sessionHook.match(/invalidateCareerEvidenceCaches\(\)/g) ?? []).length < 7
+  || !sessionHook.includes("data.status === 'completed' && !data.report")
+) {
+  failures.push('Normal, recovered, prep, and scored completions must invalidate cached career growth evidence.');
 }
 
 for (const token of ['BALANCE_CACHE_MS', 'balanceRequest', 'invalidateBalanceCache']) {

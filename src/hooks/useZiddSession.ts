@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { getAuthHeaders } from '../services/api';
-import { invalidateMeActivityCache } from '../services/me';
+import { invalidateMeActivityCache, invalidateMeLearningGraphCache } from '../services/me';
 import { ZiddSSEClient } from '../services/sseClient';
 import {
   durableTurnCompleted,
@@ -243,6 +243,11 @@ function durableTurnSettled(
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function invalidateCareerEvidenceCaches(): void {
+  invalidateMeActivityCache();
+  invalidateMeLearningGraphCache();
 }
 
 function abortError(): Error {
@@ -565,6 +570,7 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
         setPendingTransition(done.pending_transition ?? null);
         setAvatarEmotion(done.avatar_emotion);
         setAffect(done.affect);
+        invalidateCareerEvidenceCaches();
         clearActiveStream('completed');
         setError(prev => (prev === TRANSIENT_PROCESSING_MESSAGE ? null : prev));
         break;
@@ -939,6 +945,7 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
             streamInFlightRef.current = false;
             setIsRecoveringTurn(false);
             if (outcome.status === 'completed') {
+              invalidateCareerEvidenceCaches();
               setError(null);
             } else if (outcome.status === 'failed') {
               setError('The tutor could not finish that answer. Please try again.');
@@ -972,6 +979,7 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
                   pendingVisibleSimTurnRef.current = null;
                   pendingGamePromptFrameRef.current = null;
                   clearActiveStream('completed');
+                  invalidateCareerEvidenceCaches();
                   settle({ started: true, completed: true });
                   return;
                 }
@@ -1030,6 +1038,7 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
               pendingGamePromptFrameRef.current = null;
               clearActiveStream(recovered ? 'completed' : 'error');
               if (recovered) {
+                invalidateCareerEvidenceCaches();
                 settle({ started: true, completed: true });
                 return;
               }
@@ -1126,6 +1135,7 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
                     setMessages(prev => prev.filter(message => message.id !== optimisticUserMessageId));
                   }
                   activeStreamTokenRef.current = null;
+                  invalidateCareerEvidenceCaches();
                   settle({ started: true, completed: true });
                   return;
                 }
@@ -1201,6 +1211,7 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
               streamInFlightRef.current = false;
               pendingVisibleSimTurnRef.current = null;
               clearActiveStream(doneSeen || recovered ? 'completed' : 'error');
+              if (doneSeen || recovered) invalidateCareerEvidenceCaches();
               setMessages(prev => dedupeAdjacentDuplicateMessages(finalizeOpen(prev)));
               if (!opened && optimisticUserMessageId) {
                 setMessages(prev => prev.filter(message => message.id !== optimisticUserMessageId));
@@ -1449,6 +1460,7 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
       streamInFlightRef.current = false;
       setIsRecoveringTurn(false);
       if (outcome.status === 'completed') {
+        invalidateCareerEvidenceCaches();
         setError(null);
       } else if (outcome.status === 'failed') {
         setError('The tutor could not finish that answer. Please try again.');
@@ -1533,7 +1545,7 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
         return null;
       }
       let data = (await res.json()) as EndSessionResponse;
-      if (data.status === 'processing' || !data.report) {
+      if (data.status === 'processing') {
         for (let attempt = 0; attempt < 180; attempt += 1) {
           await delay(2_000);
           const poll = await fetch(`/api/session/${sessionId}/report`, { headers });
@@ -1551,13 +1563,17 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
           if (data.report) break;
         }
       }
+      if (data.status === 'completed' && !data.report) {
+        invalidateCareerEvidenceCaches();
+        return null;
+      }
       if (!data.report) {
         closingRef.current = false;
         setError('Scoring is still running. Try again in a moment.');
         return null;
       }
       setReport(data.report);
-      invalidateMeActivityCache();
+      invalidateCareerEvidenceCaches();
       return data.report;
     } catch {
       closingRef.current = false;
