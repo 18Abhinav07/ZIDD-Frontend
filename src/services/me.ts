@@ -115,6 +115,17 @@ export interface LearningEventSummary {
   occurred_at?: string | number | null;
 }
 
+export interface ActiveCareerSessionSummary {
+  session_id: string;
+  current_node: string;
+  module_id?: ModuleId | string;
+  task_type: string;
+  test_mode: boolean;
+  status: string;
+  pending_transition?: Record<string, unknown> | null;
+  updated_at?: string | number | null;
+}
+
 export interface CareerMemoryItem {
   skill_id: string;
   focus_id?: string;
@@ -157,6 +168,7 @@ export interface MeLearningGraph {
   profiles: CareerLearningGraphNode[];
   reports: SessionReportSummary[];
   events: LearningEventSummary[];
+  active_sessions: ActiveCareerSessionSummary[];
   memory_context: CareerMemoryContext;
   degraded?: boolean;
 }

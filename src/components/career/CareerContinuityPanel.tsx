@@ -3,6 +3,7 @@
 import { ArrowUpRight, History } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import type {
+  ActiveCareerSessionSummary,
   LearningEventSummary,
   MeLearningGraph,
   SessionReportSummary,
@@ -18,15 +19,28 @@ type ContinuityItem = {
   score: number | null;
   occurredAt: string | number | null;
   href: string;
+  active?: boolean;
 };
 
-function moduleLabel(taskType?: string, moduleId?: string): string {
-  if (moduleId === 'group_discussion' || taskType?.startsWith('gd')) return 'Group Discussion';
-  return 'Interview';
+function isGroupDiscussion(taskType?: string, moduleId?: string): boolean {
+  if (moduleId === 'group_discussion') return true;
+  if (moduleId === 'interview') return false;
+  return taskType?.startsWith('gd') === true
+    || taskType?.startsWith('group_discussion') === true;
 }
 
-function isCareerTask(taskType?: string): boolean {
-  return Boolean(taskType?.startsWith('interview') || taskType?.startsWith('gd'));
+function moduleLabel(taskType?: string, moduleId?: string): string {
+  return isGroupDiscussion(taskType, moduleId) ? 'Group Discussion' : 'Interview';
+}
+
+function isCareerTask(taskType?: string, moduleId?: string): boolean {
+  if (moduleId === 'interview' || moduleId === 'group_discussion') return true;
+  if (moduleId) return false;
+  return Boolean(
+      taskType?.startsWith('interview')
+      || taskType?.startsWith('gd')
+      || taskType?.startsWith('group_discussion')
+  );
 }
 
 function skillLabel(value?: string): string {
@@ -47,7 +61,7 @@ function reportStatus(report: SessionReportSummary): string {
 }
 
 function reportHref(report: SessionReportSummary): string {
-  const route = report.task_type.startsWith('gd') ? 'gd' : 'interview';
+  const route = isGroupDiscussion(report.task_type, report.module_id) ? 'gd' : 'interview';
   return `/simulator/${route}?session_id=${encodeURIComponent(report.session_id)}`;
 }
 
@@ -86,6 +100,32 @@ function eventItem(event: LearningEventSummary): ContinuityItem {
   };
 }
 
+function activeSessionItem(session: ActiveCareerSessionSummary): ContinuityItem {
+  const label = moduleLabel(session.task_type, session.module_id);
+  const isTest = session.test_mode || session.task_type.endsWith('_test');
+  const route = isGroupDiscussion(session.task_type, session.module_id) ? 'gd' : 'interview';
+  const transition = session.pending_transition || {};
+  const checkpointTitle = String(transition.from_title || '').trim();
+  const checkpointNode = String(transition.from_node || session.current_node || '').trim();
+  const nextTitle = String(transition.to_title || '').trim();
+  return {
+    id: `active:${session.session_id}`,
+    sessionId: session.session_id,
+    label: `${label} ${isTest ? 'test' : 'practice'}`,
+    title: checkpointTitle || skillLabel(checkpointNode),
+    detail: nextTitle
+      ? `Checkpoint saved. Next up: ${nextTitle}.`
+      : 'Your transcript and current checkpoint are saved.',
+    status: 'Resume active',
+    score: null,
+    occurredAt: session.updated_at ?? null,
+    href: isTest
+      ? `/simulator/${route}?session_id=${encodeURIComponent(session.session_id)}`
+      : `/session/${encodeURIComponent(session.session_id)}`,
+    active: true,
+  };
+}
+
 function timestamp(value: string | number | null | undefined): number {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value < 1_000_000_000_000 ? value * 1000 : value;
@@ -101,15 +141,18 @@ function timestamp(value: string | number | null | undefined): number {
 
 export function careerContinuityItems(graph: MeLearningGraph | null): ContinuityItem[] {
   if (!graph) return [];
-  const reports = graph.reports.filter((report) => isCareerTask(report.task_type));
+  const activeSessions = graph.active_sessions || [];
+  const activeSessionIds = new Set(activeSessions.map((session) => session.session_id));
+  const reports = graph.reports.filter((report) => isCareerTask(report.task_type, report.module_id));
   const reportSessionIds = new Set(reports.map((report) => report.session_id));
   const prepBySession = new Map<string, LearningEventSummary>();
   for (const event of graph.events) {
     const sessionId = String(event.session_id || '');
     if (
       event.domain !== 'career'
-      || !isCareerTask(event.task_type)
+      || !isCareerTask(event.task_type, event.module_id)
       || !sessionId
+      || activeSessionIds.has(sessionId)
       || reportSessionIds.has(sessionId)
       || !event.source.startsWith('prep')
     ) continue;
@@ -118,10 +161,14 @@ export function careerContinuityItems(graph: MeLearningGraph | null): Continuity
       prepBySession.set(sessionId, event);
     }
   }
-  return [
-    ...reports.map(reportItem),
+  const history = [
+    ...reports.filter((report) => !activeSessionIds.has(report.session_id)).map(reportItem),
     ...Array.from(prepBySession.values()).map(eventItem),
   ].sort((left, right) => timestamp(right.occurredAt) - timestamp(left.occurredAt));
+  return [
+    ...activeSessions.map(activeSessionItem).sort((left, right) => timestamp(right.occurredAt) - timestamp(left.occurredAt)),
+    ...history,
+  ];
 }
 
 export function careerEvidenceProvenance(
@@ -180,7 +227,7 @@ export function CareerContinuityPanel({
               key={item.id}
               type="button"
               onClick={() => router.push(item.href)}
-              className="group grid w-full grid-cols-[minmax(0,1fr)_auto] gap-4 py-4 text-left"
+              className={`group grid w-full grid-cols-[minmax(0,1fr)_auto] gap-4 py-4 text-left ${item.active ? 'bg-indigo-50/60 px-3' : ''}`}
             >
               <span className="min-w-0">
                 <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
