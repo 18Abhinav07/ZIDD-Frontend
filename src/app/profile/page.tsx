@@ -14,6 +14,8 @@ import {
   BriefcaseBusiness,
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   FileText,
   IdCard,
   Loader2,
@@ -72,10 +74,18 @@ function learnerFacingDetail(value?: string, fallback = 'Keep collecting evidenc
 }
 
 function careerModuleFromMemory(item: CareerMemoryItem): ModuleId | null {
-  if (item.module_id === 'interview' || item.task_type?.startsWith('interview')) {
+  if (
+    item.module_id === 'interview'
+    || item.task_type?.startsWith('interview')
+    || item.skill_id.startsWith('int_')
+  ) {
     return 'interview';
   }
-  if (item.module_id === 'group_discussion' || item.task_type?.startsWith('gd')) {
+  if (
+    item.module_id === 'group_discussion'
+    || item.task_type?.startsWith('gd')
+    || item.skill_id.startsWith('gd_')
+  ) {
     return 'group_discussion';
   }
   return null;
@@ -359,7 +369,8 @@ export default function ProfilePage() {
           </div>
         )}
 
-        <div className="mt-5 grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className={`mt-5 grid grid-cols-1 gap-5 ${primaryMotive === 'school' ? 'lg:grid-cols-2' : ''}`}>
+          {primaryMotive === 'school' && (
           <section className="rounded-[1.75rem] border border-slate-200/70 bg-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
             <div className="flex items-center gap-2 text-indigo-700">
               <BookOpen className="w-4 h-4" />
@@ -387,6 +398,7 @@ export default function ProfilePage() {
               Open curriculum <ArrowRightIcon className="w-4 h-4" />
             </button>
           </section>
+          )}
 
           <section className="rounded-[1.75rem] border border-slate-200/70 bg-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
             <div className="flex items-center gap-2 text-emerald-700">
@@ -434,7 +446,7 @@ export default function ProfilePage() {
               </div>
               <h2 className="mt-3 font-display text-3xl leading-tight text-slate-950">Evidence the tutor is tracking</h2>
               <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-500">
-                Recent career-session evidence, grouped by what needs work next and what has stronger proof.
+                Career evidence prioritized by what needs work next and what has stronger proof.
               </p>
             </div>
             {learningGraphLoading && (
@@ -592,6 +604,9 @@ function GrowthBucket({
   onPractice: (item: CareerMemoryItem) => void;
 }) {
   const styles = GROWTH_TONES[tone];
+  const [expanded, setExpanded] = useState(false);
+  const visibleItems = expanded ? items : items.slice(0, 3);
+  const hiddenCount = Math.max(0, items.length - visibleItems.length);
 
   return (
     <div className={`rounded-2xl border px-4 py-4 ${styles.wrap}`}>
@@ -601,9 +616,21 @@ function GrowthBucket({
       </div>
       {items.length ? (
         <div className="mt-4 space-y-3">
-          {items.slice(0, 3).map((item) => (
+          {visibleItems.map((item) => (
             <GrowthItem key={`${title}-${item.skill_id}`} item={item} chipClass={styles.chip} onPractice={onPractice} />
           ))}
+          {items.length > 3 && (
+            <button
+              type="button"
+              onClick={() => setExpanded((value) => !value)}
+              aria-expanded={expanded}
+              className={`inline-flex items-center gap-1.5 px-1 py-1 text-[11px] font-black uppercase tracking-[0.13em] transition-colors ${styles.label}`}
+            >
+              {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              {expanded ? 'Show less' : `Show all ${items.length}`}
+              {!expanded && hiddenCount > 0 && <span className="sr-only"> ({hiddenCount} more)</span>}
+            </button>
+          )}
         </div>
       ) : (
         <p className="mt-4 text-sm leading-relaxed text-slate-600">{empty}</p>
@@ -629,12 +656,10 @@ function GrowthItem({
     : careerModule === 'interview'
       ? 'Interview'
       : '';
-  const displaySkill = item.task_type?.endsWith('_test')
-    ? item.gap || item.skill_id
-    : item.skill_id;
-  const secondaryGap = learnerFacingDetail(item.task_type?.endsWith('_test')
-    ? item.recommended_next_action
-    : item.gap || item.recommended_next_action);
+  const displaySkill = item.skill_id;
+  const secondaryGap = learnerFacingDetail(
+    item.gap || item.recommended_next_action
+  );
   const competenceStatus = item.current_competence_status || item.status;
   const competenceLabel = careerCompetenceLabel(competenceStatus);
   const statusLabel = ['resolved', 'mastered'].includes(competenceStatus)

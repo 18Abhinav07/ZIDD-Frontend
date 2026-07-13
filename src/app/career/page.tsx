@@ -51,10 +51,18 @@ function learnerFacingDetail(value?: string): string {
 }
 
 function careerModuleFromMemory(item: CareerMemoryItem): ModuleId | null {
-  if (item.module_id === 'interview' || item.task_type?.startsWith('interview')) {
+  if (
+    item.module_id === 'interview'
+    || item.task_type?.startsWith('interview')
+    || item.skill_id.startsWith('int_')
+  ) {
     return 'interview';
   }
-  if (item.module_id === 'group_discussion' || item.task_type?.startsWith('gd')) {
+  if (
+    item.module_id === 'group_discussion'
+    || item.task_type?.startsWith('gd')
+    || item.skill_id.startsWith('gd_')
+  ) {
     return 'group_discussion';
   }
   return null;
@@ -189,7 +197,9 @@ export default function CareerPage() {
 
   const careerMemory = careerLearningGraph?.memory_context;
   const careerFocus = careerMemory?.active_gaps?.[0] ?? careerMemory?.improving_gaps?.[0] ?? null;
+  const careerWin = careerMemory?.mastered_skills?.[0] ?? careerMemory?.resolved_gaps?.[0] ?? null;
   const focusModule = careerFocus ? careerModuleFromMemory(careerFocus) : null;
+  const winModule = careerWin ? careerModuleFromMemory(careerWin) : null;
   const latest_evidence = careerFocus?.latest_evidence?.trim();
   const repeat_count = Number(careerFocus?.repeat_count || 0);
   const focusCompetenceStatus = careerFocus?.current_competence_status || careerFocus?.status || '';
@@ -201,25 +211,31 @@ export default function CareerPage() {
       : 'Revisit skill';
   const focusReadiness = careerFocus ? percent(careerFocus.readiness || 0) : '';
 
-  const onPracticeCareerFocus = async () => {
-    if (!focusModule) return;
+  const onPracticeCareerItem = async (item: CareerMemoryItem | null) => {
+    if (!item) return;
+    const moduleId = careerModuleFromMemory(item);
+    if (!moduleId) return;
     if (openingModule) return;
     setActionError('');
-    setOpeningModule(focusModule);
+    setOpeningModule(moduleId);
     try {
-      const res = await updatePreferences({ active_module: focusModule, pending_module: null, test_mode: false });
+      const res = await updatePreferences({ active_module: moduleId, pending_module: null, test_mode: false });
       setMe((m) => (m ? { ...m, preferences: res.preferences } : m));
       void loadMe(true).catch(() => null);
-      router.push(careerPracticeHref(careerFocus || {}));
+      router.push(careerPracticeHref(item));
     } catch {
       setActionError('Could not open this practice skill. Please try again.');
       setOpeningModule(null);
     }
   };
 
+  const onPracticeCareerFocus = () => onPracticeCareerItem(careerFocus);
+
   const pathHref = myPathForMe(me);
 
   const activeLabel = PATHS.find((p) => p.id === activeModule)?.label;
+  const primaryRole = me?.career_profile?.target_roles?.[0];
+  const interviewGoalCount = me?.career_profile?.interview_goals?.length ?? 0;
   const primaryRecommendation = careerFocus ? null : activity?.recommendations[0] ?? null;
   const recommendationTitle = primaryRecommendation?.title
     ?? (careerFocus ? `Practice ${formatSkillLabel(careerFocus.skill_id)}` : `Continue ${activeLabel ?? 'career'} practice`);
@@ -279,10 +295,15 @@ export default function CareerPage() {
               <p className="mt-2 text-sm font-bold text-slate-800">
                 {activity.career.profile_complete ? 'Personalized' : 'Needs details'}
               </p>
+              {activity.career.profile_complete && (
+                <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                  {primaryRole ? `For ${primaryRole}` : `${interviewGoalCount} interview goal${interviewGoalCount === 1 ? '' : 's'} active`}
+                </p>
+              )}
             </div>
             <div className="rounded-[1.25rem] border border-slate-200/70 bg-white px-5 py-4">
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Practice</p>
-              <p className="mt-2 text-sm font-bold text-slate-800">{activity.career.attempts} attempts tracked</p>
+              <p className="mt-2 text-sm font-bold text-slate-800">{activity.career.attempts} practice starts tracked</p>
             </div>
             <button
               onClick={onOpenRecommendation}
@@ -313,12 +334,13 @@ export default function CareerPage() {
           </div>
         )}
 
-        {(careerFocus || careerLearningGraphError) && (
+        {(careerFocus || careerWin || careerLearningGraphError) && (
           <div className="mt-8 rounded-[1.5rem] border border-slate-200/80 bg-white px-5 py-5 shadow-[0_18px_45px_rgba(15,23,42,0.06)]">
-            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-              <div className="max-w-2xl">
-                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Career focus</p>
-                {careerFocus ? (
+            {(careerFocus || careerLearningGraphError) && (
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div className="max-w-2xl">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Career focus</p>
+                  {careerFocus ? (
                   <>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <h2 className="font-display text-2xl tracking-tight text-slate-950">{formatSkillLabel(careerFocus.skill_id)}</h2>
@@ -343,22 +365,49 @@ export default function CareerPage() {
                       )}
                     </div>
                   </>
-                ) : (
-                  <p className="mt-2 text-sm font-semibold text-amber-800">{careerLearningGraphError}</p>
+                  ) : (
+                    <p className="mt-2 text-sm font-semibold text-amber-800">{careerLearningGraphError}</p>
+                  )}
+                </div>
+                {focusModule && (
+                  <button
+                    type="button"
+                    onClick={onPracticeCareerFocus}
+                    disabled={openingModule !== null}
+                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-slate-900 px-5 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-white transition-colors hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {openingModule === focusModule && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    {focusActionLabel}
+                  </button>
                 )}
               </div>
-              {focusModule && (
-                <button
-                  type="button"
-                  onClick={onPracticeCareerFocus}
-                  disabled={openingModule !== null}
-                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-slate-900 px-5 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-white transition-colors hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60"
-                >
-                  {openingModule === focusModule && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  {focusActionLabel}
-                </button>
-              )}
-            </div>
+            )}
+            {careerWin && (
+              <div className={`${careerFocus || careerLearningGraphError ? 'mt-5 border-t border-slate-100 pt-5' : ''} flex flex-col gap-3 md:flex-row md:items-center md:justify-between`}>
+                <div className="max-w-2xl">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-700">Proven skill</p>
+                    <span className="text-[10px] font-black uppercase tracking-[0.13em] text-slate-400">
+                      {careerCompetenceLabel(careerWin.current_competence_status || careerWin.status)}
+                    </span>
+                  </div>
+                  <h3 className="mt-1 text-base font-black text-slate-950">{formatSkillLabel(careerWin.skill_id)}</h3>
+                  <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                    {careerWin.latest_evidence?.trim() || learnerFacingDetail(careerWin.recommended_next_action)}
+                  </p>
+                </div>
+                {winModule && (
+                  <button
+                    type="button"
+                    onClick={() => void onPracticeCareerItem(careerWin)}
+                    disabled={openingModule !== null}
+                    className="inline-flex shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2.5 text-[11px] font-black uppercase tracking-[0.15em] text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {openingModule === winModule ? 'Opening...' : 'Revisit skill'}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
 

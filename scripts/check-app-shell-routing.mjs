@@ -180,6 +180,22 @@ if (
 if (/text-\[(?:9|10)px\][^"\n]*(?:text-slate-400|text-emerald-600)|(?:text-slate-400|text-emerald-600)[^"\n]*text-\[(?:9|10)px\]/.test(profile)) {
   failures.push('profile labels must avoid 9-10px slate-400/emerald-600 contrast failures.');
 }
+for (const token of ['aria-expanded={expanded}', 'Show all ${items.length}', "item.skill_id.startsWith('int_')", "item.skill_id.startsWith('gd_')"]) {
+  if (!profile.includes(token)) {
+    failures.push(`profile growth history is missing ${token}.`);
+  }
+}
+if (profile.includes("item.task_type?.endsWith('_test')\n    ? item.gap")) {
+  failures.push('test-derived growth cards must use the canonical skill title, not old gap wording.');
+}
+if (!profile.includes("primaryMotive === 'school' &&")) {
+  failures.push('career profiles should not render an irrelevant empty school block.');
+}
+for (const token of ['Proven skill', 'practice starts tracked', "item.skill_id.startsWith('int_')", "item.skill_id.startsWith('gd_')"]) {
+  if (!careerPage.includes(token)) {
+    failures.push(`career home growth summary is missing ${token}.`);
+  }
+}
 
 if (!middleware.includes("pathname === '/dashboard'") || !middleware.includes("'/subjects'")) {
   failures.push('middleware should redirect school users away from /dashboard before React renders.');
