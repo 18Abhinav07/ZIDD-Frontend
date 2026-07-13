@@ -1,6 +1,7 @@
 "use client";
 
-import { ArrowUpRight, History } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowUpRight, ChevronDown, ChevronUp, History } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import type {
   ActiveCareerSessionSummary,
@@ -197,10 +198,17 @@ export function CareerContinuityPanel({
   compact?: boolean;
 }) {
   const router = useRouter();
+  const [historyExpanded, setHistoryExpanded] = useState(false);
   const allItems = careerContinuityItems(graph);
   const activeItems = allItems.filter((item) => item.active);
-  const historyItems = allItems.filter((item) => !item.active).slice(0, compact ? 3 : 5);
+  const allHistoryItems = allItems.filter((item) => !item.active);
+  const collapsedHistoryLimit = compact ? 3 : 5;
+  const historyItems = allHistoryItems.slice(
+    0,
+    historyExpanded ? Math.max(12, collapsedHistoryLimit) : collapsedHistoryLimit,
+  );
   const items = [...activeItems, ...historyItems];
+  const canExpandHistory = allHistoryItems.length > collapsedHistoryLimit;
   if (!items.length) return null;
 
   return (
@@ -254,6 +262,17 @@ export function CareerContinuityPanel({
           );
         })}
       </div>
+      {canExpandHistory && (
+        <button
+          type="button"
+          onClick={() => setHistoryExpanded((current) => !current)}
+          aria-expanded={historyExpanded}
+          className="mt-4 inline-flex min-h-10 items-center gap-2 text-sm font-bold text-slate-700 hover:text-slate-950"
+        >
+          {historyExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          {historyExpanded ? 'Show less history' : 'Show more history'}
+        </button>
+      )}
     </section>
   );
 }

@@ -392,6 +392,11 @@ for (const token of ['practiceIsReturnAction', '!practiceIsReturnAction']) {
 if (!careerContinuity.includes("?review=1&node=${encodeURIComponent(reviewNode)}")) {
   failures.push('Historical prep continuity rows must open the exact source transcript in review mode.');
 }
+for (const token of ['historyExpanded', 'Show more history', 'Show less history', 'aria-expanded={historyExpanded}']) {
+  if (!careerContinuity.includes(token)) {
+    failures.push(`Career continuity must expose additional saved work with ${token}.`);
+  }
+}
 if (!skillLabels.includes(".replace(/^(gd|int)_\\d+_/i, '')")) {
   failures.push('Career skill labels must hide internal int/gd curriculum prefixes.');
 }
