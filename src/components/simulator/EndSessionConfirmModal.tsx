@@ -149,7 +149,9 @@ export function EndSessionConfirmModal({
             <div className="flex items-start justify-between gap-3">
               <dt className="min-w-0 break-words">Evidence coverage</dt>
               <dd className="shrink-0 text-right font-medium tabular-nums text-slate-900">
-                {evidence.coverageKnown ? `${coverageCovered}/${coverageRequired}` : 'Not yet verified'}
+                {evidence.coverageKnown
+                  ? `${coverageCovered} covered / ${coverageRequired} needed`
+                  : 'Not yet verified'}
               </dd>
             </div>
             <div className="flex items-start justify-between gap-3">

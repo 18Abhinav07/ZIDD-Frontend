@@ -149,14 +149,9 @@ function InterviewContent() {
   };
 
   const handleQuickAction = (action: { value: string; action?: AssessmentClientAction }) => {
-    if (inputDisabled) return;
+    if (inputDisabled || inputValue.trim()) return;
     const actionForTurn = action.action ?? null;
-    if (!inputValue.trim()) {
-      setInputValue(action.value.trim());
-      setPendingAssessmentAction(actionForTurn);
-      return;
-    }
-    setPendingAssessmentAction(actionForTurn);
+    void submitDraft(action.value.trim(), actionForTurn);
   };
 
   const handleSend = async () => {

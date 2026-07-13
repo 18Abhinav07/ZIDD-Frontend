@@ -530,7 +530,7 @@ const InputBar = memo(function InputBar({
             <button
               key={action.label}
               type="button"
-              disabled={disabled}
+              disabled={disabled || Boolean(inputValue.trim())}
               onClick={() => {
                 onQuickAction?.(action);
               }}
