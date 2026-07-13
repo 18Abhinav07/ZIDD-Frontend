@@ -204,9 +204,31 @@ if (!sessionPage.includes('handleStartNextSkill')) {
 if (!types.includes('handoff_session_id?: string | null')) {
   failures.push('DoneFrame must carry handoff_session_id so consumed source sessions can redirect after reload.');
 }
+if (!types.includes('handoff_source_node?: string | null')) {
+  failures.push('DoneFrame must carry the persisted handoff source node for authenticated transcript review.');
+}
 
-if (!sessionPage.includes('state?.handoff_session_id') || !sessionPage.includes('router.replace(`/session/${state.handoff_session_id}`)')) {
-  failures.push('Session page must redirect consumed source sessions to their handoff session on reload.');
+if (
+  !sessionPage.includes("const requestedReviewMode = searchParams.get('review') === '1'")
+  || !sessionPage.includes("const requestedReviewNode = searchParams.get('node') || ''")
+  || !sessionPage.includes("const persistedReviewNode = state?.handoff_source_node || state?.competency_node || ''")
+  || !sessionPage.includes("&& (state?.status === 'ended' || state?.session_over)")
+  || !sessionPage.includes('&& requestedReviewNode === persistedReviewNode')
+  || !sessionPage.includes('!reviewMode && state?.handoff_session_id')
+  || !sessionPage.includes('router.replace(`/session/${state.handoff_session_id}`)')
+) {
+  failures.push('Session page must redirect consumed source sessions except when an explicit history review link is opened.');
+}
+
+for (const token of [
+  "reviewMode && reviewNode ? labelSkillId(reviewNode) : shellNodeTitle",
+  "phase={reviewMode ? 'Saved practice' : shellPhase}",
+  "statusLabel={reviewMode ? 'Review' : tutorStatusLabel}",
+  'showProgress={!reviewMode}',
+]) {
+  if (!sessionPage.includes(token)) {
+    failures.push(`Historical transcript review must use a read-only presentation with ${token}.`);
+  }
 }
 
 if (!sessionPage.includes('startSessionWithPaywall')) {
@@ -316,12 +338,15 @@ if (!sessionPage.includes('Next Skill')) {
   failures.push('Skill transition card must use learner-facing next-skill copy.');
 }
 
-if (!sessionPage.includes('const visibleMastery = transitionActive')) {
-  failures.push('Session shell must compute visibleMastery from transitionActive state.');
+if (!sessionPage.includes('const visibleProgress = isProfessional')) {
+  failures.push('Session shell must choose the visible progress metric by learning mode.');
 }
 
-if (!/const visibleMastery = transitionActive[\s\S]{0,80}\?\s*1/.test(sessionPage)) {
-  failures.push('Session shell must show 100% mastery while the Skill Mastered transition card is active.');
+if (
+  !sessionPage.includes('const transitionMastery = pendingTransition?.from_mastery ?? latestProgressMastery')
+  || !sessionPage.includes(': (transitionActive ? transitionMastery : latestProgressMastery)')
+) {
+  failures.push('Gamified session progress must use persisted mastery instead of synthesizing readiness as mastery.');
 }
 
 const handleSendBody = sessionPage.match(/const handleSend = async \(\) => \{[\s\S]*?\n  \};/)?.[0] ?? '';

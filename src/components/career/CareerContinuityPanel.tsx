@@ -87,6 +87,7 @@ function eventItem(event: LearningEventSummary): ContinuityItem {
   const label = moduleLabel(event.task_type, event.module_id);
   const evidence = event.evidence_json || {};
   const quote = String(evidence.latest_quote || evidence.evidence_quote || '').trim();
+  const reviewNode = String(event.skill_id || event.node_id || '').trim();
   return {
     id: event.source_event_key,
     sessionId: String(event.session_id || ''),
@@ -96,7 +97,7 @@ function eventItem(event: LearningEventSummary): ContinuityItem {
     status: event.attempt_type ? `${skillLabel(event.attempt_type)} attempt` : 'Practice evidence',
     score: Number.isFinite(event.score) ? Number(event.score) : null,
     occurredAt: event.occurred_at ?? null,
-    href: `/session/${encodeURIComponent(String(event.session_id || ''))}`,
+    href: `/session/${encodeURIComponent(String(event.session_id || ''))}?review=1&node=${encodeURIComponent(reviewNode)}`,
   };
 }
 

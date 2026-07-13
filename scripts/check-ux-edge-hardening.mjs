@@ -27,11 +27,13 @@ const reportPresentation = fs.existsSync(reportPresentationPath)
   ? await import(pathToFileURL(reportPresentationPath))
   : null;
 const sessionRecap = read('src/components/shared/SessionRecap.tsx');
+const careerContinuity = read('src/components/career/CareerContinuityPanel.tsx');
 const pathMap = read('src/components/shared/PathMap.tsx');
 const scenarioPicker = read('src/components/shared/ScenarioPicker.tsx');
 const sessionPage = read('src/app/session/[id]/page.tsx');
 const sessionStreamPresentation = read('src/lib/sessionStreamPresentation.mjs');
 const tutorShell = read('src/components/tutor/TutorShell.tsx');
+const skillLabels = read('src/lib/skillLabels.ts');
 const simulatorShell = read('src/components/simulator/SimulatorShell.tsx');
 const endSessionConfirm = read('src/components/simulator/EndSessionConfirmModal.tsx');
 const gdSimulatorPage = read('src/app/(professional)/simulator/gd/page.tsx');
@@ -387,6 +389,13 @@ for (const token of ['practiceIsReturnAction', '!practiceIsReturnAction']) {
   }
 }
 
+if (!careerContinuity.includes("?review=1&node=${encodeURIComponent(reviewNode)}")) {
+  failures.push('Historical prep continuity rows must open the exact source transcript in review mode.');
+}
+if (!skillLabels.includes(".replace(/^(gd|int)_\\d+_/i, '')")) {
+  failures.push('Career skill labels must hide internal int/gd curriculum prefixes.');
+}
+
 if (sessionRecap.includes('Accuracy') || !sessionRecap.includes('Overall prep readiness')) {
   failures.push('SessionRecap must label the professional completion metric Overall prep readiness, not Accuracy or a generic readiness label.');
 }
@@ -454,7 +463,7 @@ if (!sessionPage.includes("router.push('/map')") || sessionPage.includes("router
   failures.push('Prep session leave/not-found/recap routes must return to /map, not /mode.');
 }
 
-for (const token of ['Setting up your prompt...', 'Reviewing your answer...', 'statusLabel={tutorStatusLabel}']) {
+for (const token of ['Setting up your prompt...', 'Reviewing your answer...', "statusLabel={reviewMode ? 'Review' : tutorStatusLabel}"]) {
   if (!`${sessionPage}\n${sessionStreamPresentation}`.includes(token)) {
     failures.push(`Session page must expose correct prep processing copy/status with ${token}.`);
   }
@@ -480,7 +489,7 @@ for (const token of ['latestProgressMastery', 'progress?.mastery ?? state?.curre
   }
 }
 
-for (const token of ['cleanStreak={visibleCleanStreak}', 'attempts={visibleAttempts}']) {
+for (const token of ['cleanStreak={reviewMode ? undefined : visibleCleanStreak}', 'attempts={reviewMode ? undefined : visibleAttempts}']) {
   if (!sessionPage.includes(token)) {
     failures.push(`Session page must pass visible completed-node evidence into TutorShell with ${token}.`);
   }

@@ -264,6 +264,7 @@ export interface DoneFrame {
   active_turn?: ActiveTurn | null;
   last_turn?: ActiveTurn | null;
   handoff_session_id?: string | null;
+  handoff_source_node?: string | null;
   input_allowed?: boolean;
   block_reason?: string | null;
   opening_streamed?: boolean;

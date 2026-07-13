@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useId, memo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useZiddSession } from '@/hooks/useZiddSession';
 import { slowStreamCopyFor, teachingStatusFor } from '@/lib/sessionStreamPresentation.mjs';
 import { friendlySessionStartErrorMessage, startSessionWithPaywall } from '@/services/billing';
@@ -19,6 +19,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { getAvatarForSeed, AvatarData } from '@/lib/avatars';
 import type { PaywallDetail } from '@/types';
+import { labelSkillId } from '@/lib/skillLabels';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -58,6 +59,9 @@ const SessionMessageSkeleton = memo(function SessionMessageSkeleton({ delay = 0,
 export default function SessionPage({ params }: { params: { id: string } }) {
   const { id } = params;
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedReviewMode = searchParams.get('review') === '1';
+  const requestedReviewNode = searchParams.get('node') || '';
   const { loadBalance } = useAppSession();
   const {
     messages,
@@ -79,6 +83,14 @@ export default function SessionPage({ params }: { params: { id: string } }) {
     streamTurn,
     disconnect
   } = useZiddSession(id, true);
+  const persistedReviewNode = state?.handoff_source_node || state?.competency_node || '';
+  const reviewMode = Boolean(
+    requestedReviewMode
+    && requestedReviewNode
+    && (state?.status === 'ended' || state?.session_over)
+    && requestedReviewNode === persistedReviewNode
+  );
+  const reviewNode = reviewMode ? requestedReviewNode : '';
 
   const [inputValue, setInputValue] = useState('');
   const [recapVisible, setRecapVisible] = useState(true);
@@ -157,10 +169,10 @@ export default function SessionPage({ params }: { params: { id: string } }) {
   }, [messages, isStreaming, gamePrompt]);
 
   useEffect(() => {
-    if (state?.handoff_session_id && state.handoff_session_id !== id) {
+    if (!reviewMode && state?.handoff_session_id && state.handoff_session_id !== id) {
       router.replace(`/session/${state.handoff_session_id}`);
     }
-  }, [id, router, state?.handoff_session_id]);
+  }, [id, reviewMode, router, state?.handoff_session_id]);
 
   const openingRetryActive = !isBootstrapping
     && !isStreaming
@@ -476,17 +488,18 @@ export default function SessionPage({ params }: { params: { id: string } }) {
   return (
     <>
     <TutorShell
-      nodeTitle={shellNodeTitle}
+      nodeTitle={reviewMode && reviewNode ? labelSkillId(reviewNode) : shellNodeTitle}
       mastery={visibleProgress}
-      cleanStreak={visibleCleanStreak}
-      attempts={visibleAttempts}
-      phase={shellPhase}
+      cleanStreak={reviewMode ? undefined : visibleCleanStreak}
+      attempts={reviewMode ? undefined : visibleAttempts}
+      phase={reviewMode ? 'Saved practice' : shellPhase}
       mode={isProfessional ? 'professional' : 'gamified'}
+      showProgress={!reviewMode}
       characterImg={avatar?.url}
       characterBg={avatar?.bg}
       emotion={avatarEmotion}
       affect={affect}
-      statusLabel={tutorStatusLabel}
+      statusLabel={reviewMode ? 'Review' : tutorStatusLabel}
       onBack={() => setConfirmingExit(true)}
     >
       <div className="flex h-full min-h-0 flex-col">

@@ -37,6 +37,7 @@ interface TutorShellProps {
   statusLabel?: string;
   cleanStreak?: number;
   attempts?: number;
+  showProgress?: boolean;
 }
 
 const AvatarTile = memo(function AvatarTile({ characterImg, mode, characterBg, emotion, affect, statusLabel }: { characterImg?: string, mode: string, characterBg?: string, emotion?: DoneFrame['avatar_emotion'], affect?: DoneFrame['affect'], statusLabel?: string }) {
@@ -145,6 +146,7 @@ export const TutorShell: React.FC<TutorShellProps> = ({
   statusLabel,
   cleanStreak,
   attempts,
+  showProgress = true,
 }) => {
   const router = useRouter();
   const { data: authSession } = useSession();
@@ -216,19 +218,21 @@ export const TutorShell: React.FC<TutorShellProps> = ({
            {/* Stats Chips */}
            <div className="flex gap-2">
               <div className="hidden sm:block"><CreditsBadge /></div>
-              <div
-                role="meter"
-                className="flex px-2.5 sm:px-3 py-2 rounded-full bg-white/60 backdrop-blur border border-slate-200/50 shadow-sm items-center gap-1.5 sm:gap-2 text-slate-700"
-                title={`${progressLabel}: ${Math.round(mastery * 100)}%`}
-                aria-label={`${progressLabel}: ${Math.round(mastery * 100)}%`}
-                aria-valuenow={Math.round(mastery * 100)}
-                aria-valuemin={0}
-                aria-valuemax={100}
-              >
-                 <StarIcon className="text-accent w-4 h-4" />
-                 <span className="hidden lg:inline text-xs font-semibold">{progressLabel}</span>
-                 <span className="text-xs font-mono font-semibold tabular-nums">{Math.round(mastery * 100)}%</span>
-              </div>
+              {showProgress && (
+                <div
+                  role="meter"
+                  className="flex px-2.5 sm:px-3 py-2 rounded-full bg-white/60 backdrop-blur border border-slate-200/50 shadow-sm items-center gap-1.5 sm:gap-2 text-slate-700"
+                  title={`${progressLabel}: ${Math.round(mastery * 100)}%`}
+                  aria-label={`${progressLabel}: ${Math.round(mastery * 100)}%`}
+                  aria-valuenow={Math.round(mastery * 100)}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                >
+                   <StarIcon className="text-accent w-4 h-4" />
+                   <span className="hidden lg:inline text-xs font-semibold">{progressLabel}</span>
+                   <span className="text-xs font-mono font-semibold tabular-nums">{Math.round(mastery * 100)}%</span>
+                </div>
+              )}
               {typeof attempts === 'number' && typeof cleanStreak === 'number' && (
                 <div
                   data-progress-evidence="wide"

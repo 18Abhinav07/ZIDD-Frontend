@@ -32,6 +32,7 @@ export function labelSkillId(skillId?: string | null): string {
   if (!raw) return 'General practice';
   if (SKILL_LABELS[raw]) return SKILL_LABELS[raw];
   return raw
+    .replace(/^(gd|int)_\d+_/i, '')
     .toLowerCase()
     .split(/[_\s-]+/)
     .filter(Boolean)
