@@ -39,6 +39,7 @@ import {
 } from '@/services/me';
 import { useAppSession } from '@/components/shared/AppSessionProvider';
 import { labelGdTopic } from '@/lib/gdTopics';
+import { careerCompetenceLabel, careerPracticeHref } from '@/lib/careerPathPresentation.mjs';
 
 const CAREER_PATHS: { id: ModuleId; label: string; blurb: string }[] = [
   { id: 'interview', label: 'Interview', blurb: 'Practice structured answers, pressure, and role fit.' },
@@ -62,6 +63,12 @@ function formatSkillLabel(value?: string): string {
     .replace(/^(gd|int)_\d+_/, '')
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function learnerFacingDetail(value?: string, fallback = 'Keep collecting evidence in a fresh scenario.'): string {
+  const text = (value || '').trim();
+  if (!text || /^(?:gd|int)_\d+_[a-z0-9_]+$/i.test(text)) return fallback;
+  return text;
 }
 
 function careerModuleFromMemory(item: CareerMemoryItem): ModuleId | null {
@@ -218,7 +225,17 @@ export default function ProfilePage() {
   const onPracticeCareerGap = async (item: CareerMemoryItem) => {
     const moduleId = careerModuleFromMemory(item);
     if (!moduleId) return;
-    await openCareer(moduleId);
+    setSwitching(moduleId);
+    setSwitchError('');
+    try {
+      const res = await updatePreferences({ active_module: moduleId, pending_module: null, test_mode: false });
+      setMe((m) => (m ? { ...m, preferences: res.preferences } : m));
+      void loadMe(true).catch(() => null);
+      router.push(careerPracticeHref(item));
+    } catch {
+      setSwitchError('Could not open this practice skill. Please try again.');
+      setSwitching(null);
+    }
   };
 
   const credits = me?.demo_unlimited ? '∞' : (me?.credits ?? '—');
@@ -615,22 +632,26 @@ function GrowthItem({
   const displaySkill = item.task_type?.endsWith('_test')
     ? item.gap || item.skill_id
     : item.skill_id;
-  const secondaryGap = item.task_type?.endsWith('_test')
+  const secondaryGap = learnerFacingDetail(item.task_type?.endsWith('_test')
     ? item.recommended_next_action
-    : item.gap || item.recommended_next_action;
-  const statusLabel =
-    item.status === 'mastered'
-      ? 'Mastered'
-      : item.status === 'resolved'
-        ? 'Resolved'
-        : `${percent(item.readiness || 0)} ready`;
+    : item.gap || item.recommended_next_action);
+  const competenceStatus = item.current_competence_status || item.status;
+  const competenceLabel = careerCompetenceLabel(competenceStatus);
+  const statusLabel = ['resolved', 'mastered'].includes(competenceStatus)
+    ? competenceLabel
+    : `${competenceLabel} · ${percent(item.readiness || 0)}`;
+  const practiceLabel = ['active_gap', 'needs_review'].includes(competenceStatus)
+    ? 'Practice focus'
+    : competenceStatus === 'improving'
+      ? 'Strengthen this'
+      : 'Revisit skill';
 
   return (
     <div className="rounded-xl border border-white/70 bg-white/80 px-4 py-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-sm font-black leading-tight text-slate-900">{formatSkillLabel(displaySkill)}</p>
-          <p className="mt-1 text-xs leading-relaxed text-slate-500">{secondaryGap || 'Keep collecting evidence.'}</p>
+          <p className="mt-1 text-xs leading-relaxed text-slate-500">{secondaryGap}</p>
         </div>
         <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] ${chipClass}`}>
           {statusLabel}
@@ -652,7 +673,7 @@ function GrowthItem({
           onClick={() => onPractice(item)}
           className="mt-3 inline-flex items-center justify-center rounded-full bg-slate-900 px-3 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-white transition-colors hover:bg-slate-800"
         >
-          Practice this
+          {practiceLabel}
         </button>
       )}
     </div>

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
 import { friendlySessionStartErrorMessage, startSessionWithPaywall } from '@/services/billing';
-import { getMe, homeForMe, type CareerProfile, type ModuleId } from '@/services/me';
+import { getMe, getMeLearningGraph, homeForMe, type CareerProfile, type ModuleId } from '@/services/me';
 import { getProgressionMap } from '@/services/progression';
 import { PathMap, type ProgressNode } from '@/components/shared/PathMap';
 import { ScenarioPicker } from '@/components/shared/ScenarioPicker';
@@ -15,6 +15,7 @@ import Image from 'next/image';
 import { AVATAR_PATHS } from '@/lib/avatarRegistry';
 import type { PaywallDetail, SimulationScenarioConfig } from '@/types';
 import { ExitIcon } from '@radix-ui/react-icons';
+import { careerCompetenceLabel, mergeCareerMemoryIntoPath } from '@/lib/careerPathPresentation.mjs';
 
 type FailedStart = {
   nodeId: string;
@@ -48,11 +49,26 @@ export default function MapPage() {
   const [reattemptSimulationConfig, setReattemptSimulationConfig] = useState<SimulationScenarioConfig | undefined>();
   const [confirming, setConfirming] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [focusNodeId, setFocusNodeId] = useState('');
   const badgeRef = useRef<CreditsBadgeHandle>(null);
   const startIdsRef = useRef<Map<string, string>>(new Map());
   const failedStartRef = useRef<FailedStart | null>(null);
   const scenarioStartInFlightRef = useRef(false);
   const startInFlightRef = useRef(false);
+
+  useEffect(() => {
+    setFocusNodeId(new URLSearchParams(window.location.search).get('focus') || '');
+  }, []);
+
+  useEffect(() => {
+    if (loading || !focusNodeId || !nodes.some((node) => node.node_id === focusNodeId)) return;
+    const frame = window.requestAnimationFrame(() => {
+      const target = Array.from(document.querySelectorAll<HTMLElement>('[data-node-id]'))
+        .find((element) => element.dataset.nodeId === focusNodeId);
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusNodeId, loading, nodes]);
 
   useEffect(() => {
     const fetchProgress = async () => {
@@ -72,10 +88,13 @@ export default function MapPage() {
         setCurrentModule(moduleId);
         setCareerProfile(profile.career_profile || {});
         setIsTestMode(Boolean(profile.preferences.test_mode));
-        const data = await getProgressionMap(moduleId, { force: reloadKey > 0 });
+        const [data, learningGraph] = await Promise.all([
+          getProgressionMap(moduleId, { force: reloadKey > 0 }),
+          getMeLearningGraph({ force: reloadKey > 0 }).catch(() => null),
+        ]);
         
         if (data && data.length > 0) {
-          setNodes(data);
+          setNodes(mergeCareerMemoryIntoPath(data, learningGraph?.memory_context));
         } else {
           setNodes([]);
         }
@@ -226,7 +245,10 @@ export default function MapPage() {
     if (loading || startInFlightRef.current) return;
     setError('');
     const status = node.display_status ?? node.status;
-    const mastered = Boolean(node.mastered || node.node_mastered || status === 'mastered');
+    const needsReview = status === 'needs_remediation'
+      || node.current_competence_status === 'active_gap'
+      || node.current_competence_status === 'needs_review';
+    const mastered = !needsReview && Boolean(node.mastered || node.node_mastered || status === 'mastered');
     const readyForNextSkill = !mastered && (status === 'ready_to_advance' || status === 'proficient');
     const reattemptable = Boolean(node.completed || mastered || readyForNextSkill);
     if (status === 'locked') return;
@@ -250,9 +272,26 @@ export default function MapPage() {
   };
 
   const reattemptStatus = reattemptNode?.display_status ?? reattemptNode?.status;
-  const reattemptMastered = Boolean(
-    reattemptNode && (reattemptNode.mastered || reattemptNode.node_mastered || reattemptStatus === 'mastered')
+  const reattemptNeedsReview = Boolean(
+    reattemptNode
+    && (
+      reattemptStatus === 'needs_remediation'
+      || reattemptNode.current_competence_status === 'active_gap'
+      || reattemptNode.current_competence_status === 'needs_review'
+    )
   );
+  const reattemptReviewLabel = careerCompetenceLabel(reattemptNode?.current_competence_status);
+  const reattemptMastered = Boolean(
+    reattemptNode
+    && !reattemptNeedsReview
+    && (reattemptNode.mastered || reattemptNode.node_mastered || reattemptStatus === 'mastered')
+  );
+  const reattemptImproving = reattemptStatus === 'improving';
+  const reattemptActionLabel = reattemptNeedsReview
+    ? 'Practice focus'
+    : reattemptImproving
+      ? 'Strengthen this'
+      : 'Practice again';
   const reattemptReady = Boolean(
     reattemptNode
     && !reattemptMastered
@@ -472,7 +511,7 @@ export default function MapPage() {
                 disabled={loading || scenarioStarting || confirming}
               />
             )
-            : <PathMap nodes={nodes} onNodeClick={handleNodeClick} />}
+            : <PathMap nodes={nodes} focusNodeId={focusNodeId} onNodeClick={handleNodeClick} />}
         </main>
       )}
 
@@ -488,11 +527,23 @@ export default function MapPage() {
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/40 backdrop-blur-sm px-4">
           <div className="w-full max-w-sm rounded-3xl bg-white border border-slate-200 p-7 shadow-2xl">
             <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-emerald-700">
-              {reattemptReady ? 'Ready for next skill' : reattemptMastered ? 'Mastered' : 'Practice checkpoint passed'}
+              {reattemptNeedsReview
+                ? reattemptReviewLabel
+                : reattemptImproving
+                  ? 'Skill is improving'
+                : reattemptReady
+                  ? 'Ready for next skill'
+                  : reattemptMastered
+                    ? 'Mastered'
+                    : 'Practice checkpoint passed'}
             </p>
             <h2 className="mt-2 font-display text-3xl tracking-tight text-slate-900">Practice this skill again?</h2>
             <p className="mt-3 text-sm leading-relaxed text-slate-500">
-              {reattemptMastered
+              {reattemptNeedsReview
+                ? `Your earlier checkpoint stays saved. This attempt focuses on the latest evidence gap for ${reattemptNode.title}.`
+                : reattemptImproving
+                  ? `Your progress stays saved. This attempt gives you another independent chance to strengthen ${reattemptNode.title}.`
+                : reattemptMastered
                 ? `Your mastery status stays saved. This starts another practice attempt for ${reattemptNode.title}.`
                 : `Your checkpoint stays saved. Practice ${reattemptNode.title} again without changing its current progress status.`}
             </p>
@@ -510,7 +561,7 @@ export default function MapPage() {
                 onClick={handleReattemptConfirm}
                 className="flex-1 rounded-full bg-slate-900 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800"
               >
-                Practice again
+                {reattemptActionLabel}
               </button>
             </div>
           </div>

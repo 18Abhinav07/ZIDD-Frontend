@@ -7,7 +7,7 @@ import { LockClosedIcon, CheckIcon } from '@radix-ui/react-icons';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { AVATAR_PATHS, getAvatarScaleClass } from '@/lib/avatarRegistry';
-import { deriveCareerPathPresentation } from '@/lib/careerPathPresentation.mjs';
+import { careerCompetenceLabel, deriveCareerPathPresentation } from '@/lib/careerPathPresentation.mjs';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -23,6 +23,8 @@ export interface ProgressNode {
   completed?: boolean;
   mastered?: boolean;
   node_mastered?: boolean;
+  milestone_mastered?: boolean;
+  current_competence_status?: string;
   display_status?: 'not_started' | 'in_progress' | 'ready_to_advance' | 'proficient' | 'mastered' | 'needs_remediation' | 'active' | 'locked' | string;
   last_gap?: string;
   clean_streak: number;
@@ -32,6 +34,7 @@ export interface ProgressNode {
 
 interface PathMapProps {
   nodes: ProgressNode[];
+  focusNodeId?: string;
   onNodeClick: (node: ProgressNode) => void;
 }
 
@@ -62,22 +65,34 @@ function statusDescription({
   isMastered,
   isNeedsPractice,
   isReady,
+  isReview,
+  isImproving,
+  reviewLabel,
+  competenceLabel,
 }: {
   isActive: boolean;
   isLocked: boolean;
   isMastered: boolean;
   isNeedsPractice: boolean;
   isReady: boolean;
+  isReview: boolean;
+  isImproving: boolean;
+  reviewLabel: string;
+  competenceLabel: string;
 }) {
   if (isLocked) return 'Locked';
+  if (isActive) {
+    return competenceLabel === 'Tracked' ? 'You are here' : `You are here, ${competenceLabel}`;
+  }
+  if (isReview) return reviewLabel;
+  if (isImproving) return 'Improving';
   if (isMastered) return 'Mastered';
   if (isReady) return 'Ready for next skill';
-  if (isActive) return 'You are here';
   if (isNeedsPractice) return 'Needs practice';
   return 'Needs practice';
 }
 
-export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
+export const PathMap: React.FC<PathMapProps> = ({ nodes, focusNodeId, onNodeClick }) => {
   
   const {
     hasPathActivity,
@@ -148,11 +163,19 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
           const isEven = index % 2 === 0;
           const status = node.display_status ?? node.status;
           const isLocked = status === 'locked';
-          const isMastered = Boolean(node.mastered || node.node_mastered || status === 'mastered');
-          const isReady = !isMastered && (status === 'ready_to_advance' || status === 'proficient');
           const isActive = status === 'active' || status === 'in_progress';
-          const isNeedsPractice = !isLocked && !isMastered && !isReady && !isActive;
-          const accessibleStatus = statusDescription({ isActive, isLocked, isMastered, isNeedsPractice, isReady });
+          const hasReviewStatus = status === 'needs_remediation'
+            || node.current_competence_status === 'active_gap'
+            || node.current_competence_status === 'needs_review';
+          const isReview = !isActive && hasReviewStatus;
+          const isMastered = !hasReviewStatus && Boolean(node.mastered || node.node_mastered || status === 'mastered');
+          const isReady = !isMastered && (status === 'ready_to_advance' || status === 'proficient');
+          const isImproving = status === 'improving';
+          const isNeedsPractice = !isLocked && !isMastered && !isReady && !isActive && !isImproving;
+          const isFocusTarget = focusNodeId === node.node_id;
+          const reviewLabel = careerCompetenceLabel(node.current_competence_status);
+          const competenceLabel = careerCompetenceLabel(node.current_competence_status);
+          const accessibleStatus = statusDescription({ isActive, isLocked, isMastered, isNeedsPractice, isReady, isReview, isImproving, reviewLabel, competenceLabel });
           const displayMastery = isMastered
             ? 1
             : Math.max(0, Math.min(1, node.display_mastery ?? node.mastery ?? 0));
@@ -172,10 +195,12 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: index * 0.1, ease: [0.16, 1, 0.3, 1] }}
               key={node.node_id}
-              aria-label={`${node.title} ${accessibleStatus}`}
+              data-node-id={node.node_id}
+              aria-label={`${node.title} ${accessibleStatus}${isFocusTarget ? ', recommended focus' : ''}`}
               disabled={isLocked}
               className={cn(
-                "relative flex items-center justify-center w-full max-w-3xl border-0 bg-transparent p-0 text-left",
+                "relative flex items-center justify-center w-full max-w-3xl border-0 bg-transparent p-0 text-left rounded-[2rem] transition-shadow",
+                isFocusTarget && "ring-4 ring-indigo-200/80 ring-offset-8 ring-offset-[#FCFCFC]",
                 !isLocked ? "cursor-pointer" : "cursor-not-allowed",
                 isEven ? "flex-row" : "flex-row-reverse"
               )}
@@ -269,7 +294,7 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
                  ) : (
                     <div className={cn(
                        "relative bg-white/95 backdrop-blur-xl border rounded-[2rem] p-6 shadow-2xl max-w-[280px]",
-	                       isActive ? "border-indigo-200 shadow-indigo-500/10 ring-4 ring-indigo-50/50" : isReady ? "border-amber-200 shadow-amber-500/10 ring-4 ring-amber-50/50" : isNeedsPractice ? "border-rose-200 shadow-rose-500/10 ring-4 ring-rose-50/50" : "border-slate-200/60 shadow-slate-900/5"
+	                       isActive ? "border-indigo-200 shadow-indigo-500/10 ring-4 ring-indigo-50/50" : isReady || isImproving ? "border-amber-200 shadow-amber-500/10 ring-4 ring-amber-50/50" : isNeedsPractice ? "border-rose-200 shadow-rose-500/10 ring-4 ring-rose-50/50" : "border-slate-200/60 shadow-slate-900/5"
 	                    )}>
                        {/* The Tail */}
                        <div className={cn(
@@ -278,17 +303,30 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
                        )} />
 
 	                       {isActive ? (
-	                          <span className="inline-block mb-3 text-[9px] font-bold uppercase tracking-[0.25em] text-indigo-500 bg-indigo-50 rounded-full px-2.5 py-1">You are here</span>
+	                          <div className="mb-3 flex flex-wrap items-center gap-2">
+	                            <span className="inline-block text-[10px] font-bold uppercase tracking-[0.25em] text-indigo-500 bg-indigo-50 rounded-full px-2.5 py-1">You are here</span>
+	                            {competenceLabel !== 'Tracked' && (
+	                              <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">{competenceLabel}</span>
+	                            )}
+	                          </div>
+	                       ) : isReview ? (
+	                          <span className="inline-flex items-center gap-1.5 mb-3 text-[10px] font-bold uppercase tracking-[0.25em] text-rose-600">
+	                             {reviewLabel}
+	                          </span>
+	                       ) : isImproving ? (
+	                          <span className="inline-flex items-center gap-1.5 mb-3 text-[10px] font-bold uppercase tracking-[0.25em] text-amber-600">
+	                             Improving
+	                          </span>
 	                       ) : isReady ? (
-	                          <span className="inline-flex items-center gap-1.5 mb-3 text-[9px] font-bold uppercase tracking-[0.25em] text-amber-600">
+	                          <span className="inline-flex items-center gap-1.5 mb-3 text-[10px] font-bold uppercase tracking-[0.25em] text-amber-600">
 	                             Ready for next skill
 	                          </span>
 	                       ) : isNeedsPractice ? (
-	                          <span className="inline-flex items-center gap-1.5 mb-3 text-[9px] font-bold uppercase tracking-[0.25em] text-rose-600">
+	                          <span className="inline-flex items-center gap-1.5 mb-3 text-[10px] font-bold uppercase tracking-[0.25em] text-rose-600">
 	                             Needs practice
 	                          </span>
 	                       ) : (
-	                          <span className="inline-flex items-center gap-1.5 mb-3 text-[9px] font-bold uppercase tracking-[0.25em] text-emerald-600">
+	                          <span className="inline-flex items-center gap-1.5 mb-3 text-[10px] font-bold uppercase tracking-[0.25em] text-emerald-600">
 	                             <CheckIcon className="w-3 h-3" /> Mastered
 	                          </span>
 	                       )}
@@ -303,7 +341,7 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, onNodeClick }) => {
 	                          "font-bold text-lg mb-2 leading-tight tracking-tight",
 	                          isActive ? "text-slate-900" : isNeedsPractice ? "text-slate-800" : "text-slate-600"
 	                       )}>{node.title}</h3>
-	                       {isReady && node.last_gap && (
+	                       {(isReady || isReview) && node.last_gap && (
 	                         <p className="mb-4 text-xs leading-relaxed text-slate-500">{node.last_gap}</p>
 	                       )}
 

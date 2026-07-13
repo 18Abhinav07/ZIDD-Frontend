@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { deriveCareerPathPresentation } from '../src/lib/careerPathPresentation.mjs';
+import { careerCompetenceLabel, careerPracticeHref, deriveCareerPathPresentation, mergeCareerMemoryIntoPath } from '../src/lib/careerPathPresentation.mjs';
 
 const failures = [];
 
@@ -101,6 +101,63 @@ const practicedPath = deriveCareerPathPresentation([
 ]);
 if (!practicedPath.hasPathActivity || practicedPath.headline !== 'Your journey continues') {
   failures.push('A path with durable practice evidence must use journey-continues copy.');
+}
+
+const personalizedPath = mergeCareerMemoryIntoPath(
+  [{ node_id: 'int_02_strength_with_evidence', status: 'ready_to_advance', display_mastery: 0.85 }],
+  {
+    active_gaps: [{
+      skill_id: 'int_02_strength_with_evidence',
+      focus_id: 'int_02_strength_with_evidence',
+      status: 'active_gap',
+      readiness: 0.63,
+      gap: 'Add a concrete long-term result.',
+    }],
+  },
+);
+if (
+  personalizedPath[0].display_status !== 'needs_remediation'
+  || personalizedPath[0].display_mastery !== 0.63
+  || personalizedPath[0].last_gap !== 'Add a concrete long-term result.'
+) {
+  failures.push('Career path must project the latest learning-memory gap over stale ready-to-advance presentation.');
+}
+const improvingPath = mergeCareerMemoryIntoPath(
+  [{ node_id: 'int_06_failure_ownership', status: 'ready_to_advance', display_mastery: 0.85 }],
+  { improving_gaps: [{ skill_id: 'int_06_failure_ownership', focus_id: 'int_06_failure_ownership', status: 'improving', readiness: 0.8 }] },
+);
+if (improvingPath[0].display_status !== 'improving') {
+  failures.push('Improving memory must not create multiple active You-are-here nodes.');
+}
+const activeNode = mergeCareerMemoryIntoPath(
+  [{ node_id: 'int_01_elevator_pitch', status: 'active', display_mastery: 0.4 }],
+  { improving_gaps: [{ skill_id: 'int_01_elevator_pitch', focus_id: 'int_01_elevator_pitch', status: 'improving', readiness: 0.8 }] },
+);
+if (activeNode[0].display_status !== 'active') {
+  failures.push('Memory overlay must preserve the path single active You-are-here node.');
+}
+const fallbackFocus = mergeCareerMemoryIntoPath(
+  [{ node_id: 'int_01_elevator_pitch', status: 'ready_to_advance', last_gap: 'int_01_elevator_pitch' }],
+  { active_gaps: [{ skill_id: 'int_00_general_communication', focus_id: 'int_01_elevator_pitch', status: 'active_gap', readiness: 0.4 }] },
+);
+if (fallbackFocus[0].display_status !== 'needs_remediation' || fallbackFocus[0].last_gap !== '') {
+  failures.push('Fallback skills must target their recommended node without leaking stale machine gap IDs.');
+}
+const unmappedFocus = mergeCareerMemoryIntoPath(
+  [{ node_id: 'int_01_elevator_pitch', status: 'ready_to_advance', display_mastery: 0.85 }],
+  { active_gaps: [{ skill_id: 'legacy_unmapped_gap', focus_id: '', status: 'active_gap', readiness: 0.2 }] },
+);
+if ((unmappedFocus[0].display_status ?? unmappedFocus[0].status) !== 'ready_to_advance') {
+  failures.push('Unmapped memory must not overwrite an unrelated path node.');
+}
+if (careerPracticeHref({ focus_id: '' }) !== '/map') {
+  failures.push('Unmapped memory must route to the path without a dead focus query.');
+}
+if (careerPracticeHref({ focus_id: 'int_02_strength_with_evidence' }) !== '/map?focus=int_02_strength_with_evidence') {
+  failures.push('Mapped memory must route to its exact practice node.');
+}
+if (careerCompetenceLabel('active_gap') !== 'Needs focused practice') {
+  failures.push('Career surfaces must share one learner-facing competence vocabulary.');
 }
 
 if (!pathMap.includes('deriveCareerPathPresentation(nodes)')) {

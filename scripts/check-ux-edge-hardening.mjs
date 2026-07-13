@@ -135,13 +135,13 @@ if (!meService.includes('memory_context')) {
   failures.push('me service must type /me/learning-graph memory_context so the profile can render canonical career growth buckets.');
 }
 
-for (const token of ['getMeLearningGraph', 'learningGraph', 'Career growth', 'Active gaps', 'Improving', 'Resolved', 'Mastered', 'latest_evidence', 'repeat_count', 'Practice this', 'onPracticeCareerGap']) {
+for (const token of ['getMeLearningGraph', 'learningGraph', 'Career growth', 'Active gaps', 'Improving', 'Resolved', 'Mastered', 'latest_evidence', 'repeat_count', 'Practice focus', 'onPracticeCareerGap']) {
   if (!profilePage.includes(token)) {
     failures.push(`profile page must render canonical career growth graph from /me/learning-graph with ${token}`);
   }
 }
 
-for (const token of ['getMeLearningGraph', 'careerLearningGraph', 'memory_context', 'Career focus', 'active_gaps', 'improving_gaps', 'latest_evidence', 'repeat_count', 'Practice this gap', 'onPracticeCareerFocus']) {
+for (const token of ['getMeLearningGraph', 'careerLearningGraph', 'memory_context', 'Career focus', 'active_gaps', 'improving_gaps', 'latest_evidence', 'repeat_count', 'Practice focus', 'onPracticeCareerFocus']) {
   if (!careerPage.includes(token)) {
     failures.push(`career home must surface canonical career learning focus from /me/learning-graph with ${token}`);
   }
@@ -159,8 +159,8 @@ if (!careerPage.includes('{(careerFocus || careerLearningGraphError) && (')) {
   failures.push('career home must render the focus panel when a focus item exists or the learning graph degraded.');
 }
 
-if (!/const onPracticeCareerFocus = async \(\) => \{[\s\S]{0,180}openPath\(focusModule\)/.test(careerPage)) {
-  failures.push('career home focus CTA must use the existing openPath flow.');
+if (!/const onPracticeCareerFocus = async \(\) => \{[\s\S]{0,520}updatePreferences\(\{ active_module: focusModule, pending_module: null, test_mode: false \}\)[\s\S]{0,260}careerPracticeHref\(careerFocus \|\| \{\}\)/.test(careerPage)) {
+  failures.push('career home focus CTA must activate prep and route through the validated focus helper.');
 }
 
 if (!/updatePreferences\(\{ pending_module: moduleId, active_module: null, test_mode: null \}\)[\s\S]{0,180}router\.push\('\/mode'\)/.test(careerPage)) {
@@ -171,12 +171,8 @@ if (!/<span>Status: \{focusStatus\}<\/span>[\s\S]{0,120}<span>Readiness: \{focus
   failures.push('career home focus panel must render Status and Readiness as separate visible fields inside the focus metadata row.');
 }
 
-if (/repeat_count > 0 &&/.test(careerPage)) {
-  failures.push('career home focus panel must show repeated issue count even when it is zero.');
-}
-
-if (!/<span>\{repeat_count\} repeated issue\{repeat_count === 1 \? '' : 's'\}<\/span>/.test(careerPage)) {
-  failures.push('career home focus panel must render the repeated issue count directly, including zero.');
+if (!/repeat_count > 0 &&/.test(careerPage)) {
+  failures.push('career home focus panel must suppress a meaningless zero repeated-issue count.');
 }
 
 for (const [label, source] of [

@@ -23,6 +23,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { getRandomAvatar, COACH_AVATARS, type AvatarData } from '@/lib/avatars';
 import { getAvatarScaleClass } from '@/lib/avatarRegistry';
+import { careerCompetenceLabel, careerPracticeHref } from '@/lib/careerPathPresentation.mjs';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -41,12 +42,12 @@ function formatSkillLabel(value?: string): string {
     .replace(/\b\w/g, (match) => match.toUpperCase());
 }
 
-function formatStatusLabel(value?: string): string {
+function learnerFacingDetail(value?: string): string {
   const text = (value || '').trim();
-  if (!text) return 'Tracked';
-  return text
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (match) => match.toUpperCase());
+  if (!text || /^(?:gd|int)_\d+_[a-z0-9_]+$/i.test(text)) {
+    return 'Keep building this skill in a fresh scenario.';
+  }
+  return text;
 }
 
 function careerModuleFromMemory(item: CareerMemoryItem): ModuleId | null {
@@ -191,17 +192,48 @@ export default function CareerPage() {
   const focusModule = careerFocus ? careerModuleFromMemory(careerFocus) : null;
   const latest_evidence = careerFocus?.latest_evidence?.trim();
   const repeat_count = Number(careerFocus?.repeat_count || 0);
-  const focusStatus = formatStatusLabel(careerFocus?.status);
+  const focusCompetenceStatus = careerFocus?.current_competence_status || careerFocus?.status || '';
+  const focusStatus = careerCompetenceLabel(focusCompetenceStatus);
+  const focusActionLabel = ['active_gap', 'needs_review'].includes(focusCompetenceStatus)
+    ? 'Practice focus'
+    : focusCompetenceStatus === 'improving'
+      ? 'Strengthen this'
+      : 'Revisit skill';
   const focusReadiness = careerFocus ? percent(careerFocus.readiness || 0) : '';
 
   const onPracticeCareerFocus = async () => {
     if (!focusModule) return;
-    await openPath(focusModule);
+    if (openingModule) return;
+    setActionError('');
+    setOpeningModule(focusModule);
+    try {
+      const res = await updatePreferences({ active_module: focusModule, pending_module: null, test_mode: false });
+      setMe((m) => (m ? { ...m, preferences: res.preferences } : m));
+      void loadMe(true).catch(() => null);
+      router.push(careerPracticeHref(careerFocus || {}));
+    } catch {
+      setActionError('Could not open this practice skill. Please try again.');
+      setOpeningModule(null);
+    }
   };
 
   const pathHref = myPathForMe(me);
 
   const activeLabel = PATHS.find((p) => p.id === activeModule)?.label;
+  const primaryRecommendation = careerFocus ? null : activity?.recommendations[0] ?? null;
+  const recommendationTitle = primaryRecommendation?.title
+    ?? (careerFocus ? `Practice ${formatSkillLabel(careerFocus.skill_id)}` : `Continue ${activeLabel ?? 'career'} practice`);
+  const onOpenRecommendation = () => {
+    if (primaryRecommendation) {
+      router.push(primaryRecommendation.href);
+      return;
+    }
+    if (focusModule) {
+      void onPracticeCareerFocus();
+      return;
+    }
+    router.push(pathHref);
+  };
   // Greet by the name the coach uses (from the profile), falling back to the id.
   const displayName = me?.name?.trim() || me?.user_id || 'there';
 
@@ -253,12 +285,12 @@ export default function CareerPage() {
               <p className="mt-2 text-sm font-bold text-slate-800">{activity.career.attempts} attempts tracked</p>
             </div>
             <button
-              onClick={() => router.push('/profile')}
+              onClick={onOpenRecommendation}
               className="rounded-[1.25rem] border border-indigo-100 bg-indigo-50 px-5 py-4 text-left hover:bg-indigo-100 transition-colors"
             >
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-500">Recommended</p>
               <p className="mt-2 text-sm font-bold text-indigo-900">
-                {activity.recommendations[0]?.title ?? 'Review your profile'}
+                {recommendationTitle}
               </p>
             </button>
           </div>
@@ -295,7 +327,7 @@ export default function CareerPage() {
                       </span>
                     </div>
                     <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                      {careerFocus.gap || careerFocus.recommended_next_action || 'Keep building evidence on this skill.'}
+                      {learnerFacingDetail(careerFocus.gap || careerFocus.recommended_next_action)}
                     </p>
                     {latest_evidence && (
                       <p className="mt-3 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-600 break-words">
@@ -306,7 +338,9 @@ export default function CareerPage() {
                       <span>Status: {focusStatus}</span>
                       <span>Readiness: {focusReadiness}</span>
                       <span>{careerFocus.attempts || 0} attempt{careerFocus.attempts === 1 ? '' : 's'}</span>
-                      <span>{repeat_count} repeated issue{repeat_count === 1 ? '' : 's'}</span>
+                      {repeat_count > 0 && (
+                        <span>{repeat_count} repeated issue{repeat_count === 1 ? '' : 's'}</span>
+                      )}
                     </div>
                   </>
                 ) : (
@@ -321,7 +355,7 @@ export default function CareerPage() {
                   className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-slate-900 px-5 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-white transition-colors hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60"
                 >
                   {openingModule === focusModule && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  Practice this gap
+                  {focusActionLabel}
                 </button>
               )}
             </div>

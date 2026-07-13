@@ -112,6 +112,7 @@ export interface LearningEventSummary {
 
 export interface CareerMemoryItem {
   skill_id: string;
+  focus_id?: string;
   module_id?: ModuleId | string;
   task_type?: string;
   status: 'active_gap' | 'improving' | 'resolved' | 'mastered' | string;
@@ -122,6 +123,13 @@ export interface CareerMemoryItem {
   latest_evidence?: string;
   recommended_next_action?: string;
   repeat_count?: number;
+  historical_failure_count?: number;
+  current_competence_status?: string;
+  milestone_mastered?: boolean;
+  growth?: {
+    grounded_recovery_count?: number;
+    recoveries_since_latest_failure?: number;
+  };
 }
 
 export interface CareerMemoryContext {
@@ -213,7 +221,11 @@ export async function getMeActivity(): Promise<MeActivity> {
   return activityRequest.promise;
 }
 
-export async function getMeLearningGraph(): Promise<MeLearningGraph> {
+export async function getMeLearningGraph(options: { force?: boolean } = {}): Promise<MeLearningGraph> {
+  if (options.force) {
+    cachedLearningGraph = null;
+    learningGraphRequest = null;
+  }
   const authKey = await getAuthCacheKey();
   const now = Date.now();
   if (cachedLearningGraph && cachedLearningGraph.authKey === authKey && cachedLearningGraph.expiresAt > now) {
