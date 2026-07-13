@@ -7,6 +7,10 @@ import { ArrowRightIcon } from '@radix-ui/react-icons';
 import { Loader2 } from 'lucide-react';
 import { AppHeader } from '@/components/shared/AppHeader';
 import { CareerHomeSkeleton } from '@/components/shared/RouteSkeletons';
+import {
+  CareerContinuityPanel,
+  careerEvidenceProvenance,
+} from '@/components/career/CareerContinuityPanel';
 import { useAppSession } from '@/components/shared/AppSessionProvider';
 import {
   getMeLearningGraph,
@@ -182,6 +186,10 @@ export default function CareerPage() {
 
   const openPath = async (moduleId: ModuleId) => {
     if (openingModule) return;
+    if (me?.preferences.active_module === moduleId && me.preferences.test_mode != null) {
+      router.push('/map');
+      return;
+    }
     setActionError('');
     setOpeningModule(moduleId);
     try {
@@ -201,6 +209,8 @@ export default function CareerPage() {
   const focusModule = careerFocus ? careerModuleFromMemory(careerFocus) : null;
   const winModule = careerWin ? careerModuleFromMemory(careerWin) : null;
   const latest_evidence = careerFocus?.latest_evidence?.trim();
+  const focusEvidenceProvenance = careerEvidenceProvenance(careerLearningGraph, careerFocus?.skill_id);
+  const winEvidenceProvenance = careerEvidenceProvenance(careerLearningGraph, careerWin?.skill_id);
   const repeat_count = Number(careerFocus?.repeat_count || 0);
   const focusCompetenceStatus = careerFocus?.current_competence_status || careerFocus?.status || '';
   const focusStatus = careerCompetenceLabel(focusCompetenceStatus);
@@ -352,9 +362,16 @@ export default function CareerPage() {
                       {learnerFacingDetail(careerFocus.gap || careerFocus.recommended_next_action)}
                     </p>
                     {latest_evidence && (
-                      <p className="mt-3 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-600 break-words">
-                        Evidence: {latest_evidence}
-                      </p>
+                      <div className="mt-3 rounded-xl bg-slate-50 px-4 py-3">
+                        <p className="text-xs leading-relaxed text-slate-600 break-words">
+                          Evidence: {latest_evidence}
+                        </p>
+                        {focusEvidenceProvenance && (
+                          <p className="mt-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+                            {focusEvidenceProvenance}
+                          </p>
+                        )}
+                      </div>
                     )}
                     <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.13em] text-slate-400">
                       <span>Status: {focusStatus}</span>
@@ -395,6 +412,11 @@ export default function CareerPage() {
                   <p className="mt-1 text-sm leading-relaxed text-slate-600">
                     {careerWin.latest_evidence?.trim() || learnerFacingDetail(careerWin.recommended_next_action)}
                   </p>
+                  {winEvidenceProvenance && (
+                    <p className="mt-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+                      {winEvidenceProvenance}
+                    </p>
+                  )}
                 </div>
                 {winModule && (
                   <button
@@ -410,6 +432,8 @@ export default function CareerPage() {
             )}
           </div>
         )}
+
+        <CareerContinuityPanel graph={careerLearningGraph} />
 
         {actionError && (
           <div className="mt-8 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm font-semibold text-rose-700">
@@ -497,7 +521,7 @@ export default function CareerPage() {
                           </>
                         ) : (
                           <>
-                            Open <ArrowRightIcon className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
+                            {isSelected ? 'Continue' : 'Choose mode'} <ArrowRightIcon className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
                           </>
                         )}
 	                    </span>

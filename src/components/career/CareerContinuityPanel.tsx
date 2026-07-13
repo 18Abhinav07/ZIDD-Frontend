@@ -1,0 +1,208 @@
+"use client";
+
+import { ArrowUpRight, History } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import type {
+  LearningEventSummary,
+  MeLearningGraph,
+  SessionReportSummary,
+} from '@/services/me';
+
+type ContinuityItem = {
+  id: string;
+  sessionId: string;
+  label: string;
+  title: string;
+  detail: string;
+  status: string;
+  score: number | null;
+  occurredAt: string | number | null;
+  href: string;
+};
+
+function moduleLabel(taskType?: string, moduleId?: string): string {
+  if (moduleId === 'group_discussion' || taskType?.startsWith('gd')) return 'Group Discussion';
+  return 'Interview';
+}
+
+function isCareerTask(taskType?: string): boolean {
+  return Boolean(taskType?.startsWith('interview') || taskType?.startsWith('gd'));
+}
+
+function skillLabel(value?: string): string {
+  const clean = String(value || '').trim();
+  if (!clean) return 'Career practice';
+  return clean
+    .replace(/^(gd|int)_\d+_/, '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function reportStatus(report: SessionReportSummary): string {
+  if (report.status === 'final') return 'Final report';
+  if (report.status === 'partial') return 'Partial report';
+  if (report.status === 'insufficient_evidence') return 'Insufficient evidence';
+  if (report.status === 'invalid_simulation') return 'Simulator issue';
+  return report.status.replace(/_/g, ' ');
+}
+
+function reportHref(report: SessionReportSummary): string {
+  const route = report.task_type.startsWith('gd') ? 'gd' : 'interview';
+  return `/simulator/${route}?session_id=${encodeURIComponent(report.session_id)}`;
+}
+
+function reportItem(report: SessionReportSummary): ContinuityItem {
+  const label = moduleLabel(report.task_type, report.module_id);
+  const context = report.public_context_json || {};
+  const contextTitle = String(context.role_focus || context.topic || context.scenario_label || '').trim();
+  const isScored = !['insufficient_evidence', 'invalid_simulation'].includes(report.status);
+  return {
+    id: report.report_id || `report:${report.session_id}`,
+    sessionId: report.session_id,
+    label: `${label} test`,
+    title: contextTitle || `${label} assessment`,
+    detail: String(report.summary || report.recommended_actions_json?.[0] || 'Open the saved outcome.'),
+    status: reportStatus(report),
+    score: isScored ? Number(report.score || 0) : null,
+    occurredAt: report.created_at ?? null,
+    href: reportHref(report),
+  };
+}
+
+function eventItem(event: LearningEventSummary): ContinuityItem {
+  const label = moduleLabel(event.task_type, event.module_id);
+  const evidence = event.evidence_json || {};
+  const quote = String(evidence.latest_quote || evidence.evidence_quote || '').trim();
+  return {
+    id: event.source_event_key,
+    sessionId: String(event.session_id || ''),
+    label: `${label} practice`,
+    title: skillLabel(event.skill_id || event.node_id),
+    detail: quote || event.gap || 'Open the saved practice transcript.',
+    status: event.attempt_type ? `${skillLabel(event.attempt_type)} attempt` : 'Practice evidence',
+    score: Number.isFinite(event.score) ? Number(event.score) : null,
+    occurredAt: event.occurred_at ?? null,
+    href: `/session/${encodeURIComponent(String(event.session_id || ''))}`,
+  };
+}
+
+function timestamp(value: string | number | null | undefined): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
+  const clean = String(value || '').trim();
+  if (/^\d+$/.test(clean)) {
+    const numeric = Number(clean);
+    return numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+  }
+  const parsed = Date.parse(clean);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function careerContinuityItems(graph: MeLearningGraph | null): ContinuityItem[] {
+  if (!graph) return [];
+  const reports = graph.reports.filter((report) => isCareerTask(report.task_type));
+  const reportSessionIds = new Set(reports.map((report) => report.session_id));
+  const prepBySession = new Map<string, LearningEventSummary>();
+  for (const event of graph.events) {
+    const sessionId = String(event.session_id || '');
+    if (
+      event.domain !== 'career'
+      || !isCareerTask(event.task_type)
+      || !sessionId
+      || reportSessionIds.has(sessionId)
+      || !event.source.startsWith('prep')
+    ) continue;
+    const previous = prepBySession.get(sessionId);
+    if (!previous || timestamp(event.occurred_at) > timestamp(previous.occurred_at)) {
+      prepBySession.set(sessionId, event);
+    }
+  }
+  return [
+    ...reports.map(reportItem),
+    ...Array.from(prepBySession.values()).map(eventItem),
+  ].sort((left, right) => timestamp(right.occurredAt) - timestamp(left.occurredAt));
+}
+
+export function careerEvidenceProvenance(
+  graph: MeLearningGraph | null,
+  skillId?: string,
+): string {
+  if (!graph || !skillId) return '';
+  const event = graph.events
+    .filter((item) => item.domain === 'career' && item.skill_id === skillId)
+    .sort((left, right) => timestamp(right.occurred_at) - timestamp(left.occurred_at))[0];
+  if (!event) return '';
+  const source = event.source.includes('test') ? 'Scored test' : 'Practice';
+  const occurredAt = timestamp(event.occurred_at);
+  const date = occurredAt
+    ? new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' }).format(new Date(occurredAt))
+    : '';
+  return [source, date].filter(Boolean).join(' - ');
+}
+
+export function CareerContinuityPanel({
+  graph,
+  compact = false,
+}: {
+  graph: MeLearningGraph | null;
+  compact?: boolean;
+}) {
+  const router = useRouter();
+  const items = careerContinuityItems(graph).slice(0, compact ? 3 : 5);
+  if (!items.length) return null;
+
+  return (
+    <section className="mt-8 border-y border-slate-200 py-7">
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white">
+          <History className="h-4 w-4" />
+        </span>
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Session continuity</p>
+          <h2 className="mt-1 text-xl font-black text-slate-950">Your recent career work</h2>
+          {!compact && (
+            <p className="mt-1 text-sm leading-relaxed text-slate-500">
+              Reopen saved practice and assessment outcomes without losing the thread.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-5 divide-y divide-slate-100 border-t border-slate-100">
+        {items.map((item) => {
+          const occurredAt = timestamp(item.occurredAt);
+          const date = occurredAt
+            ? new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(occurredAt))
+            : '';
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => router.push(item.href)}
+              className="group grid w-full grid-cols-[minmax(0,1fr)_auto] gap-4 py-4 text-left"
+            >
+              <span className="min-w-0">
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+                  <span>{item.label}</span>
+                  <span>{item.status}</span>
+                  {date && <span>{date}</span>}
+                </span>
+                <span className="mt-1 block truncate text-sm font-black text-slate-900">{item.title}</span>
+                {!compact && (
+                  <span className="mt-1 block line-clamp-2 text-xs leading-relaxed text-slate-500">{item.detail}</span>
+                )}
+              </span>
+              <span className="flex shrink-0 items-center gap-3 self-center">
+                {item.score !== null && (
+                  <span className="text-sm font-black tabular-nums text-slate-700">{Math.round(item.score * 100)}%</span>
+                )}
+                <ArrowUpRight className="h-4 w-4 text-slate-400 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-slate-900" />
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}

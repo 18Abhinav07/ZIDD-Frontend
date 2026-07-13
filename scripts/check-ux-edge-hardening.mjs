@@ -159,7 +159,7 @@ if (!careerPage.includes('{(careerFocus || careerLearningGraphError) && (')) {
   failures.push('career home must render the focus panel when a focus item exists or the learning graph degraded.');
 }
 
-if (!/const onPracticeCareerFocus = async \(\) => \{[\s\S]{0,520}updatePreferences\(\{ active_module: focusModule, pending_module: null, test_mode: false \}\)[\s\S]{0,260}careerPracticeHref\(careerFocus \|\| \{\}\)/.test(careerPage)) {
+if (!/const onPracticeCareerItem = async \(item: CareerMemoryItem \| null\)[\s\S]{0,620}updatePreferences\(\{ active_module: moduleId, pending_module: null, test_mode: false \}\)[\s\S]{0,260}careerPracticeHref\(item\)/.test(careerPage)) {
   failures.push('career home focus CTA must activate prep and route through the validated focus helper.');
 }
 

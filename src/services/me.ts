@@ -91,7 +91,10 @@ export interface SessionReportSummary {
   strengths_json?: string[];
   gaps_json?: string[];
   recommended_actions_json?: string[];
+  evidence_json?: Record<string, unknown>;
   validity_json?: Record<string, unknown>;
+  public_context_json?: Record<string, unknown>;
+  created_at?: string | number | null;
 }
 
 export interface LearningEventSummary {
@@ -106,8 +109,10 @@ export interface LearningEventSummary {
   attempt_type?: string;
   score: number;
   confidence: number;
+  evidence_json?: Record<string, unknown>;
   gap?: string;
   caveats?: string[];
+  occurred_at?: string | number | null;
 }
 
 export interface CareerMemoryItem {

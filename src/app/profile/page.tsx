@@ -26,6 +26,10 @@ import {
   UserRound,
 } from 'lucide-react';
 import { AppHeader } from '@/components/shared/AppHeader';
+import {
+  CareerContinuityPanel,
+  careerEvidenceProvenance,
+} from '@/components/career/CareerContinuityPanel';
 import { canShowDevCreditGrant, devGrantCredits } from '@/services/billing';
 import {
   getMe,
@@ -466,6 +470,7 @@ export default function ProfilePage() {
                 items={careerMemory.active_gaps}
                 empty="No active career gaps tracked yet."
                 onPractice={onPracticeCareerGap}
+                graph={learningGraph}
               />
               <GrowthBucket
                 title="Improving"
@@ -474,6 +479,7 @@ export default function ProfilePage() {
                 items={careerMemory.improving_gaps}
                 empty="No improving gaps yet."
                 onPractice={onPracticeCareerGap}
+                graph={learningGraph}
               />
               <GrowthBucket
                 title="Resolved"
@@ -482,6 +488,7 @@ export default function ProfilePage() {
                 items={careerMemory.resolved_gaps}
                 empty="No resolved gaps yet."
                 onPractice={onPracticeCareerGap}
+                graph={learningGraph}
               />
               <GrowthBucket
                 title="Mastered"
@@ -490,6 +497,7 @@ export default function ProfilePage() {
                 items={careerMemory.mastered_skills}
                 empty="No sustained mastery evidence yet."
                 onPractice={onPracticeCareerGap}
+                graph={learningGraph}
               />
             </div>
           ) : (
@@ -498,6 +506,8 @@ export default function ProfilePage() {
             </div>
           )}
         </section>
+
+        <CareerContinuityPanel graph={learningGraph} compact />
 
         <section className="mt-5 rounded-[1.75rem] border border-slate-200/70 bg-slate-900 text-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.08)]">
           <span className="text-[11px] font-bold uppercase tracking-[0.25em] text-white/70">Recommendations</span>
@@ -595,6 +605,7 @@ function GrowthBucket({
   items,
   empty,
   onPractice,
+  graph,
 }: {
   title: string;
   tone: keyof typeof GROWTH_TONES;
@@ -602,6 +613,7 @@ function GrowthBucket({
   items: CareerMemoryItem[];
   empty: string;
   onPractice: (item: CareerMemoryItem) => void;
+  graph: MeLearningGraph | null;
 }) {
   const styles = GROWTH_TONES[tone];
   const [expanded, setExpanded] = useState(false);
@@ -617,7 +629,7 @@ function GrowthBucket({
       {items.length ? (
         <div className="mt-4 space-y-3">
           {visibleItems.map((item) => (
-            <GrowthItem key={`${title}-${item.skill_id}`} item={item} chipClass={styles.chip} onPractice={onPractice} />
+            <GrowthItem key={`${title}-${item.skill_id}`} item={item} chipClass={styles.chip} onPractice={onPractice} graph={graph} />
           ))}
           {items.length > 3 && (
             <button
@@ -643,10 +655,12 @@ function GrowthItem({
   item,
   chipClass,
   onPractice,
+  graph,
 }: {
   item: CareerMemoryItem;
   chipClass: string;
   onPractice: (item: CareerMemoryItem) => void;
+  graph: MeLearningGraph | null;
 }) {
   const latest_evidence = item.latest_evidence?.trim();
   const repeat_count = Number(item.repeat_count || 0);
@@ -670,6 +684,7 @@ function GrowthItem({
     : competenceStatus === 'improving'
       ? 'Strengthen this'
       : 'Revisit skill';
+  const provenance = careerEvidenceProvenance(graph, item.skill_id);
 
   return (
     <div className="rounded-xl border border-white/70 bg-white/80 px-4 py-3">
@@ -683,9 +698,14 @@ function GrowthItem({
         </span>
       </div>
       {latest_evidence && (
-        <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600 break-words">
-          Evidence: {latest_evidence}
-        </p>
+        <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2">
+          <p className="text-xs leading-relaxed text-slate-600 break-words">
+            Evidence: {latest_evidence}
+          </p>
+          {provenance && (
+            <p className="mt-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">{provenance}</p>
+          )}
+        </div>
       )}
       <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
         {moduleLabel && <span>{moduleLabel}</span>}
