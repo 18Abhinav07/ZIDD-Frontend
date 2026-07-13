@@ -50,11 +50,14 @@ const DEFAULT_GD_TOPICS = [
   'Should companies prioritize profit or social responsibility?',
 ];
 
+type InterviewType = NonNullable<SimulationScenarioConfig['interview_type']>;
+
 interface ScenarioPickerProps {
   nodes: ProgressNode[];
   moduleId: ModuleId | null;
   careerProfile?: CareerProfile;
   onPick: (node: ProgressNode, config: SimulationScenarioConfig) => void;
+  disabled?: boolean;
 }
 
 function uniqueClean(values: Array<string | undefined | null>): string[] {
@@ -68,6 +71,33 @@ function uniqueClean(values: Array<string | undefined | null>): string[] {
     result.push(value);
   }
   return result;
+}
+
+function defaultInterviewTypeForNode(node: ProgressNode): InterviewType {
+  const key = `${node.node_id} ${node.title}`.toLowerCase();
+  if (
+    key.includes('tell me about yourself')
+    || key.includes('strength')
+    || key.includes('weakness')
+    || key.includes('why this company')
+    || key.includes('close and ask')
+    || key.includes('gap')
+  ) {
+    return 'hr';
+  }
+  if (
+    key.includes('star')
+    || key.includes('failure')
+    || key.includes('ambiguous')
+    || key.includes('quantify')
+    || key.includes('disagree')
+  ) {
+    return 'behavioral';
+  }
+  if (key.includes('negotiate')) {
+    return 'management';
+  }
+  return 'mixed';
 }
 
 function TogglePill({
@@ -107,6 +137,7 @@ export const ScenarioPicker: React.FC<ScenarioPickerProps> = ({
   moduleId,
   careerProfile,
   onPick,
+  disabled = false,
 }) => {
   const [selectedNode, setSelectedNode] = useState<ProgressNode | null>(null);
   const profileTopics = useMemo(
@@ -132,7 +163,7 @@ export const ScenarioPicker: React.FC<ScenarioPickerProps> = ({
     'consensus_builder',
   ]);
   const [targetRole, setTargetRole] = useState(targetRoles[0] || '');
-  const [interviewType, setInterviewType] = useState<SimulationScenarioConfig['interview_type']>('technical_project');
+  const [interviewType, setInterviewType] = useState<InterviewType>('mixed');
   const [pressureLevel, setPressureLevel] = useState<SimulationScenarioConfig['pressure_level']>('standard');
 
   const isGd = moduleId === 'group_discussion';
@@ -149,8 +180,15 @@ export const ScenarioPicker: React.FC<ScenarioPickerProps> = ({
     });
   };
 
+  const selectScenarioNode = (node: ProgressNode) => {
+    setSelectedNode(node);
+    if (moduleId === 'interview') {
+      setInterviewType(defaultInterviewTypeForNode(node));
+    }
+  };
+
   const start = () => {
-    if (!selectedNode) return;
+    if (!selectedNode || disabled) return;
     if (isGd) {
       const config: SimulationScenarioConfig = {
         topic_mode: topicMode,
@@ -201,10 +239,10 @@ export const ScenarioPicker: React.FC<ScenarioPickerProps> = ({
             <button
               type="button"
               onClick={start}
-              disabled={isGd ? !canStartGd : isInterview ? !canStartInterview : false}
+              disabled={disabled || (isGd ? !canStartGd : isInterview ? !canStartInterview : false)}
               className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-4 text-sm font-black text-white shadow-[0_24px_45px_rgba(15,23,42,0.22)] transition-all hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
             >
-              Start assessment
+              {disabled ? 'Starting...' : 'Start assessment'}
               <ArrowRightIcon className="h-4 w-4" />
             </button>
           </section>
@@ -361,13 +399,18 @@ export const ScenarioPicker: React.FC<ScenarioPickerProps> = ({
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-        {nodes.map((node, index) => (
+        {nodes.map((node, index) => {
+          const status = node.display_status ?? node.status;
+          const mastered = Boolean(node.mastered ?? node.node_mastered ?? status === 'mastered');
+          const ready = !mastered && (status === 'ready_to_advance' || status === 'proficient');
+
+          return (
           <motion.button
             key={node.node_id}
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: Math.min(index * 0.04, 0.4), ease: [0.16, 1, 0.3, 1] }}
-            onClick={() => setSelectedNode(node)}
+            onClick={() => selectScenarioNode(node)}
             className={cn(
               "group relative text-left bg-white rounded-[1.75rem] border border-slate-200/70 p-6 pb-5",
               "shadow-[0_4px_20px_rgba(15,23,42,0.04)] overflow-hidden",
@@ -380,19 +423,14 @@ export const ScenarioPicker: React.FC<ScenarioPickerProps> = ({
             </span>
 
             <div className="relative">
-              {(node.mastered ?? node.node_mastered ?? node.status === 'mastered') && (
+              {mastered && (
                 <span className="inline-block mb-3 text-[9px] font-bold uppercase tracking-[0.2em] text-emerald-600">
                   Mastered
                 </span>
               )}
-              {!(node.mastered ?? node.node_mastered ?? node.status === 'mastered') && (
-                node.display_status === 'ready_to_advance'
-                || node.status === 'ready_to_advance'
-                || node.display_status === 'proficient'
-                || node.status === 'proficient'
-              ) && (
+              {ready && (
                 <span className="inline-block mb-3 text-[9px] font-bold uppercase tracking-[0.2em] text-amber-600">
-                  Ready
+                  Ready for next skill
                 </span>
               )}
               <h3 className="font-bold text-lg text-slate-900 leading-tight tracking-tight pr-12">
@@ -404,7 +442,8 @@ export const ScenarioPicker: React.FC<ScenarioPickerProps> = ({
               </div>
             </div>
           </motion.button>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

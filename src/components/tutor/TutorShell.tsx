@@ -39,9 +39,10 @@ interface TutorShellProps {
   characterBg?: string;
   emotion?: DoneFrame['avatar_emotion'];
   affect?: DoneFrame['affect'];
+  statusLabel?: string;
 }
 
-const AvatarTile = memo(function AvatarTile({ characterImg, characterQuote, mode, characterBg, emotion, affect }: { characterImg?: string, characterQuote?: string, mode: string, characterBg?: string, emotion?: DoneFrame['avatar_emotion'], affect?: DoneFrame['affect'] }) {
+const AvatarTile = memo(function AvatarTile({ characterImg, characterQuote, mode, characterBg, emotion, affect, statusLabel }: { characterImg?: string, characterQuote?: string, mode: string, characterBg?: string, emotion?: DoneFrame['avatar_emotion'], affect?: DoneFrame['affect'], statusLabel?: string }) {
   const treatment = getEmotionTreatment(emotion);
   const supportNote = getAffectSupportNote(affect);
   return (
@@ -57,7 +58,7 @@ const AvatarTile = memo(function AvatarTile({ characterImg, characterQuote, mode
       {/* Emotion mood chip */}
       <AnimatePresence mode="wait">
         <motion.div
-          key={emotion ?? 'neutral'}
+          key={`${emotion ?? 'neutral'}:${statusLabel ?? ''}`}
           initial={{ opacity: 0, y: -6 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -6 }}
@@ -69,7 +70,7 @@ const AvatarTile = memo(function AvatarTile({ characterImg, characterQuote, mode
             style={{ backgroundColor: treatment.ring }}
           />
           <span className="text-[10px] uppercase tracking-widest font-bold text-slate-600">
-            {treatment.label}
+            {statusLabel ?? treatment.label}
           </span>
         </motion.div>
       </AnimatePresence>
@@ -159,12 +160,14 @@ export const TutorShell: React.FC<TutorShellProps> = ({
   characterQuote,
   characterBg,
   emotion,
-  affect
+  affect,
+  statusLabel
 }) => {
   const router = useRouter();
   const { data: authSession } = useSession();
   const handleSignOut = () => signOut({ callbackUrl: '/auth/login' });
   const profileImage = authSession?.user?.image || AVATAR_PATHS.casual_male;
+  const progressLabel = mode === 'professional' ? 'Readiness' : 'Mastery';
 
   return (
     <div className={cn("relative min-h-[100dvh] w-full overflow-hidden flex flex-col font-body bg-background transition-colors duration-500", mode === 'professional' ? 'mode-professional' : 'mode-gamified')}>
@@ -249,7 +252,7 @@ export const TutorShell: React.FC<TutorShellProps> = ({
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
             className="hidden lg:block w-full h-[calc(100vh-120px)] sticky top-24"
           >
-            <AvatarTile characterImg={characterImg} characterQuote={characterQuote || '...'} mode={mode} characterBg={characterBg} emotion={emotion} affect={affect} />
+            <AvatarTile characterImg={characterImg} characterQuote={characterQuote || '...'} mode={mode} characterBg={characterBg} emotion={emotion} affect={affect} statusLabel={statusLabel} />
           </motion.aside>
 
           {/* Center Bento: Interactive Content / Transcript */}
@@ -265,19 +268,19 @@ export const TutorShell: React.FC<TutorShellProps> = ({
             </div>
           </motion.section>
 
-          {/* Right Bento: Dynamic Stats / Mastery / Context */}
+          {/* Right Bento: Dynamic Stats / Progress / Context */}
           <motion.aside 
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
             className="hidden xl:flex flex-col gap-6 h-[calc(100vh-120px)] sticky top-24"
           >
-            {/* Mastery Card */}
+            {/* Progress Card */}
             <div className="bg-white rounded-[2rem] p-6 border border-slate-200/60 shadow-sm flex flex-col gap-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-slate-500 font-bold">
                   <StarIcon className="text-accent w-4 h-4" />
-                  Mastery
+                  {progressLabel}
                 </div>
                 <span className="text-xs font-mono font-bold text-slate-800">{Math.round(mastery * 100)}%</span>
               </div>

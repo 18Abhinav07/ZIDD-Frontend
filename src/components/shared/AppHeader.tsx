@@ -20,12 +20,19 @@ interface AppHeaderProps {
   onBack?: () => void;
   backLabel?: string;
   showCredits?: boolean;
+  appearance?: 'default' | 'school';
 }
 
-export function AppHeader({ title, onBack, backLabel = 'Back', showCredits = true }: AppHeaderProps) {
+export function AppHeader({
+  title,
+  onBack,
+  backLabel = 'Back',
+  showCredits = true,
+  appearance = 'default',
+}: AppHeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { data: authSession } = useSession();
+  const { data: authSession, status: authStatus } = useSession();
   const { me, loadMe } = useAppSession();
   const [menuOpen, setMenuOpen] = useState(false);
   const [pendingNav, setPendingNav] = useState<string | null>(null);
@@ -50,8 +57,17 @@ export function AppHeader({ title, onBack, backLabel = 'Back', showCredits = tru
         return;
       }
       router.push(target);
-    } catch {
-      router.push('/auth/login');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '';
+      if (message === 'Unauthorized') {
+        router.push('/auth/login');
+        return;
+      }
+      if (me) {
+        router.push(destination(me));
+        return;
+      }
+      setPendingNav(null);
     }
   };
 
@@ -72,9 +88,13 @@ export function AppHeader({ title, onBack, backLabel = 'Back', showCredits = tru
   const homeRoute = me ? homeForMe(me) : null;
   const onResolvedHome = pathname === '/dashboard'
     || (homeRoute != null && pathname === homeRoute)
-    || (pathname === '/subjects' && (!me || me.onboarding.primary_motive === 'school'))
+    || (pathname === '/school' && (!me || me.onboarding.primary_motive === 'school'))
     || (pathname === '/career' && (!me || me.onboarding.primary_motive === 'career'));
+  const authenticated = authStatus === 'authenticated';
+  const schoolControls = appearance === 'school';
   const profileImage = authSession?.user?.image || AVATAR_PATHS.casual_male;
+  const profileControlClass = 'rounded-full border-indigo-100 bg-indigo-50 shadow-sm hover:scale-105 active:scale-95';
+  const utilityControlClass = 'rounded-full bg-slate-50 shadow-sm hover:scale-105 active:scale-95';
 
   return (
     <header className="fixed top-0 inset-x-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-200/60">
@@ -106,9 +126,9 @@ export function AppHeader({ title, onBack, backLabel = 'Back', showCredits = tru
         </div>
 
         <nav className="flex items-center gap-5">
-          {showCredits && <CreditsBadge />}
+          {authenticated && showCredits && !schoolControls && <CreditsBadge />}
           {/* Desktop nav links */}
-          {NAV.map((item) => (
+          {authenticated && NAV.map((item) => (
             <button
               key={item.key}
               onClick={item.go}
@@ -116,18 +136,22 @@ export function AppHeader({ title, onBack, backLabel = 'Back', showCredits = tru
               aria-current={item.key === 'home' && onResolvedHome ? 'page' : undefined}
               className="hidden sm:inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 hover:text-indigo-600 disabled:opacity-50 disabled:cursor-default transition-colors"
             >
-              {pendingNav === item.key && <Loader2 className="h-3 w-3 animate-spin" />}
+              {pendingNav === item.key && (schoolControls
+                ? <span className="h-2.5 w-8 animate-pulse rounded-full bg-slate-200" aria-hidden="true" />
+                : <Loader2 className="h-3 w-3 animate-spin" />)}
               {item.label}
             </button>
           ))}
-          <button
+          {authenticated && <button
             onClick={navigateProfile}
             disabled={pendingNav !== null}
             title="Profile"
-            className="hidden sm:block relative w-9 h-9 rounded-full bg-indigo-50 border border-indigo-100 shadow-sm overflow-hidden hover:scale-105 active:scale-95 disabled:opacity-50 transition-all"
+            className={`hidden sm:block relative w-9 h-9 border overflow-hidden disabled:opacity-50 transition-all ${profileControlClass}`}
           >
             {pendingNav === 'profile' ? (
-              <Loader2 className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 animate-spin text-indigo-600" />
+              schoolControls
+                ? <span className="absolute inset-1 animate-pulse rounded-full bg-indigo-100" aria-hidden="true" />
+                : <Loader2 className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 animate-spin text-indigo-600" />
             ) : (
               <Image
                 src={profileImage}
@@ -138,29 +162,29 @@ export function AppHeader({ title, onBack, backLabel = 'Back', showCredits = tru
                 unoptimized
               />
             )}
-          </button>
-          <button
+          </button>}
+          {authenticated && <button
             onClick={handleSignOut}
             title="Sign out"
-            className="hidden sm:flex w-9 h-9 rounded-full bg-slate-50 border border-slate-200 shadow-sm text-slate-500 items-center justify-center hover:bg-slate-100 hover:text-red-500 transition-all hover:scale-105 active:scale-95"
+            className={`hidden sm:flex w-9 h-9 border border-slate-200 text-slate-500 items-center justify-center hover:text-red-500 transition-all ${utilityControlClass}`}
           >
             <ExitIcon className="w-4 h-4" />
-          </button>
+          </button>}
           {/* Mobile menu toggle */}
-          <button
+          {authenticated && <button
             onClick={() => setMenuOpen((o) => !o)}
             aria-label={menuOpen ? 'Close menu' : 'Open menu'}
             aria-expanded={menuOpen}
-            className="sm:hidden w-9 h-9 rounded-full bg-slate-50 border border-slate-200 text-slate-600 flex items-center justify-center hover:bg-slate-100 transition-colors"
+            className={`sm:hidden w-9 h-9 border border-slate-200 text-slate-600 flex items-center justify-center transition-colors ${utilityControlClass}`}
           >
             {menuOpen ? <Cross1Icon className="w-4 h-4" /> : <HamburgerMenuIcon className="w-4 h-4" />}
-          </button>
+          </button>}
         </nav>
       </div>
 
       {/* Mobile dropdown */}
       <AnimatePresence>
-        {menuOpen && (
+        {authenticated && menuOpen && (
           <motion.div
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}

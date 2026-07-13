@@ -129,6 +129,10 @@ export type StartSessionResult =
       first_message: string;
       current_mastery: number;
       resumed?: boolean;
+      display_status?: string;
+      node_mastered?: boolean;
+      readiness_score?: number;
+      best_independent_score?: number;
     }
   | { ok: false; paywall: PaywallDetail };
 

@@ -18,10 +18,27 @@ const PROTECTED_PREFIXES = [
   '/map',
   '/mode',
   '/session',
+  '/school',
   '/subjects',
   '/simulator',
 ];
 
+const AUTH_LOGIN_PATH = '/auth/login';
+const AUTH_COOKIE_BASE_NAMES = [
+  'next-auth.session-token',
+  '__Secure-next-auth.session-token',
+  'next-auth.callback-url',
+  '__Secure-next-auth.callback-url',
+  'next-auth.csrf-token',
+  '__Host-next-auth.csrf-token',
+  'next-auth.pkce.code_verifier',
+  '__Secure-next-auth.pkce.code_verifier',
+  'next-auth.state',
+  '__Secure-next-auth.state',
+  'next-auth.nonce',
+  '__Secure-next-auth.nonce',
+];
+const MAX_CHUNKED_AUTH_COOKIES = 8;
 const PROFILE_CHECK_TIMEOUT_MS = 8000;
 const PROFILE_GATE_CACHE_MS = 30_000;
 const INCOMPLETE_PROFILE_GATE_CACHE_MS = 1500;
@@ -43,11 +60,36 @@ function redirectToLogin(req: NextRequest, callbackPath: string, reason?: string
   return NextResponse.redirect(loginUrl);
 }
 
+function clearAuthCookies(response: NextResponse) {
+  for (const cookieName of AUTH_COOKIE_BASE_NAMES) {
+    response.cookies.delete(cookieName);
+    for (let index = 0; index < MAX_CHUNKED_AUTH_COOKIES; index += 1) {
+      response.cookies.delete(`${cookieName}.${index}`);
+    }
+  }
+}
+
+function redirectToLoginAndClearAuth(req: NextRequest, callbackPath: string, reason: string) {
+  const response = redirectToLogin(req, callbackPath, reason);
+  clearAuthCookies(response);
+  return response;
+}
+
+function redirectToCleanLogin(req: NextRequest, reason: string) {
+  const loginUrl = req.nextUrl.clone();
+  loginUrl.pathname = AUTH_LOGIN_PATH;
+  loginUrl.search = '';
+  loginUrl.searchParams.set('reason', reason);
+  const response = NextResponse.redirect(loginUrl);
+  clearAuthCookies(response);
+  return response;
+}
+
 function homeForProfile(profile: ProfileGate): string {
   if (profile.home) {
     return profile.home;
   }
-  return profile.onboarding?.primary_motive === 'school' ? '/subjects' : '/career';
+  return profile.onboarding?.primary_motive === 'school' ? '/school' : '/career';
 }
 
 async function hashAccessToken(accessToken: string): Promise<string> {
@@ -113,14 +155,31 @@ async function loadProfileGate(accessToken: string): Promise<ProfileGate | null>
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
 
+  if (pathname === AUTH_LOGIN_PATH) {
+    try {
+      await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+    } catch {
+      return redirectToCleanLogin(req, 'auth_cookie_reset');
+    }
+    return NextResponse.next();
+  }
+
   if (!isProtectedPath(pathname)) {
     return NextResponse.next();
   }
 
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   const callbackPath = `${pathname}${search}`;
+  let token: Awaited<ReturnType<typeof getToken>> = null;
+  try {
+    token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+  } catch {
+    return redirectToLoginAndClearAuth(req, callbackPath, 'auth_cookie_reset');
+  }
 
   if (!token?.accessToken || typeof token.accessToken !== 'string') {
+    if (pathname === '/school') {
+      return NextResponse.next();
+    }
     return redirectToLogin(req, callbackPath);
   }
 
@@ -157,6 +216,13 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(homeUrl);
   }
 
+  if (onboardingComplete && (pathname === '/subjects' || pathname.startsWith('/subjects/'))) {
+    const schoolUrl = req.nextUrl.clone();
+    schoolUrl.pathname = '/school';
+    schoolUrl.search = '';
+    return NextResponse.redirect(schoolUrl);
+  }
+
   if (onboardingComplete || pathname === '/onboarding') {
     return NextResponse.next();
   }
@@ -166,6 +232,7 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
+    '/auth/login',
     '/dashboard/:path*',
     '/career/:path*',
     '/profile/:path*',
@@ -173,6 +240,7 @@ export const config = {
     '/map/:path*',
     '/mode/:path*',
     '/session/:path*',
+    '/school/:path*',
     '/subjects/:path*',
     '/simulator/:path*',
   ],

@@ -138,6 +138,13 @@ export default function SessionPage({ params }: { params: { id: string } }) {
     || Boolean(pendingTransition)
     || state?.input_allowed === false
     || Boolean(state?.block_reason);
+  const tutorStatusLabel = isBootstrapping
+    ? 'Preparing'
+    : (isStreaming || isSubmitting)
+    ? 'Reviewing'
+    : inputBlocked
+    ? 'Blocked'
+    : 'Ready';
 
   const handleSend = async () => {
     const draft = inputValue.trim();
@@ -150,6 +157,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
     try {
       const result = await streamTurn(draft, clientTurnId);
       if (!result.started) {
+        pendingClientTurnIdRef.current = null;
         setInputValue(draft);
       }
       if (result.completed) {
@@ -279,8 +287,14 @@ export default function SessionPage({ params }: { params: { id: string } }) {
     pendingNextStartIdRef.current = null;
   };
 
-  const isProfessional = ['interview_prep', 'gd_prep', 'interview_test', 'gd_test'].includes(state?.task_type || '');
-  const transitionActive = Boolean(nodeAdvance && !isStreaming);
+  const isProfessional = Boolean(
+    ['interview_prep', 'gd_prep', 'interview_test', 'gd_test'].includes(state?.task_type || '') ||
+    state?.module_id === 'interview' ||
+    state?.module_id === 'group_discussion' ||
+    state?.competency_node?.startsWith('int_') ||
+    state?.competency_node?.startsWith('gd_')
+  );
+  const transitionActive = Boolean((nodeAdvance || pendingTransition) && !isStreaming);
   const transitionMastered = Boolean(
     pendingTransition?.from_node_mastered
     ?? (!isProfessional || pendingTransition?.from_display_status === 'mastered')
@@ -289,24 +303,26 @@ export default function SessionPage({ params }: { params: { id: string } }) {
   const visibleNodeTitle = transitionActive && pendingTransition?.from_title
     ? pendingTransition.from_title
     : state?.node_title;
+  const latestProgressMastery = progress?.mastery ?? state?.current_mastery ?? 0;
+  const latestProgressStreak = progress?.clean_streak ?? state?.clean_streak ?? 0;
+  const latestProgressAttempts = progress?.attempts ?? state?.attempts ?? 0;
   const visibleMastery = transitionActive
-    ? (transitionMastered ? 1 : progress?.mastery ?? state?.current_mastery ?? 0)
-    : state?.current_mastery ?? progress?.mastery ?? 0;
-  const visibleStreak = transitionActive && progress
-    ? progress.clean_streak
-    : state?.clean_streak || 0;
-  const visibleAttempts = transitionActive && progress
-    ? progress.attempts
-    : state?.attempts || 0;
+    ? (transitionMastered ? 1 : latestProgressMastery)
+    : latestProgressMastery;
+  const visibleStreak = latestProgressStreak;
+  const visibleAttempts = latestProgressAttempts;
   const shellNodeTitle = isBootstrapping && !visibleNodeTitle
     ? 'Loading session'
     : visibleNodeTitle;
   const shellPhase = isBootstrapping && !state?.phase
     ? 'Restoring your path'
     : state?.phase;
+  const slowStreamCopy = messages.length === 0 && !state?.opening_streamed
+    ? 'Setting up your prompt...'
+    : 'Reviewing your answer...';
 
   if (notFound) {
-    return <SessionNotFound onBack={() => router.push(isProfessional ? '/mode' : '/map')} />;
+    return <SessionNotFound onBack={() => router.push('/map')} />;
   }
 
   return (
@@ -323,6 +339,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
       characterBg={avatar?.bg}
       emotion={avatarEmotion}
       affect={affect}
+      statusLabel={tutorStatusLabel}
       onBack={() => setConfirmingExit(true)}
     >
       <div className="flex flex-col h-full p-6 lg:p-10">
@@ -374,7 +391,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
               </motion.div>
             ))}
 
-            {nodeAdvance && !isStreaming && (
+            {transitionActive && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -384,14 +401,14 @@ export default function SessionPage({ params }: { params: { id: string } }) {
                    <TargetIcon className="w-8 h-8 text-accent" />
                 </div>
                 <h3 className="font-display text-2xl mb-2 text-slate-800">
-                  {transitionMastered ? 'Skill Mastered!' : 'Ready checkpoint reached'}
+                  {transitionMastered ? 'Skill Mastered!' : 'Practice checkpoint reached'}
                 </h3>
                 <p className="text-slate-500 mb-8">
                   {pendingTransition?.to_title
                     ? `Next up: ${pendingTransition.to_title}.`
                     : transitionMastered
                       ? "You've mastered this skill. Ready to move on?"
-                      : "You can continue practising this skill or proceed in a fresh session."}
+                      : "This checkpoint opens the next skill. Use the current gap below to decide whether to keep practising first."}
                 </p>
                 {!transitionMastered && transitionGap && (
                   <p className="max-w-md mx-auto -mt-4 mb-8 text-sm leading-relaxed text-slate-500">
@@ -405,7 +422,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
                     className="inline-flex flex-col items-center gap-2 max-w-md mx-auto mb-8 px-5 py-4 bg-white/60 border border-accent/15 rounded-2xl"
                   >
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] uppercase tracking-widest font-bold text-accent">Ready to advance</span>
+                      <span className="text-[10px] uppercase tracking-widest font-bold text-accent">Next Skill</span>
                     </div>
                     <p className="text-[13px] text-slate-500 leading-relaxed">
                       Start the next skill in a fresh session when you&apos;re ready.
@@ -422,8 +439,17 @@ export default function SessionPage({ params }: { params: { id: string } }) {
                   disabled={isBootstrapping || isStreaming || isSubmitting || Boolean(nextSkillPaywall)}
                   className="px-8 py-4 bg-accent text-white rounded-full font-bold uppercase tracking-widest text-sm hover:scale-105 transition-transform shadow-lg shadow-accent/20 disabled:opacity-60 disabled:cursor-wait"
                 >
-                  {isSubmitting ? 'Starting...' : transitionMastered ? 'Start Next Skill' : 'Proceed to Next Skill'}
+                  {isSubmitting ? 'Starting...' : 'Start Next Skill'}
                 </button>
+                {!transitionMastered && (
+                  <button
+                    type="button"
+                    onClick={() => router.push('/map')}
+                    className="mt-3 px-6 py-3 rounded-full border border-slate-200 bg-white text-slate-600 font-bold uppercase tracking-widest text-xs hover:bg-slate-50 transition-colors"
+                  >
+                    Keep Practicing This Skill
+                  </button>
+                )}
               </motion.div>
             )}
 
@@ -438,7 +464,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
                   <SessionMessageSkeleton />
                   {slowStream && (
                     <p className="mt-4 max-w-sm rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 text-sm font-semibold leading-relaxed text-slate-500" aria-live="polite">
-                      Still working on this turn. Your answer is saved, and the coach response will appear here.
+                      {slowStreamCopy}
                     </p>
                   )}
                </motion.div>
@@ -466,7 +492,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
                   </motion.div>
                 )}
 
-                {nodeAdvance && !isStreaming ? null : openingRetryActive ? (
+                {transitionActive ? null : openingRetryActive ? (
                   <motion.div
                     key="opening-retry"
                     layoutId="action-card"
@@ -569,7 +595,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
         </div>
         
         {sessionRecap && recapVisible && (
-          <SessionRecap recap={sessionRecap} onClose={() => setRecapVisible(false)} />
+          <SessionRecap recap={sessionRecap} onClose={() => router.push('/map')} returnLabel="Back to Career Map" />
         )}
       </div>
     </TutorShell>
@@ -594,7 +620,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
               Stay
             </button>
             <button
-              onClick={() => { disconnect(); router.push(isProfessional ? '/mode' : '/map'); }}
+              onClick={() => { disconnect(); router.push('/map'); }}
               className="flex-1 px-6 py-3 rounded-full bg-slate-900 text-white font-bold text-sm hover:bg-slate-800 transition-colors"
             >
               Leave

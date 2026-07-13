@@ -34,6 +34,21 @@ if (!existsSync(middlewarePath)) {
     failures.push('middleware must redirect unauthenticated learners to /auth/login.');
   }
 
+  for (const token of [
+    'AUTH_COOKIE_BASE_NAMES',
+    'clearAuthCookies',
+    'auth_cookie_reset',
+    "pathname === AUTH_LOGIN_PATH",
+  ]) {
+    if (!source.includes(token)) {
+      failures.push(`middleware must reset stale/corrupt NextAuth cookies instead of 500ing and is missing ${token}.`);
+    }
+  }
+
+  if (!/try\s*\{[\s\S]*getToken\(\{ req, secret: process\.env\.NEXTAUTH_SECRET \}\)[\s\S]*\}\s*catch\s*\{[\s\S]*auth_cookie_reset/.test(source)) {
+    failures.push('middleware must catch getToken failures and clear auth cookies instead of letting protected pages 500.');
+  }
+
   if (!source.includes('BACKEND_INTERNAL_URL') || !source.includes('/me/gate') || !/\bfetch\s*\(/.test(source)) {
     failures.push('middleware must check the lean backend /me/gate profile/onboarding state before serving app routes.');
   }

@@ -110,11 +110,41 @@ export interface LearningEventSummary {
   caveats?: string[];
 }
 
+export interface CareerMemoryItem {
+  skill_id: string;
+  module_id?: ModuleId | string;
+  task_type?: string;
+  status: 'active_gap' | 'improving' | 'resolved' | 'mastered' | string;
+  readiness: number;
+  confidence: number;
+  attempts: number;
+  gap?: string;
+  latest_evidence?: string;
+  recommended_next_action?: string;
+  repeat_count?: number;
+}
+
+export interface CareerMemoryContext {
+  active_gaps: CareerMemoryItem[];
+  improving_gaps: CareerMemoryItem[];
+  resolved_gaps: CareerMemoryItem[];
+  mastered_skills: CareerMemoryItem[];
+  repeated_issue_counts: Record<string, number>;
+  recent_reports: Array<{
+    task_type?: string;
+    status?: string;
+    score?: number;
+    summary?: string;
+    recommended_actions?: string[];
+  }>;
+}
+
 export interface MeLearningGraph {
   career_profile: CareerProfile;
   profiles: CareerLearningGraphNode[];
   reports: SessionReportSummary[];
   events: LearningEventSummary[];
+  memory_context: CareerMemoryContext;
   degraded?: boolean;
 }
 
@@ -214,14 +244,14 @@ export function updatePreferences(patch: Partial<UserPreferences>): Promise<{ pr
 export function homeForMe(me: MeResponse | null | undefined): string {
   if (!me) return '/dashboard';
   if (!me.onboarding?.completed) return '/onboarding';
-  if (me.onboarding.primary_motive === 'school') return '/subjects';
+  if (me.onboarding.primary_motive === 'school') return '/school';
   return '/career';
 }
 
 export function myPathForMe(me: MeResponse | null | undefined): string {
   if (!me) return '/dashboard';
   if (!me.onboarding?.completed) return '/onboarding';
-  if (me.onboarding.primary_motive === 'school') return '/subjects';
+  if (me.onboarding.primary_motive === 'school') return '/school';
 
   const prefs = me.preferences ?? {};
   if (prefs.pending_module === 'interview' || prefs.pending_module === 'group_discussion') {
@@ -230,7 +260,7 @@ export function myPathForMe(me: MeResponse | null | undefined): string {
 
   const active = prefs.active_module;
   if (!active) return '/career';
-  if (active === 'school_english') return '/subjects';
+  if (active === 'school_english') return '/school';
   if (prefs.test_mode == null) return '/mode';
   return '/map';
 }

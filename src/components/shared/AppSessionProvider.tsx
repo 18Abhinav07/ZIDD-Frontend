@@ -25,7 +25,7 @@ import {
   invalidateBalanceCache,
 } from '@/services/billing';
 import { invalidateProgressionCache } from '@/services/progression';
-import { invalidateSchoolCache } from '@/services/school';
+import { invalidateSchoolRebuildCache } from '@/services/schoolRebuild';
 import type { CreditsBalance } from '@/types';
 
 interface AppSessionContextValue {
@@ -42,6 +42,7 @@ interface AppSessionContextValue {
 }
 
 const AppSessionContext = createContext<AppSessionContextValue | null>(null);
+let lastObservedAccessToken: string | null | undefined;
 
 export function AppSessionProvider({ children }: { children: ReactNode }) {
   const { data: authSession, status } = useSession();
@@ -51,14 +52,14 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
   const [loadingMe, setLoadingMe] = useState(false);
   const [loadingActivity, setLoadingActivity] = useState(false);
   const [loadingBalance, setLoadingBalance] = useState(false);
-  const observedAccessTokenRef = useRef<string | null | undefined>(undefined);
+  const observedAccessTokenRef = useRef<string | null | undefined>(lastObservedAccessToken);
 
   const clearAccountScopedCaches = useCallback(() => {
     invalidateAuthCache();
     invalidateMeCache();
     invalidateMeActivityCache();
     invalidateBalanceCache();
-    invalidateSchoolCache();
+    invalidateSchoolRebuildCache();
     invalidateProgressionCache();
   }, []);
 
@@ -112,18 +113,23 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const accessToken = authSession?.accessToken ?? null;
     if (status === 'authenticated') {
+      const firstObservation = observedAccessTokenRef.current === undefined;
       const accountChanged = observedAccessTokenRef.current !== accessToken;
       if (accountChanged) {
         observedAccessTokenRef.current = accessToken;
-        clearAccountScopedCaches();
-        clearLocalState();
+        lastObservedAccessToken = accessToken;
+        if (!firstObservation) {
+          clearAccountScopedCaches();
+          clearLocalState();
+        }
       }
-      void loadMe(accountChanged).catch(() => null);
-      void loadBalance(accountChanged).catch(() => null);
+      void loadMe(accountChanged && !firstObservation).catch(() => null);
+      void loadBalance(accountChanged && !firstObservation).catch(() => null);
       return;
     }
     if (status === 'unauthenticated') {
       observedAccessTokenRef.current = null;
+      lastObservedAccessToken = null;
       clearAppSession();
     }
   }, [

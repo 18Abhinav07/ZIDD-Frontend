@@ -7,7 +7,6 @@ const read = (rel) => readFileSync(join(root, rel), 'utf8');
 
 const billing = read('src/services/billing.ts');
 const mapPage = read('src/app/(gamified)/map/page.tsx');
-const classPage = read('src/app/subjects/class/[classNo]/page.tsx');
 const sessionPage = read('src/app/session/[id]/page.tsx');
 
 if (!billing.includes('client_start_id: string;')) {
@@ -31,7 +30,6 @@ for (const token of [
 
 for (const [label, source] of [
   ['career map page', mapPage],
-  ['school class page', classPage],
   ['next-skill session page', sessionPage],
 ]) {
   if (!source.includes('client_start_id')) {
@@ -39,21 +37,52 @@ for (const [label, source] of [
   }
 }
 
-for (const [label, source] of [
-  ['career map page', mapPage],
-  ['school class page', classPage],
-]) {
-  if (!source.includes('useRef') || !source.includes('startId')) {
-    failures.push(`${label} must keep start ids in a ref/state across retry/paywall confirm.`);
-  }
+if (!mapPage.includes('useRef') || !mapPage.includes('startId')) {
+  failures.push('career map page must keep start ids in a ref/state across retry/paywall confirm.');
 }
 
 if (!mapPage.includes('clearStartId') || !mapPage.includes('startIntentKey')) {
   failures.push('career map page must clear only the completed/cancelled start intent and key ids by intent.');
 }
 
-if (!classPage.includes('clearStartId')) {
-  failures.push('school class page must clear the stable start id after success or terminal failure.');
+for (const token of [
+  "type StartNodeResult = 'navigated' | 'paywall' | 'ignored'",
+  'startInFlightRef = useRef(false)',
+  "if (startInFlightRef.current) return 'ignored';",
+  'startInFlightRef.current = true;',
+  'startInFlightRef.current = false;',
+]) {
+  if (!mapPage.includes(token)) {
+    failures.push(`career map page must guard all /session/start attempts with ${token}.`);
+  }
+}
+
+if (!/const handleNodeClick = async[\s\S]{0,420}setError\(''\)/.test(mapPage)) {
+  failures.push('career map node starts must clear stale PATH ERROR state before a fresh start or paywall.');
+}
+
+if (!/const handleConfirmStart = async[\s\S]{0,180}confirming[\s\S]{0,180}startInFlightRef\.current/.test(mapPage)) {
+  failures.push('career map paywall confirm must synchronously guard duplicate confirm clicks.');
+}
+
+if (!/const handleReattemptConfirm = async[\s\S]{0,180}startInFlightRef\.current/.test(mapPage)) {
+  failures.push('career map reattempt confirm must synchronously guard duplicate reattempt starts.');
+}
+
+if (!/if \(result\.ok\)[\s\S]{0,420}routeToSession[\s\S]{0,80}return 'navigated'/.test(mapPage)) {
+  failures.push('career map startNode must return explicit navigated status only after successful session navigation.');
+}
+
+if (!/setPaywall\(result\.paywall\)[\s\S]{0,220}return 'paywall'/.test(mapPage)) {
+  failures.push('career map startNode must return explicit paywall status only when a paywall is surfaced.');
+}
+
+if (!/setPaywall\(result\.paywall\)[\s\S]{0,220}failedStartRef\.current = null/.test(mapPage)) {
+  failures.push('career map must clear stale failed-start retry state when a newer paywall intent is active.');
+}
+
+if (!/const handlePaywallClose = \(\) => \{[\s\S]{0,220}failedStartRef\.current = null/.test(mapPage)) {
+  failures.push('career map must clear stale failed-start retry state when paywall intent is cancelled.');
 }
 
 if (!sessionPage.includes('pendingNextStartIdRef.current = clientStartId') || /catch \(err\)[\s\S]{0,120}pendingNextStartIdRef\.current = null/.test(sessionPage)) {

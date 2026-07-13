@@ -37,7 +37,8 @@ function cacheResolvedAccessToken(token: string | null): string | null {
   return token;
 }
 
-export async function getAccessToken(): Promise<string | null> {
+export async function getAccessToken(force = false): Promise<string | null> {
+  if (force) clearAccessTokenCache();
   const now = Date.now();
   if (cachedAccessToken && cachedAccessToken.expiresAt > now) {
     return cachedAccessToken.token;
@@ -60,42 +61,49 @@ export async function getAuthCacheKey(): Promise<string> {
   return token ? authCacheKeyForToken(token) : 'auth:anonymous';
 }
 
-export async function getAuthHeaders(): Promise<Record<string, string>> {
-  const token = await getAccessToken();
+export async function getAuthHeaders(force = false): Promise<Record<string, string>> {
+  const token = await getAccessToken(force);
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-const getHeaders = async () => {
+const getHeaders = async (forceAuth = false) => {
   return {
     'Content-Type': 'application/json',
-    ...(await getAuthHeaders()),
+    ...(await getAuthHeaders(forceAuth)),
   };
 };
 
-type ApiFetchOptions = RequestInit & { timeoutMs?: number };
+type ApiFetchOptions = RequestInit & { timeoutMs?: number | null };
 const DEFAULT_API_TIMEOUT_MS = 20_000;
 
 export async function apiFetch(endpoint: string, options: ApiFetchOptions = {}) {
   const { timeoutMs = DEFAULT_API_TIMEOUT_MS, signal, ...fetchOptions } = options;
   const controller = new AbortController();
-  const timeout = setTimeout(() => {
-    controller.abort(new DOMException('request_timeout', 'TimeoutError'));
-  }, timeoutMs);
+  const timeout = timeoutMs !== null
+    ? setTimeout(() => {
+        controller.abort(new DOMException('request_timeout', 'TimeoutError'));
+      }, timeoutMs)
+    : null;
   if (signal) {
     if (signal.aborted) controller.abort(signal.reason);
     else signal.addEventListener('abort', () => controller.abort(signal.reason), { once: true });
   }
 
   let response: Response;
+  const runFetch = async (forceAuth = false) => fetch(`/api${endpoint}`, {
+    ...fetchOptions,
+    signal: controller.signal,
+    headers: {
+      ...(await getHeaders(forceAuth)),
+      ...fetchOptions.headers,
+    },
+  });
   try {
-    response = await fetch(`/api${endpoint}`, {
-      ...fetchOptions,
-      signal: controller.signal,
-      headers: {
-        ...(await getHeaders()),
-        ...fetchOptions.headers,
-      },
-    });
+    response = await runFetch(false);
+    if (response.status === 401) {
+      invalidateAuthCache();
+      response = await runFetch(true);
+    }
   } catch (err: unknown) {
     const name = err instanceof DOMException || err instanceof Error ? err.name : '';
     if (name === 'AbortError' || name === 'TimeoutError') {
@@ -103,7 +111,7 @@ export async function apiFetch(endpoint: string, options: ApiFetchOptions = {}) 
     }
     throw err;
   } finally {
-    clearTimeout(timeout);
+    if (timeout !== null) clearTimeout(timeout);
   }
 
   if (response.status === 401) {

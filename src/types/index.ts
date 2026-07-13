@@ -17,6 +17,7 @@ export interface GamePromptFrame {
   hint: string;
   context: string;
   options: string[] | null;
+  turn_id?: string | null;
 }
 
 export interface NodeAdvanceFrame {
@@ -95,6 +96,18 @@ export interface SimulationReport {
   observed_skill_gaps?: string[];
   recommended_next_nodes?: string[];
   assessment_caveats?: string[];
+  learner_assessment_caveats?: string[];
+  simulator_integrity_notes?: string[];
+  score_breakdown?: {
+    model_score?: number | null;
+    round_quality_mean?: number | null;
+    round_quality_weight?: number | null;
+    coverage_cap?: number | null;
+    validity_cap?: number | null;
+    repeated_prompt_count?: number;
+    final_score?: number | null;
+    [key: string]: number | string | null | undefined;
+  };
   validity_status?: 'final' | 'partial' | 'insufficient_evidence' | 'invalid_simulation' | string;
   scorable_turn_count?: number;
   coverage_map?: {
@@ -146,6 +159,16 @@ export interface SimPersona {
   role_type?: 'moderator' | 'debater' | 'interviewer' | string;
 }
 
+export type AssessmentActionKind = 'ask_panelist' | 'clarify' | 'new_angle' | 'move_on';
+
+export interface AssessmentClientAction {
+  kind: AssessmentActionKind;
+  speaker_id?: string;
+  speaker_name?: string;
+  label?: string;
+  source?: 'quick_action' | 'typed_control';
+}
+
 export interface SimulationScenarioConfig {
   topic_mode?: 'profile' | 'custom' | 'random';
   topic?: string;
@@ -168,10 +191,27 @@ export interface ScenarioSnapshot {
   role_family?: string;
 }
 
+export interface AssessmentStateSnapshot {
+  plan?: Record<string, unknown> | null;
+  validity_flags?: Array<Record<string, unknown>>;
+  coverage_events?: Array<Record<string, unknown>>;
+  assessment_events?: Array<Record<string, unknown>>;
+  progress?: AssessmentProgressSnapshot | null;
+}
+
+export interface AssessmentProgressSnapshot {
+  scorable_turn_count?: number;
+  min_scorable_turns?: number;
+  control_turn_count?: number;
+  round_count?: number;
+  coverage_map?: Record<string, unknown>;
+}
+
 export interface DoneFrame {
   session_id: string;
   competency_node: string;
   task_type?: string;
+  module_id?: string;
   node_title: string;
   current_mastery: number;
   turn_count: number;
@@ -214,6 +254,7 @@ export interface DoneFrame {
   simulation_tension?: number;
   simulation_score?: number | null;
   simulation_report?: SimulationReport | null;
+  assessment_state?: AssessmentStateSnapshot | null;
   session_version?: number;
   pending_transition?: PendingNodeTransition | null;
   active_turn?: ActiveTurn | null;
@@ -240,6 +281,8 @@ export interface PendingNodeTransition {
 
 export interface ChatMessage {
   id: string;
+  message_id?: string;
+  turn_id?: string;
   role: 'user' | 'assistant';
   content: string;
   speaker_name?: string; // For TEST mode

@@ -9,9 +9,10 @@ import { labelSkillId } from '@/lib/skillLabels';
 interface SessionRecapProps {
   recap: SessionRecapFrame;
   onClose?: () => void;
+  returnLabel?: string;
 }
 
-export function SessionRecap({ recap, onClose }: SessionRecapProps) {
+export function SessionRecap({ recap, onClose, returnLabel = 'Return to Path' }: SessionRecapProps) {
   const percentage = Math.round(recap.avg_score * 100);
   // Portal to <body>: this report renders inside the tutor shell, whose
   // transforms would otherwise trap this fixed overlay and offset it.
@@ -45,7 +46,7 @@ export function SessionRecap({ recap, onClose }: SessionRecapProps) {
           </svg>
           <div className="text-center">
             <div className="text-4xl font-black text-slate-900 leading-none">{percentage}<span className="text-xl text-slate-400">%</span></div>
-            <div className="text-[10px] uppercase tracking-widest font-bold text-indigo-600 mt-1">Accuracy</div>
+            <div className="text-[10px] uppercase tracking-widest font-bold text-indigo-600 mt-1">Readiness</div>
           </div>
         </div>
 
@@ -53,7 +54,7 @@ export function SessionRecap({ recap, onClose }: SessionRecapProps) {
           {/* Nodes Completed */}
           {recap.nodes_completed.length > 0 && (
             <div>
-              <h3 className="text-xs uppercase tracking-widest font-black text-slate-400 mb-4 border-b border-slate-100 pb-2">Milestones Hit</h3>
+              <h3 className="text-xs uppercase tracking-widest font-black text-slate-400 mb-4 border-b border-slate-100 pb-2">Skills Practiced</h3>
               <ul className="space-y-3">
                 {recap.nodes_completed.map((node, idx) => (
                   <li key={idx} className="flex items-center gap-3 text-slate-700 font-medium">
@@ -88,7 +89,7 @@ export function SessionRecap({ recap, onClose }: SessionRecapProps) {
           className="w-full mt-10 py-5 rounded-2xl bg-slate-900 text-white font-black text-sm transition-all hover:bg-indigo-600 active:scale-95"
           onClick={onClose}
         >
-          Return to Path
+          {returnLabel}
         </button>
       </div>
     </div>,

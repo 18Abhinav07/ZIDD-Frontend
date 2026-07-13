@@ -16,7 +16,6 @@ const middleware = readFileSync(join(process.cwd(), 'src/middleware.ts'), 'utf8'
 const billingService = readFileSync(join(process.cwd(), 'src/services/billing.ts'), 'utf8');
 const nextAuthRoute = readFileSync(join(process.cwd(), 'src/app/api/auth/[...nextauth]/route.ts'), 'utf8');
 const meService = readFileSync(join(process.cwd(), 'src/services/me.ts'), 'utf8');
-const schoolService = readFileSync(join(process.cwd(), 'src/services/school.ts'), 'utf8');
 const progressionService = readFileSync(join(process.cwd(), 'src/services/progression.ts'), 'utf8');
 const onboardingPage = readFileSync(join(process.cwd(), 'src/app/onboarding/page.tsx'), 'utf8');
 const profilePage = readFileSync(join(process.cwd(), 'src/app/profile/page.tsx'), 'utf8');
@@ -26,9 +25,6 @@ const protectedClientPages = [
   'src/app/career/page.tsx',
   'src/app/profile/page.tsx',
   'src/app/onboarding/page.tsx',
-  'src/app/subjects/page.tsx',
-  'src/app/subjects/class/[classNo]/page.tsx',
-  'src/app/subjects/test/[testId]/page.tsx',
   'src/app/(gamified)/mode/page.tsx',
 ];
 
@@ -59,6 +55,21 @@ for (const token of ['ACCESS_TOKEN_CACHE_MS', 'cachedAccessToken', 'sessionReque
   if (!api.includes(token)) {
     failures.push(`api helper is missing ${token} for short-lived token caching.`);
   }
+}
+
+for (const token of ['getAccessToken(force = false)', 'getAuthHeaders(force = false)', 'runFetch(true)', 'response.status === 401']) {
+  if (!api.includes(token)) {
+    failures.push(`api helper must retry auth header resolution once before global sign-out; missing ${token}.`);
+  }
+}
+
+const authRetryIndex = api.indexOf('response = await runFetch(true)');
+const authCatchIndex = api.indexOf('} catch (err: unknown)');
+const authTimeoutClearIndex = api.indexOf('clearTimeout(timeout)');
+if (authRetryIndex === -1 || authCatchIndex === -1 || authTimeoutClearIndex === -1) {
+  failures.push('api helper must keep the forced-auth retry inside the timeout/error-normalization block.');
+} else if (authRetryIndex > authCatchIndex || authRetryIndex > authTimeoutClearIndex) {
+  failures.push('api helper must not clear the request timeout before the forced-auth retry completes.');
 }
 
 for (const [label, source] of [
@@ -107,7 +118,6 @@ for (const token of ['ME_CACHE_MS', 'cachedMe', 'meRequest', 'invalidateMeCache'
 for (const [label, source] of [
   ['me service', meService],
   ['billing service', billingService],
-  ['school service', schoolService],
   ['progression service', progressionService],
 ]) {
   if (!source.includes('getAuthCacheKey')) {
@@ -131,6 +141,12 @@ if (!appHeader.includes('myPathForMe') || appHeader.includes('destinationForPref
   failures.push('AppHeader My Path should use myPathForMe, not route directly to the raw progression map.');
 }
 
+for (const token of ["message === 'Unauthorized'", 'router.push(destination(me))']) {
+  if (!appHeader.includes(token)) {
+    failures.push(`AppHeader navigation must only redirect to login for real Unauthorized errors and reuse cached profile on transient failures; missing ${token}.`);
+  }
+}
+
 if (!mapPage.includes('nodes.length === 0') || mapPage.includes('Choose mode')) {
   failures.push('map page should render an explicit empty/error recovery state without looping back to mode selection.');
 }
@@ -142,12 +158,6 @@ if (!mapPage.includes('getProgressionMap')) {
 for (const token of ['progressionRequests', 'progressionCache', 'PROGRESSION_CACHE_MS']) {
   if (!progressionService.includes(token)) {
     failures.push(`progression service is missing ${token} for request dedupe.`);
-  }
-}
-
-for (const token of ['schoolRequests', 'schoolCache', 'cachedSchoolFetch']) {
-  if (!schoolService.includes(token)) {
-    failures.push(`school service is missing ${token} for request dedupe.`);
   }
 }
 
@@ -226,15 +236,15 @@ if (/void loadMe\(accountChanged\);\s*void loadBalance\(accountChanged\);/.test(
   failures.push('AppSessionProvider background /me and /billing/balance loads must catch transient failures.');
 }
 
-if (!appSessionProvider.includes('void loadMe(accountChanged).catch(() => null)')) {
+if (!/void loadMe\([^)]*\)\.catch\(\(\) => null\)/.test(appSessionProvider)) {
   failures.push('AppSessionProvider must catch background /me load failures.');
 }
 
-if (!appSessionProvider.includes('void loadBalance(accountChanged).catch(() => null)')) {
+if (!/void loadBalance\([^)]*\)\.catch\(\(\) => null\)/.test(appSessionProvider)) {
   failures.push('AppSessionProvider must catch background balance load failures.');
 }
 
-for (const token of ['authSession?.accessToken', 'observedAccessTokenRef', 'invalidateAuthCache', 'invalidateSchoolCache', 'invalidateProgressionCache']) {
+for (const token of ['authSession?.accessToken', 'observedAccessTokenRef', 'invalidateAuthCache', 'invalidateSchoolRebuildCache', 'invalidateProgressionCache']) {
   if (!appSessionProvider.includes(token)) {
     failures.push(`AppSessionProvider must clear account-scoped caches on active-account change and is missing ${token}.`);
   }

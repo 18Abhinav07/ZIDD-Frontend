@@ -114,7 +114,7 @@ if (sessionPage.includes('Path adjusted')) {
   failures.push('Skill transition card must not use internal path-adjustment language.');
 }
 
-if (!sessionPage.includes('Ready to advance')) {
+if (!sessionPage.includes('Next Skill')) {
   failures.push('Skill transition card must use learner-facing next-skill copy.');
 }
 
@@ -139,12 +139,16 @@ if (!/if \(!result\.started\)[\s\S]{0,80}setInputValue\(draft\)/.test(handleSend
   failures.push('Chat submit must restore the draft if stream startup is rejected.');
 }
 
-const streamTurnBody = hook.match(/const streamTurn = useCallback\(async \(userInput\?: string, clientTurnId\?: string\): Promise<StreamTurnResult> => \{[\s\S]*?\n  \}, \[/)?.[0] ?? '';
+if (!/if \(!result\.started\)\s*\{[\s\S]{0,160}pendingClientTurnIdRef\.current = null[\s\S]{0,120}setInputValue\(draft\)/.test(handleSendBody)) {
+  failures.push('Chat submit must clear the pending client_turn_id after a rejected turn startup so retries do not reuse a consumed id.');
+}
+
+const streamTurnBody = hook.match(/const streamTurn = useCallback\(async \([\s\S]*?\): Promise<StreamTurnResult> => \{[\s\S]*?\n  \}, \[/)?.[0] ?? '';
 if (!/if \(userInput\)[\s\S]{0,260}setMessages\(prev => \[\s*\.\.\.prev,[\s\S]{0,120}content: userInput/.test(streamTurnBody)) {
   failures.push('streamTurn must append the learner answer optimistically before SSE startup.');
 }
 
-if (!/setMessages\(prev => \[[\s\S]{0,220}content: userInput[\s\S]{0,500}const headers = await getAuthHeaders\(\)/.test(streamTurnBody)) {
+if (!/setMessages\(prev => \[[\s\S]{0,220}content: userInput[\s\S]{0,900}const headers = await getAuthHeaders\(\)/.test(streamTurnBody)) {
   failures.push('streamTurn must show the learner answer before awaiting auth headers or SSE open.');
 }
 
@@ -205,7 +209,7 @@ if (!/case 'done':[\s\S]{0,520}setGamePrompt\(pendingGamePromptFrameRef\.current
   failures.push('useZiddSession must render staged game/card prompts from the terminal done handler.');
 }
 
-if (!/onComplete: \(\{ doneSeen \}\)[\s\S]{0,220}if \(!doneSeen\)[\s\S]{0,120}pendingGamePromptFrameRef\.current = null/.test(hook)) {
+if (!/onComplete: \(\{ doneSeen \}\)[\s\S]{0,1600}if \(!doneSeen\)[\s\S]{0,120}pendingGamePromptFrameRef\.current = null/.test(hook)) {
   failures.push('useZiddSession must discard staged game/card prompts when a stream closes without a done frame.');
 }
 
@@ -245,7 +249,12 @@ if (!/const result = await streamTurn\(\)[\s\S]{0,260}recoverOpeningFromTranscri
   failures.push('useZiddSession bootstrap must recover from a rejected duplicate opening by rehydrating the committed transcript.');
 }
 
-if (!sessionPage.includes('slowStream') || !sessionPage.includes('Still working on this turn') || !sessionPage.includes('aria-live="polite"')) {
+if (
+  !sessionPage.includes('slowStream') ||
+  !sessionPage.includes('Setting up your prompt...') ||
+  !sessionPage.includes('Reviewing your answer...') ||
+  !sessionPage.includes('aria-live="polite"')
+) {
   failures.push('Session page must surface a delayed still-working state for long tutor streams.');
 }
 
@@ -298,6 +307,166 @@ if (!types.includes('opening_streamed?: boolean')) {
 
 if (!hook.includes('opening_streamed: data.opening_streamed ?? data.state.opening_streamed')) {
   failures.push('useZiddSession must copy transcript opening_streamed into state during bootstrap.');
+}
+
+for (const token of ['hasAssistantReplyAfterLatestUser', 'recoverTurnLockFromTranscript', "blockReason === 'turn_processing'", 'activeTurn: releaseStaleTurnLock ? null : activeTurn']) {
+  if (!hook.includes(token)) {
+    failures.push(`useZiddSession must release stale turn_processing locks after transcript recovery; missing ${token}.`);
+  }
+}
+
+for (const token of ['dedupeAdjacentDuplicateMessages', 'dedupeAdjacentDuplicateMessages(finalizeOpen', "setError(prev => (prev === TRANSIENT_PROCESSING_MESSAGE ? null : prev))"]) {
+  if (!hook.includes(token)) {
+    failures.push(`useZiddSession must prevent duplicate recovered assistant bubbles and stale processing banners; missing ${token}.`);
+  }
+}
+
+if (!/if \(!doneSeen\)[\s\S]{0,260}if \(opened && expectedUserTurn\)[\s\S]{0,180}recovered = await restoreTranscriptSnapshot\(/.test(hook)) {
+  failures.push('useZiddSession must only reconcile opened stream closes against the persisted transcript when the stream ended without a done frame.');
+}
+
+if (!/onEvent: \(eventName, data\) => \{[\s\S]{0,220}eventName !== 'accepted'[\s\S]{0,80}eventName !== 'heartbeat'[\s\S]{0,160}clearTimeout\(recoveryTimer\)/.test(hook)) {
+  failures.push('useZiddSession must cancel transcript recovery polling as soon as real SSE content arrives.');
+}
+
+for (const token of [
+  'activeStreamTokenRef',
+  'const streamToken = crypto.randomUUID()',
+  'const isActiveStream = () => activeStreamTokenRef.current === streamToken',
+  'if (!isActiveStream()) return;',
+]) {
+  if (!hook.includes(token)) {
+    failures.push(`useZiddSession must invalidate recovered/disconnected SSE streams before late callbacks can duplicate transcript messages; missing ${token}.`);
+  }
+}
+
+if (!/const res = await fetch\([\s\S]{0,180}if \(shouldApply && !shouldApply\(\)\)[\s\S]{0,180}if \(res\.status === 404 \|\| res\.status === 410\)/.test(hook)) {
+  failures.push('useZiddSession transcript recovery must verify ownership before a stale 404/410 response can mutate not-found state.');
+}
+
+if (!/const recovered = await restoreTranscriptSnapshot\([\s\S]{0,520}activeStreamTokenRef\.current = null[\s\S]{0,180}streamInFlightRef\.current = false/.test(hook)) {
+  failures.push('useZiddSession transcript recovery must invalidate the active stream token before releasing the stream lock.');
+}
+
+if (!/if \(expectedUserTurn\) \{[\s\S]{0,120}scheduleRecoveryPoll\(SESSION_STREAM_RECOVERY_FIRST_POLL_MS\)/.test(hook)) {
+  failures.push('useZiddSession must only run in-stream transcript recovery polling for learner turns with an expected user turn, not opening streams.');
+}
+
+for (const token of [
+  'SESSION_STREAM_MAX_DURATION_MS',
+  'maxDurationTimer',
+  'const scheduleMaxDurationBackstop',
+  'restoreTranscriptSnapshot(',
+  'The tutor is still working. Reopen this session in a moment if the answer does not appear.',
+]) {
+  if (!hook.includes(token)) {
+    failures.push(`useZiddSession learner turns need a heartbeat-independent max-duration backstop; missing ${token}.`);
+  }
+}
+
+if (!/maxDurationTimer\s*=\s*setTimeout\([\s\S]{0,1200}clientRef\.current\?\.disconnect\(\)[\s\S]{0,260}streamInFlightRef\.current = false[\s\S]{0,220}setIsStreaming\(false\)/.test(hook)) {
+  failures.push('useZiddSession max-duration backstop must disconnect the still-open SSE stream and release the Reviewing lock.');
+}
+
+if (!/recovered = await restoreTranscriptSnapshot\([\s\S]{0,620}if \(settled \|\| !isActiveStream\(\)\) return;[\s\S]{0,420}clientRef\.current\?\.disconnect\(\)/.test(hook)) {
+  failures.push('useZiddSession max-duration backstop must re-check settled/isActiveStream after transcript recovery before disconnecting or setting an error.');
+}
+
+if (!/if \(opened && expectedUserTurn\) \{[\s\S]{0,180}recovered = await restoreTranscriptSnapshot\(/.test(hook)) {
+  failures.push('useZiddSession onComplete must only restore transcript snapshots for no-done learner turns; opening streams must fall back to bootstrap opening recovery.');
+}
+
+if (!/onError: (?:async )?\(err\) => \{[\s\S]*?if \(!opened\) \{[\s\S]{0,140}activeStreamTokenRef\.current = null[\s\S]{0,180}settle\(\{ started: false, completed: false \}\)/.test(hook)) {
+  failures.push('useZiddSession opened stream errors must leave the active stream token for onComplete to settle; only unopened errors may invalidate and settle immediately.');
+}
+
+if (/onError: (?:async )?\(err\) => \{[\s\S]{0,180}activeStreamTokenRef\.current = null[\s\S]{0,260}if \(!opened\)/.test(hook)) {
+  failures.push('useZiddSession must not clear activeStreamTokenRef before onComplete can settle an opened timeout/error stream.');
+}
+
+for (const token of [
+  'ExpectedUserTurn',
+  'findCurrentUserTurnIndex',
+  'assistantAfterCurrentUserTurn',
+  'if (expectedUserTurn && currentUserTurnIndex < 0)',
+  'return { foundExpectedTurn: false, completed: false }',
+  'restoreTranscriptSnapshot(',
+]) {
+  if (!hook.includes(token)) {
+    failures.push(`useZiddSession transcript recovery must prove the current learner turn and assistant reply are persisted before replacing a live stream; missing ${token}.`);
+  }
+}
+
+if (!hook.includes('hasCompletedTurnOutcomeAfterExpectedUser')) {
+  failures.push('useZiddSession transcript recovery must accept completed non-text turn outcomes such as node_advance/pending_transition.');
+}
+
+if (!hook.includes('restoreTranscriptSnapshotOutcome')) {
+  failures.push('useZiddSession must expose a transcript recovery outcome so rejected duplicate turn starts can distinguish completed vs still-processing turns.');
+}
+
+if (!/err\.code === 'turn_version_consumed'[\s\S]{0,360}restoreTranscriptSnapshotOutcome\(/.test(hook)) {
+  failures.push('useZiddSession must reconcile turn_version_consumed startup rejections against the transcript before showing retry-loop copy.');
+}
+
+if (!/err\.code === 'turn_version_consumed' \|\| err\.code === 'turn_in_progress'/.test(hook)) {
+  failures.push('useZiddSession must reconcile an exact-id turn_in_progress replay through the same persisted-transcript recovery path.');
+}
+
+if (!/restoreTranscriptSnapshotOutcome\([\s\S]{0,760}settle\(\{ started: true, completed: true \}\)/.test(hook)) {
+  failures.push('useZiddSession must settle completed duplicate-turn recovery when the accepted turn already produced a visible outcome.');
+}
+
+if (!/if \(outcome\.foundExpectedTurn\)[\s\S]{0,520}scheduleRecoveryPoll\(SESSION_STREAM_RECOVERY_POLL_DELAY_MS\)[\s\S]{0,120}return;/.test(hook)) {
+  failures.push('useZiddSession must keep polling a persisted duplicate learner turn until its tutor outcome appears.');
+}
+
+if (/if \(outcome\.foundExpectedTurn\)[\s\S]{0,520}settle\(\{ started: true, completed: false \}\)/.test(hook)) {
+  failures.push('useZiddSession must not settle a still-processing duplicate turn before transcript recovery completes.');
+}
+
+if (!/onComplete: \(\{ doneSeen \}\)[\s\S]{0,520}restoreTranscriptSnapshot\([\s\S]{0,260}activeSessionIdRef\.current === sessionId[\s\S]{0,420}if \(!isActiveStream\(\) \|\| activeSessionIdRef\.current !== sessionId\) return;/.test(hook)) {
+  failures.push('useZiddSession EOF recovery must prove the same session and active stream still own the hook before applying a transcript snapshot.');
+}
+
+if (!/restoreTranscriptSnapshotOutcome\([\s\S]{0,260}activeSessionIdRef\.current === sessionId[\s\S]{0,220}if \(!isActiveStream\(\) \|\| activeSessionIdRef\.current !== sessionId\) return;/.test(hook)) {
+  failures.push('useZiddSession duplicate-turn recovery must not apply or act on a transcript snapshot after the hook navigates to another session.');
+}
+
+if (!/contentFallbackIndex[\s\S]{0,120}= \[\.\.\.messages\]\.reverse\(\)\.findIndex/.test(hook)) {
+  failures.push('useZiddSession must recover duplicate starts whose retry generated a fresh client_turn_id by matching the latest same-content learner turn.');
+}
+
+if (hook.includes('if (expectedUserTurn && !assistantAfterCurrentUserTurn) return false;')) {
+  failures.push('useZiddSession must not require an assistant bubble for completed prep advancement turns; node_advance/pending_transition can be the visible outcome.');
+}
+
+if (hook.includes('Boolean(data.game_prompt)')) {
+  failures.push('useZiddSession must not treat an unscoped prior game card as proof that the current learner turn completed.');
+}
+
+for (const token of [
+  'Boolean(pending)',
+  'data.game_prompt?.turn_id === currentUserTurnId',
+  'Boolean(data.state?.module_done)',
+  'Boolean(data.state?.session_over)',
+  "data.state?.status === 'ended'",
+  'Boolean(data.state?.simulation_report)',
+]) {
+  if (!hook.includes(token)) {
+    failures.push(`useZiddSession completed-turn recovery must recognize ${token} as a terminal visible outcome.`);
+  }
+}
+
+for (const token of [
+  'streamEventRevisionRef',
+  'const recoveryRevision = streamEventRevisionRef.current',
+  'streamEventRevisionRef.current === recoveryRevision',
+  'if (shouldApply && !shouldApply())',
+]) {
+  if (!hook.includes(token)) {
+    failures.push(`useZiddSession live transcript recovery must not overwrite newer SSE events; missing ${token}.`);
+  }
 }
 
 if (!sessionPage.includes('openingRetryActive')) {
