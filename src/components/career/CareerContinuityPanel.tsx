@@ -54,23 +54,37 @@ function skillLabel(value?: string): string {
 }
 
 function reportStatus(report: SessionReportSummary): string {
-  if (report.status === 'final') return 'Final report';
-  if (report.status === 'partial') return 'Partial report';
-  if (report.status === 'insufficient_evidence') return 'Insufficient evidence';
-  if (report.status === 'invalid_simulation') return 'Simulator issue';
-  return report.status.replace(/_/g, ' ');
+  const persistedValidity = String(
+    report.validity_json?.validity_status
+    || report.validity_json?.status
+    || report.status,
+  ).trim();
+  if (persistedValidity === 'final') return 'Final report';
+  if (persistedValidity === 'partial') return 'Partial report';
+  if (persistedValidity === 'insufficient_evidence') return 'Insufficient evidence';
+  if (persistedValidity === 'invalid_simulation') return 'Simulator issue';
+  return persistedValidity.replace(/_/g, ' ');
 }
 
 function reportHref(report: SessionReportSummary): string {
   const route = isGroupDiscussion(report.task_type, report.module_id) ? 'gd' : 'interview';
-  return `/simulator/${route}?session_id=${encodeURIComponent(report.session_id)}`;
+  const params = new URLSearchParams({
+    session_id: report.session_id,
+    return_to: 'career',
+  });
+  return `/simulator/${route}?${params.toString()}`;
 }
 
 function reportItem(report: SessionReportSummary): ContinuityItem {
   const label = moduleLabel(report.task_type, report.module_id);
   const context = report.public_context_json || {};
   const contextTitle = String(context.role_focus || context.topic || context.scenario_label || '').trim();
-  const isScored = !['insufficient_evidence', 'invalid_simulation'].includes(report.status);
+  const persistedValidity = String(
+    report.validity_json?.validity_status
+    || report.validity_json?.status
+    || report.status,
+  ).trim();
+  const isScored = !['insufficient_evidence', 'invalid_simulation'].includes(persistedValidity);
   return {
     id: report.report_id || `report:${report.session_id}`,
     sessionId: report.session_id,

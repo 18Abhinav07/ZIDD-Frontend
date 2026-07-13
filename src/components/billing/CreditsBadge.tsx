@@ -63,6 +63,11 @@ export const CreditsBadge = forwardRef<CreditsBadgeHandle, CreditsBadgeProps>(
     return (
       <>
         <button
+          aria-label={unavailable
+            ? 'Credit balance unavailable, retry'
+            : unlimited
+              ? 'Unlimited credits, open credit packs'
+              : `${label} credits, open credit packs`}
           onClick={() => {
             if (unavailable) {
               refresh();
@@ -71,7 +76,7 @@ export const CreditsBadge = forwardRef<CreditsBadgeHandle, CreditsBadgeProps>(
             setPacksOpen(true);
           }}
           className={cn(
-            'px-4 py-2 rounded-full bg-white/60 backdrop-blur border shadow-sm flex items-center gap-2 text-slate-800 transition-all hover:bg-white active:scale-95',
+            'px-2.5 py-2 sm:px-4 rounded-full bg-white/60 backdrop-blur border shadow-sm flex items-center gap-1.5 sm:gap-2 text-slate-800 transition-all hover:bg-white active:scale-95',
             unavailable ? 'border-amber-300/70' : 'border-slate-200/50',
             className
           )}
@@ -86,7 +91,7 @@ export const CreditsBadge = forwardRef<CreditsBadgeHandle, CreditsBadgeProps>(
             <span className="text-sm font-bold font-mono leading-none">{label}</span>
           )}
           {!unlimited && (
-            <span className="text-[11px] uppercase tracking-widest font-bold text-slate-600 leading-none">
+            <span className="hidden text-[11px] uppercase tracking-widest font-bold text-slate-600 leading-none sm:inline">
               credits
             </span>
           )}

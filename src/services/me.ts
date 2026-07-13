@@ -178,12 +178,14 @@ const ME_ACTIVITY_CACHE_MS = 30_000;
 const ME_LEARNING_GRAPH_CACHE_MS = 30_000;
 let cachedMe: { authKey: string; value: MeResponse; expiresAt: number } | null = null;
 let meRequest: { authKey: string; promise: Promise<MeResponse> } | null = null;
+let meCacheGeneration = 0;
 let cachedActivity: { authKey: string; value: MeActivity; expiresAt: number } | null = null;
 let activityRequest: { authKey: string; promise: Promise<MeActivity> } | null = null;
 let cachedLearningGraph: { authKey: string; value: MeLearningGraph; expiresAt: number } | null = null;
 let learningGraphRequest: { authKey: string; promise: Promise<MeLearningGraph> } | null = null;
 
 export function invalidateMeCache() {
+  meCacheGeneration += 1;
   cachedMe = null;
   meRequest = null;
 }
@@ -205,13 +207,16 @@ export async function getMe(): Promise<MeResponse> {
     return Promise.resolve(cachedMe.value);
   }
   if (!meRequest || meRequest.authKey !== authKey) {
+    const requestGeneration = meCacheGeneration;
     const promise = apiFetch('/me')
       .then((me: MeResponse) => {
-        cachedMe = { authKey, value: me, expiresAt: Date.now() + ME_CACHE_MS };
+        if (meCacheGeneration === requestGeneration) {
+          cachedMe = { authKey, value: me, expiresAt: Date.now() + ME_CACHE_MS };
+        }
         return me;
       })
       .finally(() => {
-        if (meRequest?.authKey === authKey) meRequest = null;
+        if (meRequest?.promise === promise) meRequest = null;
       });
     meRequest = { authKey, promise };
   }
@@ -262,12 +267,14 @@ export async function getMeLearningGraph(options: { force?: boolean } = {}): Pro
   return learningGraphRequest.promise;
 }
 
-export function updatePreferences(patch: Partial<UserPreferences>): Promise<{ preferences: UserPreferences }> {
+export async function updatePreferences(patch: Partial<UserPreferences>): Promise<{ preferences: UserPreferences }> {
   invalidateMeCache();
-  return apiFetch('/me/preferences', {
+  const response = await apiFetch('/me/preferences', {
     method: 'PATCH',
     body: JSON.stringify(patch),
   });
+  invalidateMeCache();
+  return response;
 }
 
 export function homeForMe(me: MeResponse | null | undefined): string {

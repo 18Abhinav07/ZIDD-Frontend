@@ -53,6 +53,8 @@ function InterviewContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const sessionId = searchParams.get('session_id') || '';
+  const reportReturnHref = searchParams.get('return_to') === 'career' ? '/career' : '/map';
+  const reportReturnLabel = reportReturnHref === '/career' ? 'Return to Career' : 'Return to Career Map';
   const {
     messages,
     state,
@@ -160,7 +162,7 @@ function InterviewContent() {
 
   const handleLeave = () => {
     disconnect();
-    router.push('/map');
+    router.push(reportReturnHref);
   };
 
   const interviewerName = state?.personas?.[0]?.name || 'Interviewer';
@@ -272,9 +274,9 @@ function InterviewContent() {
           report={report}
           simTurn={simTurn}
           maxRounds={MAX_SIM_ROUNDS}
-          onClose={() => router.push('/map')}
-          practiceActionLabel="Return to Career Map"
-          onPracticeAgain={() => router.push('/map')}
+          onClose={() => router.push(reportReturnHref)}
+          practiceActionLabel={reportReturnLabel}
+          onPracticeAgain={() => router.push(reportReturnHref)}
         />
       )}
 

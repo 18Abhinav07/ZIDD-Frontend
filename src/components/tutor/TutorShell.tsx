@@ -158,6 +158,9 @@ export const TutorShell: React.FC<TutorShellProps> = ({
     && statusLabel
     && phase.trim().toLocaleLowerCase() === statusLabel.trim().toLocaleLowerCase()
   );
+  const terminalStatus = ['complete', 'blocked'].includes(
+    String(statusLabel || '').trim().toLocaleLowerCase(),
+  );
 
   return (
     <div className={cn("relative h-[100dvh] w-full overflow-hidden flex flex-col font-body bg-background transition-colors duration-500", mode === 'professional' ? 'mode-professional' : 'mode-gamified')}>
@@ -187,7 +190,7 @@ export const TutorShell: React.FC<TutorShellProps> = ({
                <h1 className="line-clamp-2 text-xs sm:text-sm font-bold uppercase tracking-[0.1em] leading-tight text-foreground">{nodeTitle || 'Skill Module'}</h1>
             </div>
             <p className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold uppercase leading-tight tracking-widest text-muted-foreground">
-              {!phaseMatchesStatus && (
+              {!phaseMatchesStatus && !terminalStatus && (
                 <span className="min-w-0 max-w-full truncate">{phase || 'Learning Path'}</span>
               )}
               {statusLabel && (

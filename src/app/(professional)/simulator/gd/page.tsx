@@ -43,6 +43,8 @@ function GDContent() {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get('session_id') || '';
   const topicHint = searchParams.get('topic') || '';
+  const reportReturnHref = searchParams.get('return_to') === 'career' ? '/career' : '/map';
+  const reportReturnLabel = reportReturnHref === '/career' ? 'Return to Career' : 'Return to Career Map';
   // Pre-session briefing: show until dismissed, but never block restore.
   const [briefingDismissed, setBriefingDismissed] = useState(false);
 
@@ -153,7 +155,7 @@ function GDContent() {
 
   const handleLeave = () => {
     disconnect();
-    router.push('/map');
+    router.push(reportReturnHref);
   };
 
   const latestSpeaker = messages[messages.length - 1]?.speaker_name;
@@ -311,9 +313,9 @@ function GDContent() {
           report={report}
           simTurn={simTurn}
           maxRounds={MAX_SIM_ROUNDS}
-          onClose={() => router.push('/map')}
-          practiceActionLabel="Return to Career Map"
-          onPracticeAgain={() => router.push('/map')}
+          onClose={() => router.push(reportReturnHref)}
+          practiceActionLabel={reportReturnLabel}
+          onPracticeAgain={() => router.push(reportReturnHref)}
         />
       )}
 

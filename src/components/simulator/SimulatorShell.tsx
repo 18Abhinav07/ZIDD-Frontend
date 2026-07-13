@@ -710,6 +710,9 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
       ? 'Rising tension — you\'re engaging assertively. Keep challenging ideas with specific points.'
       : 'Low tension — build your argument. Try making a direct claim or challenging a point.';
   const resolvedStatusLabel = statusLabel ?? (isComplete ? 'Complete' : isClosing ? 'Scoring' : isStreaming ? 'Live' : 'Ready');
+  const transcriptPhase = isComplete || isClosing ? resolvedStatusLabel : phase;
+  const completedRounds = Math.min(Math.max(round, 0), maxRounds);
+  const roundProgressLabel = type === 'interview' ? 'Responses' : 'Discussion turns';
   const statusDotClass = isComplete
     ? 'bg-indigo-500'
     : isClosing
@@ -725,7 +728,7 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <header className={cn(
-        "relative z-20 px-8 py-4 border-b flex justify-between items-center shrink-0",
+        "relative z-20 flex shrink-0 items-center justify-between gap-2 border-b px-3 py-3 sm:px-8 sm:py-4",
         type === 'interview'
           ? "bg-white border-slate-100 shadow-[0_1px_0_rgba(0,0,0,0.04)]"
           : "bg-white/80 backdrop-blur-xl border-slate-200 shadow-sm"
@@ -739,7 +742,7 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
           </span>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex min-w-0 items-center gap-1.5 sm:gap-4">
           {type === 'gd' && (
             // Tension meter with tooltip on hover
             <div className="hidden sm:flex items-center gap-3 pr-4 border-r border-slate-200 group relative">
@@ -766,9 +769,9 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
           )}
 
           {onEnd && (
-            <div className="flex items-center gap-2.5 pr-3 sm:pr-4 sm:border-r sm:border-slate-200">
+            <div className="flex items-center gap-1 pr-1 sm:gap-2.5 sm:pr-4 sm:border-r sm:border-slate-200">
               <span className="hidden sm:inline text-[9px] uppercase tracking-[0.2em] text-slate-500 font-black tabular-nums">
-                Round {Math.min(Math.max(round, 1), maxRounds)}/{maxRounds}
+                {roundProgressLabel} {completedRounds}/{maxRounds}
               </span>
               {!isComplete && (
                 <button
@@ -776,9 +779,9 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
                   onClick={onEnd}
                   disabled={isClosing || isEndDisabled}
                   aria-label="End the session and request a report"
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-900 text-white text-[9px] font-black uppercase tracking-[0.18em] hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-white text-[9px] font-black uppercase tracking-[0.18em] transition-colors hover:bg-slate-800 disabled:pointer-events-none disabled:opacity-50 sm:h-auto sm:w-auto sm:gap-1.5 sm:px-3.5 sm:py-1.5"
                 >
-                  {isClosing ? 'Scoring…' : 'End & Score'}
+                  <span className="hidden sm:inline">{isClosing ? 'Scoring…' : 'End & Score'}</span>
                   <ExitIcon className="w-3 h-3" />
                 </button>
               )}
@@ -787,7 +790,7 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
 
           {headerExtra}
 
-          <div className="flex items-center gap-2 px-3.5 py-1.5 bg-slate-50 rounded-full border border-slate-200">
+          <div className="flex min-w-0 items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-1.5 sm:gap-2 sm:px-3.5">
             <span className={cn(
               "w-1.5 h-1.5 rounded-full",
               statusDotClass
@@ -825,7 +828,7 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
             <TranscriptFeed
               messages={messages}
               isStreaming={isStreaming}
-              phase={phase}
+              phase={transcriptPhase}
               scrollRef={scrollRef}
               type="gd"
               tensionAnnotations={tensionAnnotations}
@@ -846,7 +849,7 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
               <TranscriptFeed
                 messages={messages}
                 isStreaming={isStreaming}
-                phase={phase}
+                phase={transcriptPhase}
                 scrollRef={scrollRef}
                 type="gd"
                 tensionAnnotations={tensionAnnotations}
@@ -902,7 +905,7 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
             <TranscriptFeed
               messages={messages}
               isStreaming={isStreaming}
-              phase={phase}
+              phase={transcriptPhase}
               scrollRef={scrollRef}
               type="interview"
             />
@@ -925,7 +928,7 @@ export const SimulatorShell: React.FC<SimulatorShellProps> = ({
               <TranscriptFeed
                 messages={messages}
                 isStreaming={isStreaming}
-                phase={phase}
+                phase={transcriptPhase}
                 scrollRef={scrollRef}
                 type="interview"
               />

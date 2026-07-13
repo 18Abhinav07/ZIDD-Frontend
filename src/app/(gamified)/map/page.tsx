@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
 import { friendlySessionStartErrorMessage, startSessionWithPaywall } from '@/services/billing';
-import { getMe, getMeLearningGraph, homeForMe, type CareerProfile, type ModuleId } from '@/services/me';
+import { getMe, getMeLearningGraph, homeForMe, updatePreferences, type CareerProfile, type ModuleId } from '@/services/me';
 import { getProgressionMap } from '@/services/progression';
 import { PathMap, type ProgressNode } from '@/components/shared/PathMap';
 import { ScenarioPicker } from '@/components/shared/ScenarioPicker';
@@ -76,7 +76,13 @@ export default function MapPage() {
         setLoading(true);
         setError('');
         const profile = await getMe();
-        const moduleId = profile.preferences.active_module;
+        const query = new URLSearchParams(window.location.search);
+        const requestedModule = query.get('module');
+        const requestedMode = query.get('mode');
+        const routeModule = requestedModule === 'interview' || requestedModule === 'group_discussion'
+          ? requestedModule
+          : null;
+        const moduleId = routeModule || profile.preferences.active_module;
         if (!moduleId) {
           router.replace(homeForMe(profile));
           return;
@@ -85,9 +91,27 @@ export default function MapPage() {
           router.replace('/subjects');
           return;
         }
+        const testMode = routeModule && requestedMode === 'test'
+          ? true
+          : routeModule && requestedMode === 'prep'
+            ? false
+            : Boolean(profile.preferences.test_mode);
+        if (
+          routeModule
+          && (
+            profile.preferences.active_module !== routeModule
+            || Boolean(profile.preferences.test_mode) !== testMode
+          )
+        ) {
+          await updatePreferences({
+            active_module: routeModule,
+            pending_module: null,
+            test_mode: testMode,
+          });
+        }
         setCurrentModule(moduleId);
         setCareerProfile(profile.career_profile || {});
-        setIsTestMode(Boolean(profile.preferences.test_mode));
+        setIsTestMode(testMode);
         const [data, learningGraph] = await Promise.all([
           getProgressionMap(moduleId, { force: reloadKey > 0 }),
           getMeLearningGraph({ force: reloadKey > 0 }).catch(() => null),

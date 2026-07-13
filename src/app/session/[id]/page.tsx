@@ -87,7 +87,6 @@ export default function SessionPage({ params }: { params: { id: string } }) {
   const reviewMode = Boolean(
     requestedReviewMode
     && requestedReviewNode
-    && (state?.status === 'ended' || state?.session_over)
     && requestedReviewNode === persistedReviewNode
   );
   const reviewNode = reviewMode ? requestedReviewNode : '';
@@ -191,6 +190,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
     || backendBlocked
     || (state?.input_allowed === false && !checkpointReached && !moduleComplete);
   const inputBlocked = openingRetryActive
+    || reviewMode
     || isBootstrapping
     || isRecoveringTurn
     || Boolean(pendingTransition)
@@ -432,9 +432,27 @@ export default function SessionPage({ params }: { params: { id: string } }) {
     setCheckpointStartAction(null);
   };
 
+  const pathHrefForSession = () => {
+    const taskType = String(state?.task_type || '');
+    const moduleId = taskType.startsWith('interview')
+      ? 'interview'
+      : taskType.startsWith('gd')
+        ? 'group_discussion'
+        : state?.module_id;
+    const params = new URLSearchParams();
+    if (moduleId === 'interview' || moduleId === 'group_discussion') {
+      params.set('module', moduleId);
+      params.set('mode', taskType.endsWith('_test') ? 'test' : 'prep');
+    }
+    const focusNode = state?.handoff_source_node || state?.competency_node;
+    if (focusNode) params.set('focus', focusNode);
+    const query = params.toString();
+    return query ? `/map?${query}` : '/map';
+  };
+
   const handleReturnToPath = () => {
     disconnect();
-    router.push('/map');
+    router.push(pathHrefForSession());
   };
 
   const isProfessional = Boolean(
@@ -551,7 +569,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
               </motion.div>
             ))}
 
-            {transitionActive && (
+            {transitionActive && !reviewMode && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -639,6 +657,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
         </div>
 
         {/* Input / Action Area */}
+        {!reviewMode && (
         <div className="relative z-20 shrink-0 max-h-[65dvh] overflow-y-auto border-t border-slate-100 bg-white px-4 py-4 sm:px-6 lg:px-10">
            <div className="relative max-w-3xl mx-auto">
               <AnimatePresence>
@@ -764,6 +783,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
               </AnimatePresence>
            </div>
         </div>
+        )}
         
         {sessionRecap && recapVisible && (
           <SessionRecap
@@ -846,7 +866,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
               Stay
             </button>
             <button
-              onClick={() => { disconnect(); router.push('/map'); }}
+              onClick={handleReturnToPath}
               className="flex-1 px-6 py-3 rounded-full bg-slate-900 text-white font-bold text-sm hover:bg-slate-800 transition-colors"
             >
               Leave

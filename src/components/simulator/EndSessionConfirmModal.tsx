@@ -113,6 +113,7 @@ export function EndSessionConfirmModal({
     integrityFlagCount,
   });
   const testName = type === 'gd' ? 'group discussion' : 'interview';
+  const completedRounds = Math.min(Math.max(round, 0), maxRounds);
 
   return (
     <div
@@ -134,7 +135,7 @@ export function EndSessionConfirmModal({
             End and generate the report?
           </h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            You are at round {Math.min(Math.max(round, 1), maxRounds)}/{maxRounds}, with {scorableTurns}/{minScorableTurns} score-eligible answers.
+            You have completed {completedRounds}/{maxRounds} rounds, with {scorableTurns}/{minScorableTurns} score-eligible answers.
           </p>
         </div>
 

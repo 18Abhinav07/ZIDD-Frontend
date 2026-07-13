@@ -187,7 +187,12 @@ export default function CareerPage() {
   const openPath = async (moduleId: ModuleId) => {
     if (openingModule) return;
     if (me?.preferences.active_module === moduleId && me.preferences.test_mode != null) {
-      router.push('/map');
+      setOpeningModule(moduleId);
+      const params = new URLSearchParams({
+        module: moduleId,
+        mode: me.preferences.test_mode ? 'test' : 'prep',
+      });
+      router.push(`/map?${params.toString()}`);
       return;
     }
     setActionError('');
@@ -232,7 +237,9 @@ export default function CareerPage() {
       const res = await updatePreferences({ active_module: moduleId, pending_module: null, test_mode: false });
       setMe((m) => (m ? { ...m, preferences: res.preferences } : m));
       void loadMe(true).catch(() => null);
-      router.push(careerPracticeHref(item));
+      const href = careerPracticeHref(item);
+      const separator = href.includes('?') ? '&' : '?';
+      router.push(`${href}${separator}module=${encodeURIComponent(moduleId)}&mode=prep`);
     } catch {
       setActionError('Could not open this practice skill. Please try again.');
       setOpeningModule(null);
@@ -241,7 +248,10 @@ export default function CareerPage() {
 
   const onPracticeCareerFocus = () => onPracticeCareerItem(careerFocus);
 
-  const pathHref = myPathForMe(me);
+  const basePathHref = myPathForMe(me);
+  const pathHref = basePathHref === '/map' && activeModule && me?.preferences.test_mode != null
+    ? `/map?module=${encodeURIComponent(activeModule)}&mode=${me.preferences.test_mode ? 'test' : 'prep'}`
+    : basePathHref;
 
   const activeLabel = PATHS.find((p) => p.id === activeModule)?.label;
   const primaryRole = me?.career_profile?.target_roles?.[0];
