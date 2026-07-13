@@ -282,7 +282,9 @@ if (!checkpointStartBody.includes('isBootstrapping')) {
 }
 
 const confirmNextSkillBody = sessionPage.match(/const handleConfirmNextSkill = async \(\) => \{[\s\S]*?\n  \};/)?.[0] ?? '';
-if (!confirmNextSkillBody.includes('startCheckpointAction(checkpointStartAction, true)')) {
+if (
+  !/startCheckpointAction\(\s*checkpointStartAction,\s*true,\s*checkpointReattemptConfirmed \|\| checkpointStartAction === 'practice',\s*\)/.test(confirmNextSkillBody)
+) {
   failures.push('Paywall confirmation must retry Start Next Skill with confirm: true.');
 }
 

@@ -106,8 +106,9 @@ if (!sessionPage.includes('startIdRef.current = clientStartId') || /catch \(err\
 
 for (const token of [
   'handleKeepPracticing',
-  "reattempt_confirmed: action === 'practice'",
-  "source_action: action === 'practice' ? 'reattempt' : 'advance'",
+  'reattempt_confirmed: reattemptConfirmed',
+  "? 'reattempt'",
+  "? 'advance_reattempt'",
   'source_session_id: id',
   'source_transition_id: transitionId',
 ]) {

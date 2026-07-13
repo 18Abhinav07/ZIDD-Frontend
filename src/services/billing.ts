@@ -116,7 +116,7 @@ export interface StartSessionArgs {
   client_start_id: string;
   source_session_id?: string;
   source_transition_id?: string;
-  source_action?: 'advance' | 'reattempt';
+  source_action?: 'advance' | 'reattempt' | 'advance_reattempt';
 }
 
 // 2xx -> { ok: true, session_id, … } or normalized { ok: false, paywall };

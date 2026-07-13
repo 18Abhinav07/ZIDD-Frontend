@@ -24,6 +24,11 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+function sessionStartErrorCode(err: unknown): string {
+  if (!err || typeof err !== 'object' || !('code' in err)) return '';
+  return String((err as { code?: unknown }).code || '').trim().toLowerCase();
+}
+
 const SessionMessageSkeleton = memo(function SessionMessageSkeleton({ delay = 0, isUser = false }: { delay?: number, isUser?: boolean }) {
   return (
     <div className={cn(
@@ -84,6 +89,8 @@ export default function SessionPage({ params }: { params: { id: string } }) {
   const [nextSkillError, setNextSkillError] = useState<string | null>(null);
   const [nextSkillPaywall, setNextSkillPaywall] = useState<PaywallDetail | null>(null);
   const [checkpointStartAction, setCheckpointStartAction] = useState<'next' | 'practice' | null>(null);
+  const [checkpointReattemptConfirmed, setCheckpointReattemptConfirmed] = useState(false);
+  const [showNextSkillReattemptConfirm, setShowNextSkillReattemptConfirm] = useState(false);
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
   const submittingRef = useRef(false);
@@ -260,6 +267,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
   const startCheckpointAction = async (
     action: 'next' | 'practice',
     confirm: boolean,
+    reattemptConfirmed = action === 'practice',
   ) => {
     if (isBootstrapping || isStreaming || isSubmitting || submittingRef.current) return;
     const nextNodeId = action === 'practice'
@@ -279,6 +287,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
     submittingRef.current = true;
     setIsSubmitting(true);
     setCheckpointStartAction(action);
+    setCheckpointReattemptConfirmed(reattemptConfirmed);
     setNextSkillError(null);
     const startIdRef = action === 'practice'
       ? pendingPracticeStartIdRef
@@ -294,16 +303,21 @@ export default function SessionPage({ params }: { params: { id: string } }) {
         competency_node: nextNodeId,
         test_mode: false,
         confirm,
-        reattempt_confirmed: action === 'practice',
+        reattempt_confirmed: reattemptConfirmed,
         client_start_id: clientStartId,
         source_session_id: id,
         source_transition_id: transitionId,
-        source_action: action === 'practice' ? 'reattempt' : 'advance',
+        source_action: action === 'practice'
+          ? 'reattempt'
+          : reattemptConfirmed
+            ? 'advance_reattempt'
+            : 'advance',
       });
       if (!ownsCheckpointRequest()) return;
       if (result.ok) {
         startIdRef.current = null;
         setCheckpointStartAction(null);
+        setCheckpointReattemptConfirmed(false);
         void loadBalance(true).catch(() => null);
         router.push(`/session/${result.session_id}`);
         return;
@@ -311,6 +325,14 @@ export default function SessionPage({ params }: { params: { id: string } }) {
       setNextSkillPaywall(result.paywall);
     } catch (err) {
       if (!ownsCheckpointRequest()) return;
+      if (action === 'next' && sessionStartErrorCode(err) === 'completed_node') {
+        // Confirmation changes the start payload, so it needs a fresh idempotency key.
+        startIdRef.current = null;
+        setNextSkillError(null);
+        setCheckpointReattemptConfirmed(true);
+        setShowNextSkillReattemptConfirm(true);
+        return;
+      }
       setNextSkillError(friendlySessionStartErrorMessage(
         err,
         action === 'practice' ? 'Could not restart this skill.' : 'Could not start the next skill.',
@@ -379,7 +401,11 @@ export default function SessionPage({ params }: { params: { id: string } }) {
       await startTerminalPractice(true);
       return;
     }
-    await startCheckpointAction(checkpointStartAction, true);
+    await startCheckpointAction(
+      checkpointStartAction,
+      true,
+      checkpointReattemptConfirmed || checkpointStartAction === 'practice',
+    );
   };
 
   const handleNextSkillPaywallClose = () => {
@@ -389,6 +415,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
       pendingNextStartIdRef.current = null;
     }
     setNextSkillPaywall(null);
+    setCheckpointReattemptConfirmed(false);
     setNextSkillError(null);
     setCheckpointStartAction(null);
   };
@@ -740,14 +767,58 @@ export default function SessionPage({ params }: { params: { id: string } }) {
         )}
       </div>
     </TutorShell>
-    <PaywallModal
+      <PaywallModal
       paywall={nextSkillPaywall}
       onClose={handleNextSkillPaywallClose}
       onConfirm={handleConfirmNextSkill}
       onBalanceChange={() => void loadBalance(true).catch(() => null)}
       error={nextSkillError}
       confirming={isSubmitting}
-    />
+      />
+      {showNextSkillReattemptConfirm && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/40 px-4 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="next-skill-reattempt-title"
+            className="w-full max-w-sm rounded-3xl border border-slate-200 bg-white p-7 shadow-2xl"
+          >
+            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-indigo-600">
+              Checkpoint already saved
+            </p>
+            <h2 id="next-skill-reattempt-title" className="mt-2 font-display text-3xl tracking-tight text-slate-900">
+              Practice the next skill again?
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-slate-500">
+              Your previous checkpoint stays saved. This starts a fresh attempt for{' '}
+              {pendingTransition?.to_title || 'the next skill'}. Any required credits will be shown before it starts.
+            </p>
+            <div className="mt-7 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowNextSkillReattemptConfirm(false);
+                  setCheckpointReattemptConfirmed(false);
+                  setCheckpointStartAction(null);
+                }}
+                className="flex-1 rounded-full border border-slate-200 px-5 py-3 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowNextSkillReattemptConfirm(false);
+                  void startCheckpointAction('next', false, true);
+                }}
+                className="flex-1 rounded-full bg-slate-900 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-slate-800"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     {confirmingExit && (
       <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm">
         <div className="bg-white rounded-[2rem] p-8 max-w-sm w-full mx-4 shadow-2xl">
