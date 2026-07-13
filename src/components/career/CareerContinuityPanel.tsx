@@ -196,7 +196,10 @@ export function CareerContinuityPanel({
   compact?: boolean;
 }) {
   const router = useRouter();
-  const items = careerContinuityItems(graph).slice(0, compact ? 3 : 5);
+  const allItems = careerContinuityItems(graph);
+  const activeItems = allItems.filter((item) => item.active);
+  const historyItems = allItems.filter((item) => !item.active).slice(0, compact ? 3 : 5);
+  const items = [...activeItems, ...historyItems];
   if (!items.length) return null;
 
   return (
