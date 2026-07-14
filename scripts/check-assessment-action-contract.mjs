@@ -92,14 +92,14 @@ for (const [name, source] of [
   if (!source.includes('const submitDraft = async')) {
     failures.push(`${name} must centralize sending so typed quick actions and manual sends use the same guarded payload path.`);
   }
-  if (!source.includes('setInputValue(action.value.trim())')) {
-    failures.push(`${name} quick actions must stage their draft in the composer instead of silently submitting as the learner.`);
-  }
   if (!source.includes('setPendingAssessmentAction(actionForTurn)')) {
-    failures.push(`${name} must still stage quick action metadata when preserving an existing learner draft.`);
+    failures.push(`${name} must restore typed quick-action metadata if a direct control submission cannot start.`);
   }
-  if (source.includes('void submitDraft(action.value.trim(), actionForTurn)')) {
-    failures.push(`${name} quick actions must not auto-submit generated learner text without an explicit Send action.`);
+  if (!source.includes('void submitDraft(action.value.trim(), actionForTurn)')) {
+    failures.push(`${name} quick actions must execute their explicit typed control through the guarded submit path.`);
+  }
+  if (!/const handleQuickAction[\s\S]{0,220}inputDisabled\s*\|\|\s*inputValue\.trim\(\)/.test(source)) {
+    failures.push(`${name} quick actions must remain inert while recovery owns the turn or the learner has a draft.`);
   }
 }
 

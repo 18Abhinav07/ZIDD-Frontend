@@ -25,6 +25,23 @@ function isModeratorPersona(persona: SimPersona) {
   return persona.role_type === 'moderator' || persona.name.toLowerCase() === 'moderator';
 }
 
+function panelistRequestFor(persona: SimPersona) {
+  const speakerId = persona.speaker_id.toLowerCase();
+  if (speakerId === 'data_driven_analyst') {
+    return `${persona.name}, what evidence or metric matters most here?`;
+  }
+  if (speakerId === 'consensus_builder') {
+    return `${persona.name}, what workable common ground do you see here?`;
+  }
+  if (speakerId === 'devils_advocate' || speakerId === 'aggressive_challenger') {
+    return `${persona.name}, what is the strongest risk or counterargument here?`;
+  }
+  if (speakerId === 'quiet_expert') {
+    return `${persona.name}, what implementation detail are we missing?`;
+  }
+  return `${persona.name}, what is your view on this point?`;
+}
+
 function scorableAssessmentTurns(events?: Array<Record<string, unknown>>) {
   return (events || []).filter((event) => (
     event.event_type === 'analysis' && event.scorable === true
@@ -197,7 +214,7 @@ function GDContent() {
   const quickActions = [
     ...activeDebaters.map((persona) => ({
       label: `Ask ${persona.name.split(' ')[0]}`,
-      value: `${persona.name}, what is your strongest challenge here?`,
+      value: panelistRequestFor(persona),
       icon: 'ask' as const,
       action: {
         kind: 'ask_panelist' as const,
@@ -246,7 +263,11 @@ function GDContent() {
   const coverageRequired = typeof coverageMap?.required_unique === 'number'
     ? coverageMap.required_unique
     : undefined;
-  const integrityFlagCount = state?.assessment_state?.validity_flags?.length ?? 0;
+  const integrityFlagCount = state?.assessment_state?.progress?.integrity_note_count
+    ?? state?.assessment_state?.validity_flags?.length
+    ?? 0;
+  const reportAffectingFlagCount = state?.assessment_state?.progress?.report_affecting_flag_count
+    ?? integrityFlagCount;
   const leaveNotice = scorableTurns >= minScorableTurns
     ? `Your transcript is saved, but leaving now will not generate the scored GD report. Use End & Score if you want the report for this attempt. Current evidence: ${scorableTurns}/${minScorableTurns} score-eligible answers.`
     : `Your transcript is saved, but leaving now will not generate a reliable scored GD report. Current evidence: ${scorableTurns}/${minScorableTurns} score-eligible answers.`;
@@ -333,6 +354,7 @@ function GDContent() {
         coverageCovered={coverageCovered}
         coverageRequired={coverageRequired}
         integrityFlagCount={integrityFlagCount}
+        reportAffectingFlagCount={reportAffectingFlagCount}
         isClosing={isClosing}
         isBusy={isEndDisabled}
         showCancel={!shouldClose}

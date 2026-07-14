@@ -8,9 +8,6 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
 const billing = read('src/services/billing.ts');
 const mapPage = read('src/app/(gamified)/map/page.tsx');
-const subjectsPage = read('src/app/subjects/page.tsx');
-const classPage = read('src/app/subjects/class/[classNo]/page.tsx');
-const testPage = read('src/app/subjects/test/[testId]/page.tsx');
 const careerPage = read('src/app/career/page.tsx');
 const profilePage = read('src/app/profile/page.tsx');
 const meService = read('src/services/me.ts');
@@ -69,38 +66,6 @@ if (/return raw && raw\.length < 160\s*\?\s*raw/.test(mapPage)) {
 
 if (!mapPage.includes('friendlySessionStartErrorMessage')) {
   failures.push('map startErrorMessage must use the shared friendly session-start copy helper');
-}
-
-if (!subjectsPage.includes('loadClasses') || !subjectsPage.includes('Retry')) {
-  failures.push('subjects page top-level load failure must be retryable.');
-}
-
-const classLoadFailureBlock = classPage.match(/error && !detail \? \([\s\S]{0,1000}Retry[\s\S]{0,250}\) : detail/)?.[0] ?? '';
-if (!classLoadFailureBlock.includes('Retry') || !classLoadFailureBlock.includes('loadClass')) {
-  failures.push('class page top-level load failure must show a retry control that reloads the class.');
-}
-
-const testLoadFailureBlock = testPage.match(/error && !test \? \([\s\S]{0,1000}Retry[\s\S]{0,250}\) : result/)?.[0] ?? '';
-if (!testPage.includes('loadTest') || !testLoadFailureBlock.includes('Retry') || !testLoadFailureBlock.includes('loadTest')) {
-  failures.push('chapter test page top-level load failure must show a retry control that reloads the test.');
-}
-
-if (/getServerProgress\(classNo\)[\s\S]{0,260}\.catch\(\(\)\s*=>\s*\{\s*\}\)/.test(classPage)) {
-  failures.push('class page must not silently swallow durable /school/progress failures');
-}
-
-for (const token of ['progressError', 'Could not load saved progress', 'Progress unavailable', 'Unavailable', 'Retry']) {
-  if (!classPage.includes(token)) {
-    failures.push(`class page progress failure state must include ${token}`);
-  }
-}
-
-if (classPage.includes('Showing your last cached view')) {
-  failures.push('class page must not claim a cached progress view when product progress is server-owned.');
-}
-
-if (!classPage.includes('disabled={starting !== null || progressUnavailable}')) {
-  failures.push('class page must disable lesson starts while saved progress is unavailable.');
 }
 
 if (/loadActivity\(\)[\s\S]{0,260}\.catch\(\(\)\s*=>\s*\{\s*[^}]*setActivity\(null\);?\s*\}\)/.test(careerPage)) {
@@ -315,7 +280,7 @@ if (!/grid-cols-1[\s\S]{0,100}sm:grid-cols-3/.test(reportModal)) {
   failures.push('SimulationReportModal evidence and score grids must collapse to one column on narrow screens.');
 }
 
-for (const token of ['coverageCovered?: number', 'coverageRequired?: number', 'integrityFlagCount?: number', 'Backend validation decides', 'Insufficient answer evidence', 'Insufficient coverage', 'Integrity risk', 'Evidence ready for validation']) {
+for (const token of ['coverageCovered?: number', 'coverageRequired?: number', 'integrityFlagCount?: number', 'reportAffectingFlagCount?: number', 'Backend validation decides', 'Insufficient answer evidence', 'Insufficient coverage', 'Report validity risk', 'Evidence ready for validation']) {
   if (!`${endSessionConfirm}\n${sessionStreamPresentation}`.includes(token)) {
     failures.push(`EndSessionConfirmModal must distinguish backend validation evidence with ${token}.`);
   }
@@ -362,7 +327,11 @@ for (const [name, source] of [['GD', gdSimulatorPage], ['Interview', interviewSi
   if (!/const submitDraft[\s\S]{0,320}inputDisabled/.test(source)) {
     failures.push(`${name} simulator submitDraft must use the shared recovery-aware input guard.`);
   }
-  if (!/const handleQuickAction[\s\S]{0,180}if \(inputDisabled\) return;/.test(source)) {
+  const quickActionRecoveryGuard = (
+    source.includes('if (inputDisabled || inputValue.trim()) return;')
+    || /const handleQuickAction[\s\S]{0,180}if \(inputDisabled\) return;/.test(source)
+  );
+  if (!quickActionRecoveryGuard) {
     failures.push(`${name} simulator quick actions must be inert while recovery owns the turn.`);
   }
   if (!/const handleConfirmEnd = \(\) => \{[\s\S]{0,120}if \(isEndDisabled\) return;/.test(source)) {
@@ -382,7 +351,6 @@ if (
 ) {
   failures.push('SimulationReportModal must switch to a reachable dialog-scroll fallback on short viewports.');
 }
-
 for (const token of ['practiceIsReturnAction', '!practiceIsReturnAction']) {
   if (!reportModal.includes(token)) {
     failures.push(`SimulationReportModal must collapse duplicate return CTAs with ${token}.`);
@@ -463,7 +431,6 @@ for (const token of ['role="dialog"', 'aria-modal="true"', 'aria-labelledby="ses
     failures.push(`SessionRecap must preserve its accessible dialog and focus lifecycle with ${token}.`);
   }
 }
-
 if (!sessionPage.includes("router.push('/map')") || sessionPage.includes("router.push(isProfessional ? '/mode' : '/map')")) {
   failures.push('Prep session leave/not-found/recap routes must return to /map, not /mode.');
 }
@@ -487,7 +454,6 @@ for (const forbidden of ["? 'Paused'", "? 'Checkpoint reached'", 'statusForActiv
     failures.push(`Teaching status must use Preparing, Reviewing, Ready, Complete, or Blocked; remove ${forbidden}.`);
   }
 }
-
 for (const token of ['latestProgressMastery', 'progress?.mastery ?? state?.current_mastery', 'latestProgressStreak', 'latestProgressAttempts']) {
   if (!sessionPage.includes(token)) {
     failures.push(`Session page must render latest progress frames before stale done-state progress with ${token}.`);
@@ -511,7 +477,6 @@ for (const token of [
     failures.push(`Prep readiness and transition reloads must use immutable completed-node evidence with ${token}.`);
   }
 }
-
 for (const forbidden of ['Ready checkpoint reached', 'Ready to advance', 'Proceed to Next Skill']) {
   if (sessionPage.includes(forbidden)) {
     failures.push(`Professional transition copy must not imply mastery/advancement while a current gap may exist: remove "${forbidden}".`);
@@ -538,9 +503,9 @@ if (
 if (
   !tutorShell.includes('const phaseMatchesStatus = Boolean(')
   || !tutorShell.includes('phase.trim().toLocaleLowerCase() === statusLabel.trim().toLocaleLowerCase()')
-  || !tutorShell.includes('{!phaseMatchesStatus && (')
+  || !tutorShell.includes('{!phaseMatchesStatus && !terminalStatus && (')
 ) {
-  failures.push('TutorShell must suppress a phase label only when it duplicates the lifecycle status text.');
+  failures.push('TutorShell must suppress a phase label when it duplicates or conflicts with a terminal lifecycle status.');
 }
 
 if (

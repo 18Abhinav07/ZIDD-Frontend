@@ -13,6 +13,7 @@ interface EndSessionConfirmModalProps {
   coverageCovered?: number;
   coverageRequired?: number;
   integrityFlagCount?: number;
+  reportAffectingFlagCount?: number;
   isClosing?: boolean;
   isBusy?: boolean;
   showCancel?: boolean;
@@ -30,6 +31,7 @@ export function EndSessionConfirmModal({
   coverageCovered,
   coverageRequired,
   integrityFlagCount = 0,
+  reportAffectingFlagCount,
   isClosing = false,
   isBusy = false,
   showCancel = true,
@@ -111,6 +113,7 @@ export function EndSessionConfirmModal({
     coverageCovered,
     coverageRequired,
     integrityFlagCount,
+    reportAffectingFlagCount,
   });
   const testName = type === 'gd' ? 'group discussion' : 'interview';
   const completedRounds = Math.min(Math.max(round, 0), maxRounds);
@@ -156,12 +159,20 @@ export function EndSessionConfirmModal({
               </dd>
             </div>
             <div className="flex items-start justify-between gap-3">
-              <dt className="min-w-0 break-words">Integrity flags</dt>
+              <dt className="min-w-0 break-words">Simulator notes</dt>
               <dd className="shrink-0 font-medium tabular-nums text-slate-900">{integrityFlagCount}</dd>
             </div>
+            {evidence.reportAffectingFlagCount > 0 && (
+              <div className="flex items-start justify-between gap-3">
+                <dt className="min-w-0 break-words">Report-affecting flags</dt>
+                <dd className="shrink-0 font-medium tabular-nums text-slate-900">
+                  {evidence.reportAffectingFlagCount}
+                </dd>
+              </div>
+            )}
           </dl>
           <p className="mt-3 border-t border-slate-200 pt-3 text-xs leading-5 text-slate-500">
-            Backend validation decides whether the report is final, partial, or not scored after the session ends.
+            Backend validation decides whether the report is final, partial, or not scored. Simulator notes are kept separate from learner feedback.
           </p>
         </div>
 

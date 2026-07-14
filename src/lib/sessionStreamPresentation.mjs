@@ -74,6 +74,7 @@ export function simulatorInputBlocked({
  *   coverageCovered?: number,
  *   coverageRequired?: number,
  *   integrityFlagCount?: number,
+ *   reportAffectingFlagCount?: number,
  * }} evidence
  */
 export function endSessionEvidenceFor({
@@ -82,13 +83,18 @@ export function endSessionEvidenceFor({
   coverageCovered,
   coverageRequired,
   integrityFlagCount = 0,
+  reportAffectingFlagCount,
 } = {}) {
   const hasEnoughAnswers = scorableTurns >= minScorableTurns;
   const coverageKnown = typeof coverageCovered === 'number' && typeof coverageRequired === 'number';
   const hasEnoughCoverage = Boolean(
     coverageKnown && (coverageRequired <= 0 || coverageCovered >= coverageRequired)
   );
-  const hasIntegrityRisk = integrityFlagCount > 0;
+  const effectiveReportAffectingFlagCount = typeof reportAffectingFlagCount === 'number'
+    ? Math.max(0, reportAffectingFlagCount)
+    : Math.max(0, integrityFlagCount);
+  const hasSimulatorNotes = integrityFlagCount > 0;
+  const hasIntegrityRisk = effectiveReportAffectingFlagCount > 0;
 
   let label;
   let copy;
@@ -102,8 +108,11 @@ export function endSessionEvidenceFor({
     label = 'Insufficient coverage';
     copy = 'Enough answers exist, but the assessed areas are not broad enough for an expected final report.';
   } else if (hasIntegrityRisk) {
-    label = 'Integrity risk';
-    copy = 'Answer and coverage evidence are present, but simulator integrity flags may make the report partial or invalid.';
+    label = 'Report validity risk';
+    copy = 'Answer and coverage evidence are present, but one or more simulator failures may make the report partial or invalid.';
+  } else if (hasSimulatorNotes) {
+    label = 'Evidence ready with simulator notes';
+    copy = 'Current evidence supports a scored report. Repaired simulator output will be documented separately and will not be presented as a learner weakness.';
   } else {
     label = 'Evidence ready for validation';
     copy = 'Current answer and verified coverage evidence supports an expected scored report.';
@@ -123,6 +132,8 @@ export function endSessionEvidenceFor({
     coverageKnown,
     hasEnoughCoverage,
     hasIntegrityRisk,
+    hasSimulatorNotes,
+    reportAffectingFlagCount: effectiveReportAffectingFlagCount,
   };
 }
 

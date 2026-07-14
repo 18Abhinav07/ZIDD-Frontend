@@ -208,6 +208,8 @@ export interface AssessmentProgressSnapshot {
   min_scorable_turns?: number;
   control_turn_count?: number;
   round_count?: number;
+  integrity_note_count?: number;
+  report_affecting_flag_count?: number;
   coverage_map?: Record<string, unknown>;
 }
 

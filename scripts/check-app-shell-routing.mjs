@@ -22,6 +22,9 @@ const gd = read('src/app/(professional)/simulator/gd/page.tsx');
 const interview = read('src/app/(professional)/simulator/interview/page.tsx');
 const middleware = read('src/middleware.ts');
 const nextConfig = read('next.config.mjs');
+const schoolLayout = existsSync(join(process.cwd(), 'src/app/school/layout.tsx'))
+  ? read('src/app/school/layout.tsx')
+  : '';
 
 if (!existsSync(join(process.cwd(), 'src/app/career/page.tsx'))) {
   failures.push('career dashboard must live at src/app/career/page.tsx.');
@@ -78,6 +81,18 @@ if (!gd.includes("router.push('/map')") || !interview.includes("router.push('/ma
 
 if (!careerPage.includes("Continue {activeLabel ?? 'your'} path") || careerPage.includes('Resume {activeLabel')) {
   failures.push('career route-only CTA must say Continue <module> path, not Resume.');
+}
+
+if (
+  !careerPage.includes("searchParams.get('view') === 'career'")
+  || !careerPage.includes("primary_motive === 'school' && !explicitCareerView")
+  || !schoolLayout.includes("router.push('/career?view=career')")
+) {
+  failures.push('an explicit Return to Career Prep command must bypass the School-primary default without bypassing auth.');
+}
+
+if (!/whitespace-nowrap[^>]*>\{careerFocus\.attempts/.test(careerPage)) {
+  failures.push('career focus attempt evidence must keep ATTEMPTS on one line.');
 }
 
 for (const token of ['Ready for next skill', 'Practice checkpoint passed', 'Practice this skill again?', 'Practice again']) {

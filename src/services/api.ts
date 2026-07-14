@@ -74,15 +74,17 @@ const getHeaders = async (forceAuth = false) => {
   };
 };
 
-type ApiFetchOptions = RequestInit & { timeoutMs?: number };
+type ApiFetchOptions = RequestInit & { timeoutMs?: number | null };
 const DEFAULT_API_TIMEOUT_MS = 20_000;
 
 export async function apiFetch(endpoint: string, options: ApiFetchOptions = {}) {
   const { timeoutMs = DEFAULT_API_TIMEOUT_MS, signal, ...fetchOptions } = options;
   const controller = new AbortController();
-  const timeout = setTimeout(() => {
-    controller.abort(new DOMException('request_timeout', 'TimeoutError'));
-  }, timeoutMs);
+  const timeout = timeoutMs !== null
+    ? setTimeout(() => {
+        controller.abort(new DOMException('request_timeout', 'TimeoutError'));
+      }, timeoutMs)
+    : null;
   if (signal) {
     if (signal.aborted) controller.abort(signal.reason);
     else signal.addEventListener('abort', () => controller.abort(signal.reason), { once: true });
@@ -109,7 +111,7 @@ export async function apiFetch(endpoint: string, options: ApiFetchOptions = {}) 
     }
     throw err;
   } finally {
-    clearTimeout(timeout);
+    if (timeout !== null) clearTimeout(timeout);
   }
 
   if (response.status === 401) {

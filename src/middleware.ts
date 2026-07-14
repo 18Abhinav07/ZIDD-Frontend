@@ -23,6 +23,7 @@ const PROTECTED_PREFIXES = [
   '/map',
   '/mode',
   '/session',
+  '/school',
   '/subjects',
   '/simulator',
 ];
@@ -86,7 +87,7 @@ function homeForProfile(profile: ProfileGate): string {
   if (profile.home) {
     return profile.home;
   }
-  return profile.onboarding?.primary_motive === 'school' ? '/subjects' : '/career';
+  return profile.onboarding?.primary_motive === 'school' ? '/school' : '/career';
 }
 
 async function hashAccessToken(accessToken: string): Promise<string> {
@@ -220,6 +221,13 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(homeUrl);
   }
 
+  if (onboardingComplete && (pathname === '/subjects' || pathname.startsWith('/subjects/'))) {
+    const schoolUrl = req.nextUrl.clone();
+    schoolUrl.pathname = '/school';
+    schoolUrl.search = '';
+    return NextResponse.redirect(schoolUrl);
+  }
+
   if (onboardingComplete || pathname === '/onboarding') {
     return NextResponse.next();
   }
@@ -237,6 +245,7 @@ export const config = {
     '/map/:path*',
     '/mode/:path*',
     '/session/:path*',
+    '/school/:path*',
     '/subjects/:path*',
     '/simulator/:path*',
   ],

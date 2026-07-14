@@ -1,11 +1,22 @@
-import { AVATAR_PATHS } from './avatarRegistry';
+import { AVATAR_PATHS } from './avatarRegistry.ts';
 
 export interface AvatarData {
-  id: string;
+  id: CoachAvatarId;
   url: string;
   quote: string;
   bg: string;
 }
+
+export type CoachAvatarId =
+  | 'stuttering_sam'
+  | 'fluent_finn'
+  | 'brave_bella'
+  | 'quiet_quint'
+  | 'tech_black'
+  | 'casual_purple'
+  | 'casual_male'
+  | 'casual_female'
+  | 'casual_blue';
 
 // Each coach carries a short, supportive line shown beside the avatar. Kept
 // modality-neutral (no "pacing"/"before you speak" claims: the tutor reads typed

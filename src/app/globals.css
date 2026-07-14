@@ -53,6 +53,30 @@
     --color-background: hsl(40 20% 98%); /* Warmer, softer background */
     --color-accent: hsl(350 80% 55%); /* Bright playful rose/red */
   }
+
+  .mode-school {
+    --school-canvas: #F6F8FB;
+    --school-surface: #FCFDFE;
+    --school-surface-soft: #F1F5F9;
+    --school-ink: #1E293B;
+    --school-muted: #64748B;
+    --school-accent: #334155;
+    --school-accent-deep: #1E293B;
+    --school-accent-soft: #F1F5F9;
+    --school-accent-border: #CBD5E1;
+    --school-on-accent: #FFFDF8;
+    --color-background: var(--school-canvas);
+    --color-foreground: var(--school-ink);
+    --color-primary: var(--school-accent);
+    --color-primary-foreground: var(--school-on-accent);
+    --color-accent: var(--school-accent);
+    --color-accent-foreground: var(--school-on-accent);
+    --color-secondary: var(--school-surface-soft);
+    --color-secondary-foreground: var(--school-ink);
+    --color-border: #DDE3EA;
+    --color-input: #DDE3EA;
+    --color-ring: var(--school-accent);
+  }
 }
 
 @layer components {

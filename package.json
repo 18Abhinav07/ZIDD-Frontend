@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:school-prep": "BACKEND_INTERNAL_URL=http://127.0.0.1:8088 NEXTAUTH_URL=http://localhost:3001 NEXT_PUBLIC_SCHOOL_LOCAL_MODE=1 NEXT_DIST_DIR=.next-schoolprep-3001 next dev -p 3001",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -20,6 +21,14 @@
     "test:session-stream-presentation": "node --test scripts/test-session-stream-presentation.mjs",
     "test:sse-client-lifecycle": "node --test scripts/test-sse-client-lifecycle.mjs",
     "test:assessment-action-contract": "node scripts/check-assessment-action-contract.mjs",
+    "test:school-rebuild-surface": "node scripts/check-school-rebuild-surface.mjs",
+    "test:school-activity-policy": "node --experimental-strip-types --test tests/schoolActivityPolicy.test.ts",
+    "test:school-onboarding-policy": "node --experimental-strip-types --test tests/schoolOnboardingPolicy.test.ts",
+    "test:school-visual-identity": "node --experimental-strip-types --test tests/schoolVisualIdentity.test.ts",
+    "test:school-backend-contract": "node --test tests/schoolBackendContract.test.mjs",
+    "test:school-trace-sanitizer": "node --test tests/sanitizeSchoolTraces.test.mjs tests/runSchoolBrowser.test.mjs tests/schoolBrowserArchitecture.test.mjs",
+    "test:school-browser": "node scripts/run-school-browser.mjs",
+    "test:school-phase-b-browser": "node scripts/run-school-browser.mjs --config=playwright.school-phase-b.config.ts",
     "test:simulator-runtime-safety": "node scripts/check-simulator-runtime-safety.mjs",
     "test:tutor-shell-avatar": "node scripts/check-tutor-shell-avatar.mjs",
     "test:ux-edge-hardening": "node scripts/check-ux-edge-hardening.mjs"
@@ -35,6 +44,7 @@
     "react-dom": "^18"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4.3.0",
     "@types/node": "^20",
     "@types/react": "^18",

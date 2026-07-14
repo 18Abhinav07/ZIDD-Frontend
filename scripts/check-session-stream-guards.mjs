@@ -394,7 +394,6 @@ if (
 if (!/restoredGamePrompt\?\.turn_id[\s\S]{0,180}m\.turn_id === restoredGamePrompt\.turn_id/.test(hook)) {
   failures.push('active game-prompt echo filtering must match the exact turn_id so repeated historical prompts remain visible on reload.');
 }
-
 const streamTurnBody = hook.match(/const streamTurn = useCallback\(async \([\s\S]*?\): Promise<StreamTurnResult> => \{[\s\S]*?\n  \}, \[/)?.[0] ?? '';
 if (!/if \(userInput\)[\s\S]{0,260}setMessages\(prev => \[\s*\.\.\.prev,[\s\S]{0,120}content: userInput/.test(streamTurnBody)) {
   failures.push('streamTurn must append the learner answer optimistically before SSE startup.');
@@ -683,7 +682,6 @@ if (!/onEvent: \(eventName, data\) => \{[\s\S]{0,220}eventName !== 'accepted'[\s
 if (!/eventName !== 'done'[\s\S]{0,160}recoveryPollCount = 0[\s\S]{0,160}scheduleRecoveryPoll\(SESSION_STREAM_RECOVERY_POLL_DELAY_MS\)/.test(hook)) {
   failures.push('non-terminal stream events must re-arm transcript recovery after the latest visible token becomes idle.');
 }
-
 for (const token of [
   'activeStreamTokenRef',
   'const streamToken = crypto.randomUUID()',
@@ -761,7 +759,6 @@ for (const token of [
 if (!/expectedUserTurn &&[\s\S]{0,100}currentUserTurnIndex < 0 &&[\s\S]{0,100}!durableExpectedTurnCompleted &&[\s\S]{0,100}!durableExpectedTurnFailed/.test(hook)) {
   failures.push('useZiddSession transcript recovery must find the observed learner turn unless its exact durable completion/failure is present.');
 }
-
 if (!hook.includes('hasCompletedTurnOutcomeAfterExpectedUser')) {
   failures.push('useZiddSession transcript recovery must accept completed non-text turn outcomes such as node_advance/pending_transition.');
 }

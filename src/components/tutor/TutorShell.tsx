@@ -161,6 +161,11 @@ export const TutorShell: React.FC<TutorShellProps> = ({
   const terminalStatus = ['complete', 'blocked'].includes(
     String(statusLabel || '').trim().toLocaleLowerCase(),
   );
+  const showAttemptEvidence = (
+    !terminalStatus
+    && typeof attempts === 'number'
+    && typeof cleanStreak === 'number'
+  );
 
   return (
     <div className={cn("relative h-[100dvh] w-full overflow-hidden flex flex-col font-body bg-background transition-colors duration-500", mode === 'professional' ? 'mode-professional' : 'mode-gamified')}>
@@ -203,7 +208,7 @@ export const TutorShell: React.FC<TutorShellProps> = ({
                   {statusLabel}
                 </span>
               )}
-              {typeof attempts === 'number' && typeof cleanStreak === 'number' && (
+              {showAttemptEvidence && (
                 <span
                   data-progress-evidence="compact"
                   className="inline-flex min-w-0 max-w-full basis-full flex-wrap items-center gap-x-3 gap-y-1 whitespace-normal break-words normal-case tracking-normal xl:hidden"
@@ -236,7 +241,7 @@ export const TutorShell: React.FC<TutorShellProps> = ({
                    <span className="text-xs font-mono font-semibold tabular-nums">{Math.round(mastery * 100)}%</span>
                 </div>
               )}
-              {typeof attempts === 'number' && typeof cleanStreak === 'number' && (
+              {showAttemptEvidence && (
                 <div
                   data-progress-evidence="wide"
                   className="hidden min-w-0 items-center gap-2 overflow-hidden rounded-full border border-slate-200/50 bg-white/60 px-3 py-2 text-xs text-slate-600 shadow-sm backdrop-blur xl:flex"

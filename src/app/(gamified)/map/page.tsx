@@ -88,7 +88,7 @@ export default function MapPage() {
           return;
         }
         if (moduleId === 'school_english') {
-          router.replace('/subjects');
+          router.replace('/school');
           return;
         }
         const testMode = routeModule && requestedMode === 'test'

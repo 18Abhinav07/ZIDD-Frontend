@@ -280,14 +280,14 @@ export async function updatePreferences(patch: Partial<UserPreferences>): Promis
 export function homeForMe(me: MeResponse | null | undefined): string {
   if (!me) return '/dashboard';
   if (!me.onboarding?.completed) return '/onboarding';
-  if (me.onboarding.primary_motive === 'school') return '/subjects';
+  if (me.onboarding.primary_motive === 'school') return '/school';
   return '/career';
 }
 
 export function myPathForMe(me: MeResponse | null | undefined): string {
   if (!me) return '/dashboard';
   if (!me.onboarding?.completed) return '/onboarding';
-  if (me.onboarding.primary_motive === 'school') return '/subjects';
+  if (me.onboarding.primary_motive === 'school') return '/school';
 
   const prefs = me.preferences ?? {};
   if (prefs.pending_module === 'interview' || prefs.pending_module === 'group_discussion') {
@@ -296,7 +296,7 @@ export function myPathForMe(me: MeResponse | null | undefined): string {
 
   const active = prefs.active_module;
   if (!active) return '/career';
-  if (active === 'school_english') return '/subjects';
+  if (active === 'school_english') return '/school';
   if (prefs.test_mode == null) return '/mode';
   return '/map';
 }

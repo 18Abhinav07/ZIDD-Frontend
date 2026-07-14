@@ -21,6 +21,7 @@ if (!existsSync(middlewarePath)) {
     '/map',
     '/mode',
     '/session',
+    '/school',
     '/subjects',
     '/simulator',
   ];
@@ -67,7 +68,6 @@ if (!existsSync(middlewarePath)) {
   if (!/catch\s*\{\s*return continueDuringProfileGateOutage\(\);\s*\}/.test(source)) {
     failures.push('authenticated profile-gate timeouts and 5xx failures must keep the learner in-app instead of redirecting to login.');
   }
-
   if (!source.includes('BACKEND_INTERNAL_URL') || !source.includes('/me/gate') || !/\bfetch\s*\(/.test(source)) {
     failures.push('middleware must check the lean backend /me/gate profile/onboarding state before serving app routes.');
   }

@@ -16,7 +16,6 @@ const middleware = readFileSync(join(process.cwd(), 'src/middleware.ts'), 'utf8'
 const billingService = readFileSync(join(process.cwd(), 'src/services/billing.ts'), 'utf8');
 const nextAuthRoute = readFileSync(join(process.cwd(), 'src/app/api/auth/[...nextauth]/route.ts'), 'utf8');
 const meService = readFileSync(join(process.cwd(), 'src/services/me.ts'), 'utf8');
-const schoolService = readFileSync(join(process.cwd(), 'src/services/school.ts'), 'utf8');
 const progressionService = readFileSync(join(process.cwd(), 'src/services/progression.ts'), 'utf8');
 const onboardingPage = readFileSync(join(process.cwd(), 'src/app/onboarding/page.tsx'), 'utf8');
 const profilePage = readFileSync(join(process.cwd(), 'src/app/profile/page.tsx'), 'utf8');
@@ -26,9 +25,6 @@ const protectedClientPages = [
   'src/app/career/page.tsx',
   'src/app/profile/page.tsx',
   'src/app/onboarding/page.tsx',
-  'src/app/subjects/page.tsx',
-  'src/app/subjects/class/[classNo]/page.tsx',
-  'src/app/subjects/test/[testId]/page.tsx',
   'src/app/(gamified)/mode/page.tsx',
 ];
 
@@ -66,7 +62,6 @@ for (const token of ['getAccessToken(force = false)', 'getAuthHeaders(force = fa
     failures.push(`api helper must retry auth header resolution once before global sign-out; missing ${token}.`);
   }
 }
-
 for (const [label, source] of [
   ['NextAuth backend token exchange', nextAuthRoute],
   ['session start with paywall', billingService],
@@ -113,7 +108,6 @@ for (const token of ['ME_CACHE_MS', 'cachedMe', 'meRequest', 'invalidateMeCache'
 for (const [label, source] of [
   ['me service', meService],
   ['billing service', billingService],
-  ['school service', schoolService],
   ['progression service', progressionService],
 ]) {
   if (!source.includes('getAuthCacheKey')) {
@@ -154,12 +148,6 @@ if (!mapPage.includes('getProgressionMap')) {
 for (const token of ['progressionRequests', 'progressionCache', 'PROGRESSION_CACHE_MS']) {
   if (!progressionService.includes(token)) {
     failures.push(`progression service is missing ${token} for request dedupe.`);
-  }
-}
-
-for (const token of ['schoolRequests', 'schoolCache', 'cachedSchoolFetch']) {
-  if (!schoolService.includes(token)) {
-    failures.push(`school service is missing ${token} for request dedupe.`);
   }
 }
 
@@ -238,15 +226,15 @@ if (/void loadMe\(accountChanged\);\s*void loadBalance\(accountChanged\);/.test(
   failures.push('AppSessionProvider background /me and /billing/balance loads must catch transient failures.');
 }
 
-if (!appSessionProvider.includes('void loadMe(accountChanged).catch(() => null)')) {
+if (!/void loadMe\([^)]*\)\.catch\(\(\) => null\)/.test(appSessionProvider)) {
   failures.push('AppSessionProvider must catch background /me load failures.');
 }
 
-if (!appSessionProvider.includes('void loadBalance(accountChanged).catch(() => null)')) {
+if (!/void loadBalance\([^)]*\)\.catch\(\(\) => null\)/.test(appSessionProvider)) {
   failures.push('AppSessionProvider must catch background balance load failures.');
 }
 
-for (const token of ['authSession?.accessToken', 'observedAccessTokenRef', 'invalidateAuthCache', 'invalidateSchoolCache', 'invalidateProgressionCache']) {
+for (const token of ['authSession?.accessToken', 'observedAccessTokenRef', 'invalidateAuthCache', 'invalidateSchoolRebuildCache', 'invalidateProgressionCache']) {
   if (!appSessionProvider.includes(token)) {
     failures.push(`AppSessionProvider must clear account-scoped caches on active-account change and is missing ${token}.`);
   }

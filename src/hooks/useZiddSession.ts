@@ -694,6 +694,21 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
     if (shouldApply && !shouldApply()) {
       return { foundExpectedTurn: false, completed: false, failed: false };
     }
+    const activeTurn = recoveredTurn.activeTurn;
+    const recoveredCompletedOutcome = expectedUserTurn
+      ? durableExpectedTurnCompleted || (
+          completedTurnOutcome && recoveredTurn.blockReason !== 'turn_processing'
+        )
+      : completedOpeningOutcome && recoveredTurn.blockReason !== 'turn_processing';
+
+    if (recoveredCompletedOutcome) {
+      // A durable transcript now owns the visible reply. Stop the still-live SSE
+      // reader before replacing messages so a late buffered token cannot append a
+      // transient duplicate after the canonical snapshot is rendered.
+      const activeClient = clientRef.current;
+      clientRef.current = null;
+      activeClient?.disconnect();
+    }
 
     if (data.state) {
       setState({
@@ -728,12 +743,6 @@ export function useZiddSession(sessionId: string, isOpening: boolean = false) {
     if (pending) {
       setNodeAdvance({ from_node: pending.from_node, to_node: pending.to_node });
     }
-    const activeTurn = recoveredTurn.activeTurn;
-    const recoveredCompletedOutcome = expectedUserTurn
-      ? durableExpectedTurnCompleted || (
-          completedTurnOutcome && recoveredTurn.blockReason !== 'turn_processing'
-        )
-      : completedOpeningOutcome && recoveredTurn.blockReason !== 'turn_processing';
     if (recoveredCompletedOutcome) {
       streamInFlightRef.current = false;
       setIsRecoveringTurn(false);

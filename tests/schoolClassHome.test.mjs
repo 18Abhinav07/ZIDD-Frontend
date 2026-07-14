@@ -1,0 +1,69 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import test from 'node:test';
+
+const home = fs.readFileSync('src/components/school/catalog/SchoolClassHome.tsx', 'utf8');
+const skeletons = fs.readFileSync('src/components/learning/LearningSkeletons.tsx', 'utf8');
+const chapterMap = fs.readFileSync('src/components/school/catalog/SchoolChapterMap.tsx', 'utf8');
+const levelMap = fs.readFileSync('src/components/school/catalog/SchoolLevelMap.tsx', 'utf8');
+const journeyMap = fs.readFileSync('src/components/learning/JourneyMap.tsx', 'utf8');
+const schoolHomePage = fs.readFileSync('src/app/school/page.tsx', 'utf8');
+const classPage = fs.readFileSync('src/app/school/classes/[classNo]/page.tsx', 'utf8');
+const chapterPage = fs.readFileSync('src/app/school/classes/[classNo]/chapters/[chapterId]/page.tsx', 'utf8');
+
+test('active class home uses the shared editorial system and real class context', () => {
+  for (const token of ['Your English class', 'primaryAction.label', 'View class journey', 'Change class or subject', 'Recent growth', 'recent_growth']) {
+    assert.match(home, new RegExp(token));
+  }
+  assert.match(home, /<SchoolPageHeading/);
+  assert.match(home, /schoolPrimaryActionClass/);
+  assert.match(home, /schoolSecondaryActionClass/);
+  for (const stale of ['Meet your coach', 'Readiness adventure', 'Build your bridge']) {
+    assert.equal(home.includes(stale), false);
+  }
+});
+
+test('class feature uses one persisted themed coach without dominating the page', () => {
+  assert.match(home, /getSchoolAvatarTheme\(schoolClass\.coach_avatar_id, schoolClass\.coach_palette_id\)/);
+  assert.doesNotMatch(home, /coach_seed|getAvatarForSeed/);
+  assert.match(home, /style={theme\.style}/);
+  assert.equal((home.match(/<Image\b/g) ?? []).length, 1);
+  assert.doesNotMatch(home, /SchoolCoachPanel/);
+  assert.doesNotMatch(home, /lucide-react|font-black|gradient/i);
+});
+
+test('map surfaces handle empty content and dimension-stable pending starts', () => {
+  assert.match(chapterMap, /No approved chapters are available/);
+  assert.match(levelMap, /Starting chapter/);
+});
+
+test('canonical class and chapter actions are explicit state-authorized inputs', () => {
+  assert.match(home, /primaryAction/);
+  assert.match(chapterMap, /authorizedAction/);
+  assert.match(levelMap, /authorizedAction/);
+
+  assert.doesNotMatch(home, /\['active', 'ready', 'needs_support'\]/);
+  assert.doesNotMatch(chapterMap, /const interactive = chapter\.status/);
+  assert.doesNotMatch(chapterMap, /chapterActionLabel/);
+  assert.doesNotMatch(levelMap, /stage\.status === 'active' \|\| stage\.status === 'ready'/);
+  assert.doesNotMatch(levelMap, /stageActionLabel/);
+});
+
+test('direct class and chapter loads use the exact state destination before rendering actions', () => {
+  for (const route of [classPage, chapterPage]) {
+    assert.match(route, /resolveSchoolStateDestination/);
+    assert.match(route, /nextAction: state\.next_action/);
+    assert.match(route, /allowedNextActions: state\.allowed_next_actions/);
+    assert.match(route, /nextActionUrl: state\.next_action_url/);
+    assert.match(route, /router\.replace\(result\.href\)/);
+  }
+  assert.match(schoolHomePage, /primaryAction=/);
+});
+
+test('shared loading and motion contracts cover each route shape', () => {
+  for (const exported of ['SchoolClassHomeSkeleton', 'SchoolMapSkeleton', 'SchoolLevelMapSkeleton', 'SchoolTutorSkeleton', 'SchoolReportSkeleton']) {
+    assert.match(skeletons, new RegExp(`export function ${exported}`));
+  }
+  assert.match(skeletons, /motion-reduce:animate-none/);
+  assert.match(journeyMap, /Math\.min\(index, 5\)/);
+});

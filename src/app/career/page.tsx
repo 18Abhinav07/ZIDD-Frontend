@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { ArrowRightIcon } from '@radix-ui/react-icons';
 import { Loader2 } from 'lucide-react';
@@ -77,8 +77,10 @@ const PATHS: { id: ModuleId; label: string; blurb: string }[] = [
   { id: 'group_discussion', label: 'Group Discussion', blurb: 'Stake a position, build on others, drive consensus.' },
 ];
 
-export default function CareerPage() {
+function CareerPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const explicitCareerView = searchParams.get('view') === 'career';
   const { me: cachedMe, loadMe, loadActivity, loadingActivity } = useAppSession();
   const [me, setMe] = useState<MeResponse | null>(null);
   const [activity, setActivity] = useState<MeActivity | null>(null);
@@ -120,8 +122,8 @@ export default function CareerPage() {
           router.replace('/onboarding');
           return;
         }
-        if (profile.onboarding.primary_motive === 'school') {
-          router.replace('/subjects');
+        if (profile.onboarding.primary_motive === 'school' && !explicitCareerView) {
+          router.replace('/school');
           return;
         }
         setMe(profile);
@@ -180,7 +182,7 @@ export default function CareerPage() {
     return () => {
       cancelled = true;
     };
-  }, [cachedMe, loadActivity, loadMe, router, retryKey]);
+  }, [cachedMe, explicitCareerView, loadActivity, loadMe, router, retryKey]);
 
   const activeModule = me?.preferences.active_module ?? null;
 
@@ -386,7 +388,7 @@ export default function CareerPage() {
                     <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.13em] text-slate-400">
                       <span>Status: {focusStatus}</span>
                       <span>Readiness: {focusReadiness}</span>
-                      <span>{careerFocus.attempts || 0} attempt{careerFocus.attempts === 1 ? '' : 's'}</span>
+                      <span className="whitespace-nowrap">{careerFocus.attempts || 0} attempt{careerFocus.attempts === 1 ? '' : 's'}</span>
                       {repeat_count > 0 && (
                         <span>{repeat_count} repeated issue{repeat_count === 1 ? '' : 's'}</span>
                       )}
@@ -544,5 +546,13 @@ export default function CareerPage() {
       </main>
       )}
     </div>
+  );
+}
+
+export default function CareerPage() {
+  return (
+    <Suspense fallback={<CareerHomeSkeleton />}>
+      <CareerPageContent />
+    </Suspense>
   );
 }

@@ -188,7 +188,11 @@ function InterviewContent() {
   const coverageRequired = typeof coverageMap?.required_unique === 'number'
     ? coverageMap.required_unique
     : undefined;
-  const integrityFlagCount = state?.assessment_state?.validity_flags?.length ?? 0;
+  const integrityFlagCount = state?.assessment_state?.progress?.integrity_note_count
+    ?? state?.assessment_state?.validity_flags?.length
+    ?? 0;
+  const reportAffectingFlagCount = state?.assessment_state?.progress?.report_affecting_flag_count
+    ?? integrityFlagCount;
   const leaveNotice = scorableTurns >= minScorableTurns
     ? `Your transcript is saved, but leaving now will not generate the scored interview report. Use End & Score if you want the report for this attempt. Current evidence: ${scorableTurns}/${minScorableTurns} score-eligible answers.`
     : `Your transcript is saved, but leaving now will not generate a reliable scored interview report. Current evidence: ${scorableTurns}/${minScorableTurns} score-eligible answers.`;
@@ -294,6 +298,7 @@ function InterviewContent() {
         coverageCovered={coverageCovered}
         coverageRequired={coverageRequired}
         integrityFlagCount={integrityFlagCount}
+        reportAffectingFlagCount={reportAffectingFlagCount}
         isClosing={isClosing}
         isBusy={isEndDisabled}
         showCancel={!shouldClose}

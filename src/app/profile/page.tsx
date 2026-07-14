@@ -216,7 +216,7 @@ export default function ProfilePage() {
     try {
       const res = await updatePreferences({ active_module: 'school_english', pending_module: null, test_mode: null });
       setMe((m) => (m ? { ...m, preferences: res.preferences } : m));
-      router.push('/subjects');
+      router.push('/school');
     } catch {
       setSwitchError('Could not switch paths. Please try again.');
       setSwitching(null);
@@ -384,7 +384,7 @@ export default function ProfilePage() {
               {schoolProfile.school_name || 'No school profile added yet'}
             </p>
             <p className="mt-2 text-sm leading-relaxed text-slate-500">
-              {schoolProfile.learning_goal || 'Class is not stored on your profile. Open any available class from the curriculum.'}
+              {schoolProfile.learning_goal || 'Set up your class and start with a readiness check.'}
             </p>
             <div className="mt-5 flex items-center gap-3 text-sm">
               <span className="rounded-full bg-slate-100 px-3 py-1 font-bold text-slate-600">
@@ -399,7 +399,7 @@ export default function ProfilePage() {
               disabled={switching !== null}
               className="mt-6 inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-50"
             >
-              Open curriculum <ArrowRightIcon className="w-4 h-4" />
+              Open school prep <ArrowRightIcon className="w-4 h-4" />
             </button>
           </section>
           )}
@@ -517,7 +517,7 @@ export default function ProfilePage() {
               : [{
                 title: activityError ? 'Activity unavailable' : 'Continue learning',
                 body: activityError ? 'Retry activity loading for personalized recommendations.' : 'Open your primary path and keep going.',
-                href: activityError ? '/profile' : primaryMotive === 'school' ? '/subjects' : '/career',
+                href: activityError ? '/profile' : primaryMotive === 'school' ? '/school' : '/career',
                 kind: 'default',
               }]).map((item) => (
               <button

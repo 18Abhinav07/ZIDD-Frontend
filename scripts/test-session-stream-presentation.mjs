@@ -96,6 +96,35 @@ test('end evidence treats missing coverage as unknown, never sufficient', () => 
   assert.equal(verifiedCoverage.label, 'Evidence ready for validation');
 });
 
+test('safe simulator notes do not downgrade report readiness', () => {
+  const notesOnly = presentation.endSessionEvidenceFor({
+    scorableTurns: 10,
+    minScorableTurns: 5,
+    coverageCovered: 4,
+    coverageRequired: 3,
+    integrityFlagCount: 5,
+    reportAffectingFlagCount: 0,
+  });
+
+  assert.equal(notesOnly.hasIntegrityRisk, false);
+  assert.equal(notesOnly.hasSimulatorNotes, true);
+  assert.equal(notesOnly.label, 'Evidence ready with simulator notes');
+  assert.equal(notesOnly.actionLabel, 'End & Generate Report');
+
+  const reportRisk = presentation.endSessionEvidenceFor({
+    scorableTurns: 10,
+    minScorableTurns: 5,
+    coverageCovered: 4,
+    coverageRequired: 3,
+    integrityFlagCount: 5,
+    reportAffectingFlagCount: 1,
+  });
+
+  assert.equal(reportRisk.hasIntegrityRisk, true);
+  assert.equal(reportRisk.label, 'Report validity risk');
+  assert.equal(reportRisk.actionLabel, 'End Anyway');
+});
+
 test('teaching status follows the learner-visible priority contract', () => {
   assert.equal(teachingStatusFor({ moduleComplete: true, teachingBlocked: true }), 'Complete');
   assert.equal(teachingStatusFor({ isBootstrapping: true, checkpointReached: true }), 'Preparing');

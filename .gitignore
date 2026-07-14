@@ -11,10 +11,16 @@
 
 # next.js
 /.next/
+/.next-school-prep/
+/.next-schoolprep-3001/
+/.next-integration-build/
+/private/
 /out/
 
 # production
 /build
+/test-results/
+/playwright-report/
 
 # misc
 .DS_Store
