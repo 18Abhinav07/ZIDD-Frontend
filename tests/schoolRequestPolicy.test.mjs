@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const policyPath = 'src/lib/schoolRequestPolicy.mjs';
 
-test('School request policy grants local unbounded time only to evaluator answer paths', async () => {
+test('School request policy leaves local requests unbounded without weakening cloud deadlines', async () => {
   assert.ok(fs.existsSync(policyPath), 'School request policy module must exist');
   const {
     SCHOOL_CLOUD_EVALUATOR_TIMEOUT_MS,
@@ -36,8 +36,9 @@ test('School request policy grants local unbounded time only to evaluator answer
     ['curriculum', 'curriculum-id', 'resume-masterclass'],
   ]) {
     assert.equal(isSchoolEvaluatorPath(ordinaryPath), false);
+    assert.equal(schoolProxyTimeoutMs(ordinaryPath, true), null);
     assert.equal(
-      schoolProxyTimeoutMs(ordinaryPath, true),
+      schoolProxyTimeoutMs(ordinaryPath, false),
       SCHOOL_PROXY_REQUEST_TIMEOUT_MS,
     );
   }

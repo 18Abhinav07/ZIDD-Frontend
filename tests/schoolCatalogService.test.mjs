@@ -13,12 +13,18 @@ test('school catalog client exposes the hierarchy endpoints', () => {
   assert.match(source, /`\/school\/catalog\/\$\{subjectId\}\/classes\/\$\{classNo\}\/chapters\/\$\{chapterId\}`/);
 });
 
-test('only evaluator answer requests can become unbounded in local School mode', () => {
-  assert.match(source, /const schoolReadFetch[\s\S]*?timeoutMs: SCHOOL_READ_TIMEOUT_MS/);
-  assert.match(source, /const schoolControlFetch[\s\S]*?timeoutMs: SCHOOL_CONTROL_TIMEOUT_MS/);
+test('all local School requests are unbounded while cloud requests keep explicit deadlines', () => {
   assert.match(
     source,
-    /const schoolEvaluatorFetch[\s\S]*?SCHOOL_LOCAL_EVALUATOR_UNBOUNDED[\s\S]*?null[\s\S]*?SCHOOL_CLOUD_EVALUATOR_TIMEOUT_MS/,
+    /const schoolReadFetch[\s\S]*?SCHOOL_LOCAL_REQUESTS_UNBOUNDED[\s\S]*?null[\s\S]*?SCHOOL_READ_TIMEOUT_MS/,
+  );
+  assert.match(
+    source,
+    /const schoolControlFetch[\s\S]*?SCHOOL_LOCAL_REQUESTS_UNBOUNDED[\s\S]*?null[\s\S]*?SCHOOL_CONTROL_TIMEOUT_MS/,
+  );
+  assert.match(
+    source,
+    /const schoolEvaluatorFetch[\s\S]*?SCHOOL_LOCAL_REQUESTS_UNBOUNDED[\s\S]*?null[\s\S]*?SCHOOL_CLOUD_EVALUATOR_TIMEOUT_MS/,
   );
 
   for (const answerFunction of [
@@ -48,7 +54,7 @@ test('only evaluator answer requests can become unbounded in local School mode',
     assert.match(
       source,
       new RegExp(`export async function ${controlFunction}[\\s\\S]*?schoolControlFetch\\(`),
-      `${controlFunction} must have a finite control deadline`,
+      `${controlFunction} must use the local-aware control deadline`,
     );
   }
 

@@ -2,9 +2,8 @@
 
 import type { ReactNode } from 'react';
 import { ReaderIcon } from '@radix-ui/react-icons';
-import { LearningWorkspace } from '@/components/learning/LearningWorkspace';
-import { AppHeader } from '@/components/shared/AppHeader';
 import { SchoolCoachPanel } from '@/components/school/SchoolCoachPanel';
+import { SchoolLearningWorkspace } from '@/components/school/SchoolLearningWorkspace';
 import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
 
 export interface SchoolLearningShellProps {
@@ -37,14 +36,13 @@ export function SchoolLearningShell({
   const theme = getSchoolAvatarTheme(coachAvatarId, coachPaletteId);
 
   return (
-    <LearningWorkspace
+    <SchoolLearningWorkspace
       title={title}
       eyebrow={eyebrow}
       onBack={onBack}
       coach={<SchoolCoachPanel avatarId={coachAvatarId} paletteId={coachPaletteId} status={coachStatus} note={coachNote} variant="immersive" />}
-      compactCoach={<SchoolCoachPanel avatarId={coachAvatarId} paletteId={coachPaletteId} status={coachStatus} note={coachNote} compact />}
+      mobileCoach={<SchoolCoachPanel avatarId={coachAvatarId} paletteId={coachPaletteId} status={coachStatus} note={coachNote} variant="inline" />}
       progress={progress}
-      topBar={<AppHeader title={eyebrow} appearance="school" showCredits={false} />}
       headerMeta={headerMeta ? <><span aria-hidden="true">/</span> {headerMeta}</> : undefined}
       headerIcon={<ReaderIcon className="h-3.5 w-3.5" aria-hidden="true" />}
       backLabel={backLabel}
@@ -56,6 +54,6 @@ export function SchoolLearningShell({
       rootDataAttributes={{ 'data-school-region': 'learning-shell' }}
     >
       {children}
-    </LearningWorkspace>
+    </SchoolLearningWorkspace>
   );
 }

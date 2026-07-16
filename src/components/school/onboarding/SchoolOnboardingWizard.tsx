@@ -37,6 +37,7 @@ import {
   type SchoolOnboardingStep,
   type SchoolActivationContext,
 } from '@/lib/schoolOnboardingPolicy';
+import { resolveSchoolStateDestination } from '@/lib/schoolActivityPolicy';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 import {
   activateSchoolOnboarding,
@@ -90,6 +91,12 @@ const SCHOOL_FIELD_CLASS = 'mt-2 min-h-12 w-full rounded-xl border border-slate-
 type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'conflict' | 'error' | 'refresh_required';
 type CatalogStatus = 'loading' | 'ready' | 'error';
 
+function onboardingStepHref(step: SchoolOnboardingStep, activeProfileEditIntent: boolean) {
+  return activeProfileEditIntent
+    ? `/school/onboarding?intent=edit_profile&step=${step + 1}`
+    : `/school/onboarding?step=${step + 1}`;
+}
+
 function requestId() {
   return crypto.randomUUID();
 }
@@ -119,12 +126,15 @@ function OnboardingSkeleton() {
     <div
       aria-busy="true"
       aria-label="Loading saved school setup"
-      className="space-y-7"
+      className="overflow-hidden rounded-[28px] border border-[var(--school-line)] bg-[var(--school-paper)] shadow-[var(--school-shadow)]"
     >
-      <div className="flex gap-3 overflow-hidden border-b border-slate-200 pb-4">
-        {Array.from({ length: 5 }, (_, index) => <div key={index} className="h-10 w-24 flex-none animate-pulse rounded-lg bg-slate-100 motion-reduce:animate-none" />)}
+      <div className="border-b border-[var(--school-line)] bg-[var(--school-surface-soft)] px-5 py-5 sm:px-7">
+        <div className="h-3 w-28 animate-pulse rounded-full bg-slate-200 motion-reduce:animate-none" />
+        <div className="mt-4 grid grid-cols-5 gap-1.5">
+          {Array.from({ length: 5 }, (_, index) => <div key={index} className="h-1 animate-pulse rounded-full bg-slate-200 motion-reduce:animate-none" />)}
+        </div>
       </div>
-      <div className="space-y-5">
+      <div className="space-y-5 px-5 py-8 sm:px-10 sm:py-10">
         <div className="h-11 w-80 max-w-full animate-pulse rounded-xl bg-slate-100 motion-reduce:animate-none" />
         <div className="h-4 w-full max-w-lg animate-pulse rounded-full bg-slate-100 motion-reduce:animate-none" />
         <div className="h-12 w-full animate-pulse rounded-xl bg-slate-100 motion-reduce:animate-none" />
@@ -137,6 +147,7 @@ function OnboardingSkeleton() {
 export function SchoolOnboardingWizard() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const activeProfileEditIntent = searchParams.get('intent') === 'edit_profile';
   const headingRef = useRef<HTMLHeadingElement | null>(null);
   const saveRequests = useRef(createOnboardingRequestCoordinator(requestId));
   const activationRequests = useRef(createOnboardingRequestCoordinator(requestId));
@@ -208,9 +219,36 @@ export function SchoolOnboardingWizard() {
           router.replace(recovery.href);
           return;
         }
+        const recoveryAllowsExplicitEdit = (
+          recovery.kind === 'no_marker' || recovery.kind === 'stale_marker'
+        );
+        const state = await getSchoolState({ force: true });
+        const destination = resolveSchoolStateDestination({
+          nextAction: state.next_action,
+          allowedNextActions: state.allowed_next_actions,
+          nextActionUrl: state.next_action_url,
+        });
+        if (!destination) throw new Error('school_state_unresolved');
+        if (
+          (!activeProfileEditIntent || !recoveryAllowsExplicitEdit)
+          && !destination.startsWith('/school/onboarding')
+        ) {
+          router.replace(destination);
+          return;
+        }
         const snapshot = recovery.kind === 'stale_marker'
           ? recovery.snapshot
           : await getSchoolOnboarding();
+        const canOpenActiveProfileEdit = (
+          activeProfileEditIntent
+          && recoveryAllowsExplicitEdit
+          && state.profile_status === 'complete'
+          && snapshot.active_profile !== null
+        );
+        if (!canOpenActiveProfileEdit && !destination.startsWith('/school/onboarding')) {
+          router.replace(destination);
+          return;
+        }
         const hydrated = hydrateSchoolOnboarding(snapshot);
         applyHydration(hydrated);
         if (recovery.kind === 'refresh_required' || recovery.kind === 'unexpected_state') {
@@ -230,7 +268,7 @@ export function SchoolOnboardingWizard() {
       if (loadInFlight.current === operation) loadInFlight.current = null;
     });
     return operation;
-  }, [applyHydration, getActivationCoordinator, router]);
+  }, [activeProfileEditIntent, applyHydration, getActivationCoordinator, router]);
 
   const loadCatalog = useCallback(() => {
     if (catalogLoadInFlight.current) return catalogLoadInFlight.current;
@@ -282,15 +320,15 @@ export function SchoolOnboardingWizard() {
     if (!loaded) return;
     const routeStep = clampOnboardingRouteStep(searchParams.get('step'), persistedStep);
     if (dirtyStep !== null && routeStep !== step) {
-      router.replace(`/school/onboarding?step=${step + 1}`, { scroll: false });
+      router.replace(onboardingStepHref(step, activeProfileEditIntent), { scroll: false });
       return;
     }
     setStep(routeStep);
     const canonical = String(routeStep + 1);
     if (searchParams.get('step') !== canonical) {
-      router.replace(`/school/onboarding?step=${canonical}`, { scroll: false });
+      router.replace(onboardingStepHref(routeStep, activeProfileEditIntent), { scroll: false });
     }
-  }, [dirtyStep, loaded, persistedStep, router, searchParams, step]);
+  }, [activeProfileEditIntent, dirtyStep, loaded, persistedStep, router, searchParams, step]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -357,7 +395,7 @@ export function SchoolOnboardingWizard() {
     activationRequests.current.clear();
     setSaveStatus('conflict');
     setMessage('Setup changed in another session. The latest saved version is now loaded.');
-    router.replace(`/school/onboarding?step=${hydrated.persistedStep + 1}`, { scroll: false });
+    router.replace(onboardingStepHref(hydrated.persistedStep, activeProfileEditIntent), { scroll: false });
   };
 
   const persistOnboardingStep = async (
@@ -452,7 +490,7 @@ export function SchoolOnboardingWizard() {
       const saved = await persistOnboardingStep(decision.dirtyStep);
       if (!saved) return;
     }
-    router.push(`/school/onboarding?step=${nextStep + 1}`, { scroll: false });
+    router.push(onboardingStepHref(nextStep, activeProfileEditIntent), { scroll: false });
   };
 
   const continueStep = async () => {
@@ -460,7 +498,7 @@ export function SchoolOnboardingWizard() {
     const nextStep = buildOnboardingStepPatch(step, form).current_step;
     const saved = await persistOnboardingStep(step);
     if (!saved) return;
-    router.push(`/school/onboarding?step=${nextStep + 1}`, { scroll: false });
+    router.push(onboardingStepHref(nextStep, activeProfileEditIntent), { scroll: false });
   };
 
   const finishActivation = async () => {
@@ -474,7 +512,7 @@ export function SchoolOnboardingWizard() {
         Object.keys(validateSchoolOnboardingStep(candidate, form)).length > 0
       ));
       if (firstInvalidStep !== undefined) {
-        router.push(`/school/onboarding?step=${firstInvalidStep + 1}`, { scroll: false });
+        router.push(onboardingStepHref(firstInvalidStep, activeProfileEditIntent), { scroll: false });
       }
       return;
     }
@@ -559,7 +597,7 @@ export function SchoolOnboardingWizard() {
 
   if (!loaded) {
     return loadingError ? (
-      <section role="alert" className="rounded-xl border border-red-200 bg-red-50 px-5 py-6 text-red-950">
+      <section role="alert" className="rounded-[28px] border border-red-200 bg-[var(--school-paper)] px-5 py-7 text-red-950 shadow-[var(--school-shadow)] sm:px-8">
         <div className="flex items-start gap-3">
           <ExclamationTriangleIcon className="mt-0.5 h-5 w-5 flex-none" />
           <div>
@@ -591,7 +629,7 @@ export function SchoolOnboardingWizard() {
     ?.title;
 
   return (
-    <div className="grid gap-6">
+    <div className="overflow-hidden rounded-[28px] border border-[var(--school-line)] bg-[var(--school-paper)] shadow-[var(--school-shadow)]">
       <OnboardingStepRail
         currentStep={step}
         persistedStep={persistedStep}
@@ -599,15 +637,17 @@ export function SchoolOnboardingWizard() {
         onSelect={navigateToStep}
       />
 
-      <fieldset disabled={busy} className="min-w-0 disabled:opacity-90" data-school-region="form-workspace">
-        <div className="border-b border-slate-200 pb-6">
+      <fieldset disabled={busy} className="min-w-0 px-5 pb-6 pt-7 disabled:opacity-90 sm:px-10 sm:pb-8 sm:pt-9" data-school-region="form-workspace">
+        <div>
           <SchoolPageHeading
-            eyebrow={`Step ${step + 1} of 5`}
+            eyebrow=""
             title={STEP_HEADINGS[step]}
             description={<StepIntroduction step={step} />}
             titleRef={headingRef}
             titleTabIndex={-1}
+            level="h2"
             size="section"
+            className="[&>p:first-child]:hidden [&>h2]:mt-0"
           />
         </div>
 
@@ -840,21 +880,23 @@ export function SchoolOnboardingWizard() {
         )}
 
         <div className="flex min-h-14 flex-col-reverse gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-between" data-school-region="form-actions">
-          <button
-            type="button"
-            onClick={() => navigateToStep(Math.max(0, step - 1) as SchoolOnboardingStep)}
-            disabled={step === 0 || busy}
-            className={schoolSecondaryActionClass}
-          >
-            <ArrowLeftIcon className="h-4 w-4" />
-            Back
-          </button>
+          {step > 0 ? (
+            <button
+              type="button"
+              onClick={() => navigateToStep((step - 1) as SchoolOnboardingStep)}
+              disabled={busy}
+              className={schoolSecondaryActionClass}
+            >
+              <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />
+              Back
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => void (step === 4 ? finishActivation() : continueStep())}
             disabled={busy || (step === 1 && catalogStatus !== 'ready')}
             aria-busy={busy}
-            className={`${schoolPrimaryActionClass} min-w-[11rem]`}
+            className={`${schoolPrimaryActionClass} w-full min-w-[11rem] sm:ml-auto sm:w-auto`}
           >
             {saveStatus === 'refresh_required'
               ? <ReloadIcon className="h-4 w-4" aria-hidden="true" />

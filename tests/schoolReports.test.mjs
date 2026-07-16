@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 import {
+  createLearnerSafeSkillLabeler,
+  describeSavedAttempts,
+  groupSkillEvidenceByLabel,
+  reportPlacementContinuationOverride,
   resolveParentCurrentClassNo,
   selectLearnerPracticeChapter,
   selectParentCurrentChapter,
@@ -16,6 +20,98 @@ const learnerReport = read('src/components/school/reports/LearnerGrowthSummary.t
 const parentReport = read('src/components/school/reports/ParentGrowthReport.tsx');
 const reportEvidence = read('src/components/school/reports/reportEvidence.mjs');
 const productionSurface = [learnerRoute, parentRoute, learnerReport, parentReport].join('\n');
+
+test('report skill labels come from authored level copy and never expose engine ids', () => {
+  const labelSkill = createLearnerSafeSkillLabeler([
+    {
+      title: 'Build a clear story sequence',
+      focus: 'Connect each event to the detail that proves it.',
+      skill_ids: ['english.story.sequence', 'english.story.evidence_link'],
+    },
+  ]);
+
+  assert.equal(labelSkill('english.story.sequence'), 'Build a clear story sequence');
+  assert.equal(labelSkill('unknown.internal_skill_id'), 'Current learning skill');
+});
+
+test('saved evidence copy stays grammatical for singular and repeated attempts', () => {
+  assert.equal(describeSavedAttempts(1, 'guided_check'), '1 saved guided check');
+  assert.equal(describeSavedAttempts(3, 'guided_check'), '3 saved guided checks');
+  assert.equal(describeSavedAttempts(2, ''), '2 saved learning checks');
+});
+
+test('report evidence groups related skill ids without double-counting tagged attempts', () => {
+  const labelSkill = createLearnerSafeSkillLabeler([
+    {
+      title: 'Follow every speaker',
+      focus: 'Attribute dialogue and write a responsive exchange.',
+      skill_ids: ['writing.dialogue', 'reading.dialogue_attribution'],
+    },
+  ]);
+
+  assert.deepEqual(groupSkillEvidenceByLabel([
+    {
+      skill_id: 'writing.dialogue',
+      attempts: 9,
+      last_attempt_type: 'chapter_check',
+    },
+    {
+      skill_id: 'reading.dialogue_attribution',
+      attempts: 10,
+      last_attempt_type: 'chapter_check',
+    },
+    {
+      skill_id: 'vocab.chapter_word_usage',
+      skill_label: 'Use chapter vocabulary',
+      attempts: 15,
+      last_attempt_type: 'chapter_check',
+    },
+    {
+      skill_id: 'unknown.internal_skill_id',
+      attempts: 50,
+      last_attempt_type: 'chapter_check',
+    },
+  ], labelSkill), [
+    {
+      label: 'Follow every speaker',
+      attempts: 10,
+      last_attempt_type: 'chapter_check',
+      skill_count: 2,
+    },
+    {
+      label: 'Use chapter vocabulary',
+      attempts: 15,
+      last_attempt_type: 'chapter_check',
+      skill_count: 1,
+    },
+  ]);
+});
+
+test('reports do not promise placement continuation when the saved session has no question', () => {
+  const state = {
+    active_flow: 'placement',
+    active_session_id: 'placement-1',
+    profile_version_id: 'profile-1',
+    next_action: 'resume_placement',
+  };
+  const unavailable = reportPlacementContinuationOverride(state, {
+    session_id: 'placement-1',
+    profile_version_id: 'profile-1',
+    status: 'insufficient_evidence',
+    next_item: null,
+  });
+  assert.deepEqual(unavailable, {
+    heading: 'Starting-point check is waiting',
+    actionLabel: 'Check for another question',
+    message: 'Your saved answers are safe, but no additional question is available for this check yet.',
+  });
+  assert.equal(reportPlacementContinuationOverride(state, {
+    session_id: 'placement-1',
+    profile_version_id: 'profile-1',
+    status: 'in_progress',
+    next_item: { item_id: 'next' },
+  }), null);
+});
 
 test('locked target class is not promoted to the parent current class', () => {
   const lockedState = {
@@ -128,6 +224,26 @@ test('School report routes preserve auth, loading, retry, and backend-owned navi
   }
 });
 
+test('report routes load the persisted learner name without making it an evidence dependency', () => {
+  for (const route of [learnerRoute, parentRoute]) {
+    assert.match(route, /getSchoolOnboarding/);
+    assert.match(route, /active_profile\?\.display_name/);
+    assert.match(route, /learnerName=/);
+  }
+  assert.match(learnerReport, /learnerName/);
+  assert.match(parentReport, /learnerName/);
+});
+
+test('report routes validate active placement continuation before exposing their one primary action', () => {
+  for (const route of [learnerRoute, parentRoute]) {
+    assert.match(route, /getSchoolPlacement/);
+    assert.match(route, /reportPlacementContinuationOverride/);
+    assert.match(route, /nextStepOverride=/);
+  }
+  assert.match(learnerReport, /nextStepOverride/);
+  assert.match(parentReport, /nextStepOverride/);
+});
+
 test('report routes fetch only recognized placement and unlocked active class evidence', () => {
   for (const route of [learnerRoute, parentRoute]) {
     assert.match(route, /\['below_target', 'target_ready', 'insufficient_evidence'\]\.includes\(state\.placement_status\)/);
@@ -219,8 +335,10 @@ test('learner report leads with child-friendly growth, practice, and one next ch
   assert.match(learnerReport, /improving_skill_ids/);
   assert.match(learnerReport, /active_gaps/);
   assert.match(learnerReport, /strong_skills/);
-  assert.match(learnerReport, /latest_evidence/);
-  assert.match(learnerReport, /readableSkill/);
+  assert.match(learnerReport, /chapter_assessment\?\.last_result/);
+  assert.match(learnerReport, /groupSkillEvidenceByLabel/);
+  assert.match(learnerReport, /createLearnerSafeSkillLabeler/);
+  assert.doesNotMatch(learnerReport, /latest saved answer|answer, [“\"]/i);
   assert.match(learnerReport, /<SchoolCoachPanel[\s\S]*?compact/);
   assert.equal(learnerReport.match(/onClick=\{onNextAction\}/g)?.length, 1);
 });
@@ -252,7 +370,10 @@ test('parent first viewport answers position, change, attention, and this week b
     assert.match(parentReport, new RegExp(contract));
   }
   assert.match(parentReport, /<SchoolCoachPanel[\s\S]*?compact/);
-  assert.match(parentReport, /readableSkill\(improvingSkillIds\[0\]\)/);
+  assert.match(parentReport, /createLearnerSafeSkillLabeler/);
+  assert.match(parentReport, /chapter_assessment\?\.last_result/);
+  assert.match(parentReport, /groupSkillEvidenceByLabel/);
+  assert.doesNotMatch(parentReport, /latest saved answer|latest saved evidence[^.]*[“\"]/i);
   assert.equal(parentReport.match(/onClick=\{onNextAction\}/g)?.length, 1);
 });
 

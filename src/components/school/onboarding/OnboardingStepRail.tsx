@@ -24,42 +24,45 @@ export function OnboardingStepRail({
 }: OnboardingStepRailProps) {
   return (
     <nav
-      className="overflow-x-auto border-b border-slate-200 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="border-b border-[var(--school-line)] bg-[var(--school-surface-soft)] px-5 pb-3 pt-4 sm:px-7 sm:pt-5"
       data-school-region="step-rail"
       aria-label="Setup steps"
     >
-        <span className="sr-only" aria-live="polite">
-          Step {currentStep + 1} of {SCHOOL_ONBOARDING_STEPS.length}: {SCHOOL_ONBOARDING_STEPS[currentStep]}
-        </span>
-        <ol className="flex min-w-max items-center gap-1 sm:min-w-0">
+        <div className="flex items-center justify-between gap-4">
+          <p className="font-mono text-[10px] font-semibold uppercase text-[var(--school-muted)]" aria-live="polite">
+            Step {String(currentStep + 1).padStart(2, '0')} of {String(SCHOOL_ONBOARDING_STEPS.length).padStart(2, '0')}
+          </p>
+          <p className="text-xs font-semibold text-slate-600">{SCHOOL_ONBOARDING_STEPS[currentStep]}</p>
+        </div>
+        <ol className="mt-2 grid grid-cols-5 gap-1.5">
           {SCHOOL_ONBOARDING_STEPS.map((label, index) => {
             const step = index as SchoolOnboardingStep;
             const available = step <= persistedStep;
             const current = step === currentStep;
             return (
-              <li key={label} className="flex min-w-0 items-center">
+              <li key={label} className="min-w-0">
                 <button
                   type="button"
                   onClick={() => onSelect(step)}
                   disabled={disabled || !available}
                   aria-disabled={!available || undefined}
                   aria-current={current ? 'step' : undefined}
-                  className={`flex min-h-11 items-center gap-2 rounded-lg px-2.5 text-xs font-semibold transition-[background-color,color,opacity] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--school-accent)] focus-visible:ring-offset-2 sm:px-3 ${
-                    current
-                      ? 'bg-[var(--school-accent-soft)] text-[var(--school-accent-deep)]'
-                      : available
-                        ? 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                        : 'cursor-default text-slate-300'
-                  }`}
+                  aria-label={`Go to ${label} setup step`}
+                  className="group flex min-h-11 w-full items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--school-accent)] focus-visible:ring-offset-2 disabled:cursor-default"
                 >
-                  <span className="flex h-6 w-6 flex-none items-center justify-center rounded-full border border-current text-[11px]" aria-hidden="true">
-                    {step < persistedStep ? <CheckIcon className="h-3.5 w-3.5" /> : index + 1}
+                  <span
+                    className={`flex h-1 w-full items-center justify-center rounded-full transition-colors ${
+                      current || step < persistedStep
+                        ? 'bg-[var(--school-accent)]'
+                        : available
+                          ? 'bg-[var(--school-accent-border)] group-hover:bg-[var(--school-accent)]'
+                          : 'bg-slate-200'
+                    }`}
+                    aria-hidden="true"
+                  >
+                    {step < persistedStep ? <CheckIcon className="sr-only" /> : null}
                   </span>
-                  <span>{label}</span>
                 </button>
-                {index < SCHOOL_ONBOARDING_STEPS.length - 1 ? (
-                  <span aria-hidden="true" className="h-px w-3 flex-none bg-slate-200 sm:w-5" />
-                ) : null}
               </li>
             );
           })}

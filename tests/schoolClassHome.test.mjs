@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
+import {
+  shouldRenderUnlockedSchoolHome,
+  schoolHomeActionLabel,
+} from '../src/lib/schoolHomePolicy.mjs';
 
 const home = fs.readFileSync('src/components/school/catalog/SchoolClassHome.tsx', 'utf8');
 const skeletons = fs.readFileSync('src/components/learning/LearningSkeletons.tsx', 'utf8');
@@ -11,13 +15,38 @@ const schoolHomePage = fs.readFileSync('src/app/school/page.tsx', 'utf8');
 const classPage = fs.readFileSync('src/app/school/classes/[classNo]/page.tsx', 'utf8');
 const chapterPage = fs.readFileSync('src/app/school/classes/[classNo]/chapters/[chapterId]/page.tsx', 'utf8');
 
+test('unlocked learners keep a real Home surface with an authorized continuation', () => {
+  assert.equal(shouldRenderUnlockedSchoolHome({
+    unlock_state: 'target_unlocked',
+    subject_id: 'english',
+    active_learning_class_no: 5,
+    target_class_no: 5,
+  }), true);
+  assert.equal(shouldRenderUnlockedSchoolHome({
+    unlock_state: 'recap_required',
+    subject_id: 'english',
+    active_learning_class_no: 4,
+    target_class_no: 5,
+  }), false);
+  assert.equal(schoolHomeActionLabel('resume_curriculum'), 'Continue my chapter');
+  assert.equal(schoolHomeActionLabel('resume_support'), 'Continue focused support');
+  assert.match(schoolHomePage, /shouldRenderUnlockedSchoolHome/);
+  assert.match(schoolHomePage, /schoolHomeActionLabel/);
+  assert.doesNotMatch(schoolHomePage, /primaryAction=\{undefined\}/);
+});
+
 test('active class home uses the shared editorial system and real class context', () => {
   for (const token of ['Your English class', 'primaryAction.label', 'View class journey', 'Change class or subject', 'Recent growth', 'recent_growth']) {
     assert.match(home, new RegExp(token));
   }
   assert.match(home, /<SchoolPageHeading/);
+  assert.match(home, /SchoolPathMap\.module\.css/);
+  assert.match(home, /styles\.homeHero/);
+  assert.match(home, /styles\.homeCoach/);
+  assert.match(home, /styles\.homeThread/);
   assert.match(home, /schoolPrimaryActionClass/);
   assert.match(home, /schoolSecondaryActionClass/);
+  assert.doesNotMatch(home, /rounded-lg|sm:grid-cols-3/);
   for (const stale of ['Meet your coach', 'Readiness adventure', 'Build your bridge']) {
     assert.equal(home.includes(stale), false);
   }

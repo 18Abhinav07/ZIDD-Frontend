@@ -78,13 +78,13 @@ test('visible learner completes the authored personalized readiness path', async
     };
     console.log(`[recap ${kind}] ${question} -> ${answer}`);
 
-    const option = page.getByRole('button', { name: answer, exact: true });
+    const option = page.getByRole('radio', { name: answer, exact: true });
     if (await option.isVisible()) {
-      await option.click();
+      await option.check();
     } else {
       await page.getByLabel('Your recap answer').fill(answer);
-      await page.getByRole('button', { name: 'Submit', exact: true }).click();
     }
+    await page.getByRole('button', { name: 'Check my answer', exact: true }).click();
 
     await page.waitForFunction(({ previousQuestion, previousKind }) => {
       const question = document.querySelector('[data-testid="school-recap-question"]');

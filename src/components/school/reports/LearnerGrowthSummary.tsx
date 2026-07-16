@@ -16,7 +16,12 @@ import {
   schoolSecondaryActionClass,
 } from '@/components/school/SchoolPrimitives';
 import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
-import { selectLearnerPracticeChapter } from './reportEvidence.mjs';
+import {
+  createLearnerSafeSkillLabeler,
+  describeSavedAttempts,
+  groupSkillEvidenceByLabel,
+  selectLearnerPracticeChapter,
+} from './reportEvidence.mjs';
 import type {
   SchoolClassMap,
   SchoolCoachIdentity,
@@ -34,19 +39,16 @@ interface LearnerGrowthSummaryProps {
   curriculumSession: SchoolCurriculumSession | null;
   supportPlan: SchoolSupportPlan | null;
   activeCoachIdentity: SchoolCoachIdentity | null;
+  learnerName: string | null;
+  nextStepOverride: {
+    heading: string;
+    actionLabel: string;
+    message: string;
+  } | null;
   limitations?: readonly string[];
   onNextAction: () => void;
   onOpenClassMap: () => void;
   onOpenParentView: () => void;
-}
-
-function readableSkill(value: string): string {
-  const leaf = value.split('.').at(-1) ?? value;
-  return leaf.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function readableAttempt(value: string): string {
-  return value ? value.replaceAll('_', ' ') : 'saved check';
 }
 
 const NEXT_ACTION_LABELS: Partial<Record<SchoolNextAction, string>> = {
@@ -80,6 +82,8 @@ export function LearnerGrowthSummary({
   curriculumSession,
   supportPlan,
   activeCoachIdentity,
+  learnerName,
+  nextStepOverride,
   limitations = [],
   onNextAction,
   onOpenClassMap,
@@ -101,16 +105,31 @@ export function LearnerGrowthSummary({
   const improvingSkillIds = curriculumSession?.memory_summary?.improving_skill_ids ?? [];
   const strongSkills = curriculumSession?.memory_summary?.strong_skills ?? [];
   const improvingSkills = curriculumSession?.memory_summary?.improving_skills ?? [];
+  const labelSkill = createLearnerSafeSkillLabeler(curriculumSession?.levels);
+  const strongEvidenceRows = groupSkillEvidenceByLabel(strongSkills, labelSkill);
+  const improvingEvidenceRows = groupSkillEvidenceByLabel(improvingSkills, labelSkill);
+  const latestAssessment = curriculumSession?.chapter_assessment?.last_result;
+  const latestAssessmentPercent = latestAssessment
+    ? Math.round(latestAssessment.score * 100)
+    : null;
 
   const canDoRows: string[] = [];
-  strongSkills.slice(0, 3).forEach((skill) => {
-    canDoRows.push(skill.latest_evidence
-      ? `${readableSkill(skill.skill_id)}: your ${readableAttempt(skill.last_attempt_type)} answer, “${skill.latest_evidence}”, is the latest saved evidence.`
-      : `${readableSkill(skill.skill_id)} is strong across ${skill.attempts} saved class checks.`);
+  if (latestAssessment?.passed && latestAssessmentPercent !== null && curriculumSession) {
+    canDoRows.push(
+      `You scored ${latestAssessmentPercent}% on the ${curriculumSession.chapter.title} chapter challenge.`,
+    );
+  }
+  strongEvidenceRows.slice(0, 3).forEach((skill) => {
+    canDoRows.push(
+      `${skill.label} is strong across ${describeSavedAttempts(skill.attempts, skill.last_attempt_type)}.`,
+    );
   });
-  if (strongSkills.length === 0) {
+  if (strongEvidenceRows.length === 0) {
     strongSkillIds.slice(0, 3).forEach((skillId) => {
-      canDoRows.push(`${readableSkill(skillId)} is strong in your saved class checks.`);
+      const label = labelSkill(skillId);
+      if (label !== 'Current learning skill') {
+        canDoRows.push(`${label} is strong in your saved class checks.`);
+      }
     });
   }
   completedChapters.slice(-2).forEach((chapter) => {
@@ -126,23 +145,19 @@ export function LearnerGrowthSummary({
   }));
   if (practiceRows.length === 0 && activeGaps.length > 0) {
     activeGaps.slice(0, 3).forEach((gap) => practiceRows.push({
-      title: readableSkill(gap.skill_id),
-      detail: gap.latest_evidence
-        ? `${gap.gap} Latest saved answer: “${gap.latest_evidence}”.`
-        : gap.gap,
+      title: gap.skill_label || labelSkill(gap.skill_id),
+      detail: gap.gap,
     }));
   }
-  if (practiceRows.length === 0 && improvingSkills.length > 0) {
-    improvingSkills.slice(0, 3).forEach((skill) => practiceRows.push({
-      title: readableSkill(skill.skill_id),
-      detail: skill.latest_evidence
-        ? `Latest ${readableAttempt(skill.last_attempt_type)} evidence: “${skill.latest_evidence}”.`
-        : `This skill is improving across ${skill.attempts} saved checks.`,
+  if (practiceRows.length === 0 && improvingEvidenceRows.length > 0) {
+    improvingEvidenceRows.slice(0, 3).forEach((skill) => practiceRows.push({
+      title: skill.label,
+      detail: `${skill.skill_count > 1 ? 'These related skills are' : 'This skill is'} improving across ${describeSavedAttempts(skill.attempts, skill.last_attempt_type)}.`,
     }));
   }
   if (practiceRows.length === 0 && improvingSkillIds.length > 0) {
     improvingSkillIds.slice(0, 3).forEach((skillId) => practiceRows.push({
-      title: readableSkill(skillId),
+      title: labelSkill(skillId),
       detail: 'This skill is improving in recent saved chapter checks.',
     }));
   }
@@ -161,7 +176,7 @@ export function LearnerGrowthSummary({
 
   return (
     <main
-      className="mx-auto w-full max-w-[1040px] overflow-x-hidden px-5 pb-24 pt-28 sm:px-8 lg:px-12"
+      className="mx-auto w-full max-w-[1180px] overflow-x-hidden px-5 pb-24 pt-14 sm:px-8 sm:pt-16 lg:px-12"
       style={theme.style}
     >
       <header className="flex flex-col gap-6 border-b border-slate-200 pb-9 md:flex-row md:items-end md:justify-between">
@@ -175,7 +190,7 @@ export function LearnerGrowthSummary({
           />
           <SchoolPageHeading
             eyebrow="Your growth"
-            title="Look what is changing."
+            title={learnerName ? `${learnerName}, look what is changing.` : 'Look what is changing.'}
             description="This summary uses your saved readiness checks and chapter work."
           />
         </div>
@@ -249,14 +264,14 @@ export function LearnerGrowthSummary({
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase text-[var(--school-accent-deep)]">Your next challenge</p>
               <h2 id="learner-next-heading" className="mt-2 font-display text-[2.15rem] font-normal leading-[1.05] text-slate-950">
-                {nextActionLabel(state.next_action)}
+                {nextStepOverride?.heading ?? nextActionLabel(state.next_action)}
               </h2>
               <p className="mt-3 max-w-[64ch] break-words text-sm leading-6 text-slate-600">
-                {state.learner_message || 'Continue from the exact place saved in your learning path.'}
+                {nextStepOverride?.message || state.learner_message || 'Continue from the exact place saved in your learning path.'}
               </p>
             </div>
             <button type="button" onClick={onNextAction} className={schoolPrimaryActionClass}>
-              {nextActionLabel(state.next_action)}
+              {nextStepOverride?.actionLabel ?? nextActionLabel(state.next_action)}
               <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
@@ -292,6 +307,14 @@ export function LearnerGrowthSummary({
                   <ul className="mt-2 list-disc space-y-1 pl-5">
                     {completedChapters.map((chapter) => <li key={chapter.chapter_id}>{chapter.title}</li>)}
                   </ul>
+                </div>
+              ) : null}
+              {latestAssessment?.passed && latestAssessmentPercent !== null && curriculumSession ? (
+                <div>
+                  <h3 className="font-semibold text-slate-950">Latest chapter challenge</h3>
+                  <p className="mt-1">
+                    {curriculumSession.chapter.title}: {latestAssessmentPercent}% across {curriculumSession.chapter_assessment?.total_items ?? 0} independent questions.
+                  </p>
                 </div>
               ) : null}
               {!placementReport && completedChapters.length === 0 ? <p>No deeper completed work is available yet.</p> : null}

@@ -1,15 +1,19 @@
 "use client";
 
+import Image from 'next/image';
 import type { ReactNode, RefObject } from 'react';
 import {
   ArrowLeftIcon,
+  ArrowRightIcon,
   CheckCircledIcon,
   CheckIcon,
-  ClipboardIcon,
+  ClockIcon,
+  ExclamationTriangleIcon,
   FileTextIcon,
   InfoCircledIcon,
   MagicWandIcon,
   PaperPlaneIcon,
+  PauseIcon,
   ReloadIcon,
   StopIcon,
 } from '@radix-ui/react-icons';
@@ -18,6 +22,8 @@ import {
   schoolPrimaryActionClass,
   schoolSecondaryActionClass,
 } from '@/components/school/SchoolPrimitives';
+import { getAvatarScaleClass } from '@/lib/avatarRegistry';
+import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
 import type { SchoolPlacementResponse } from '@/services/schoolRebuild';
 
 type PlacementStage = SchoolPlacementResponse['stage'];
@@ -59,69 +65,37 @@ export function PlacementStageRail({ placement }: PlacementStageRailProps) {
   const finished = placement !== null && placement.status !== 'in_progress';
 
   return (
-    <div className="mx-auto max-w-sm xl:mx-0">
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <p className="text-[10px] font-semibold uppercase text-[var(--school-accent-deep)]">
-            Starting-point check
-          </p>
-          <p className="mt-1 text-sm font-semibold text-slate-900">Three short stages</p>
-        </div>
-        {placement ? (
-          <p
-            data-testid="school-placement-progress"
-            className="text-right text-[11px] font-semibold leading-5 text-slate-500"
-          >
-            {placementStageLabel(placement.stage)}
-            <br />
-            {placement.answered_count}/{placement.max_items} answered
-          </p>
-        ) : null}
+    <div data-testid="school-placement-progress" className="min-w-0 flex-1 sm:max-w-md">
+      <div className="flex items-center justify-between gap-4">
+        <p className="font-mono text-[10px] font-semibold uppercase text-[var(--school-muted)]">
+          Starting point
+        </p>
+        <p className="text-xs font-semibold text-slate-500">
+          {placement ? `${placement.answered_count} of ${placement.max_items} answered` : 'Ready'}
+        </p>
       </div>
-
-      <ol className="mt-5 grid grid-cols-3 gap-2 xl:grid-cols-1 xl:gap-0">
+      <ol className="mt-2 grid grid-cols-3 gap-1.5" aria-label="Starting-point stages">
         {PLACEMENT_STAGES.map((stage, index) => {
           const complete = index < activeIndex || (finished && index === activeIndex);
           const current = !finished && index === activeIndex;
           return (
-            <li
-              key={stage.id}
-              aria-current={current ? 'step' : undefined}
-              className="relative min-w-0 xl:flex xl:gap-3 xl:pb-5"
-            >
-              {index < PLACEMENT_STAGES.length - 1 ? (
-                <span
-                  aria-hidden="true"
-                  className={`absolute left-[calc(50%+1rem)] right-[calc(-50%+1rem)] top-4 h-px xl:bottom-0 xl:left-4 xl:right-auto xl:top-8 xl:h-auto xl:w-px ${
-                    complete ? 'bg-teal-500' : 'bg-slate-200'
-                  }`}
-                />
-              ) : null}
+            <li key={stage.id} aria-current={current ? 'step' : undefined} className="min-w-0">
               <span
-                className={`relative z-10 mx-auto flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold xl:mx-0 xl:flex-none ${
-                  complete
-                    ? 'border-teal-600 bg-teal-600 text-white'
-                    : current
-                      ? 'border-[var(--school-accent)] bg-[var(--school-accent-soft)] text-[var(--school-accent-deep)]'
-                      : 'border-slate-200 bg-[var(--school-surface,#fcfdff)] text-slate-400'
+                className={`block h-1 rounded-full ${
+                  complete || current ? 'bg-[var(--school-accent)]' : 'bg-slate-200'
                 }`}
-              >
-                {complete ? <CheckIcon className="h-4 w-4" aria-hidden="true" /> : index + 1}
+                aria-hidden="true"
+              />
+              <span className={`mt-2 hidden text-[10px] font-semibold sm:block ${current ? 'text-slate-800' : 'text-slate-500'}`}>
+                {stage.label}
               </span>
-              <div className="mt-2 min-w-0 text-center xl:mt-0 xl:text-left">
-                <p className={`text-xs font-semibold sm:text-sm ${current ? 'text-slate-950' : 'text-slate-500'}`}>
-                  {stage.label}
-                </p>
-                <p className="mt-1 hidden text-xs leading-5 text-slate-500 sm:block">
-                  {stage.description}
-                </p>
-              </div>
             </li>
           );
         })}
       </ol>
-      <p className="mt-2 text-xs leading-5 text-slate-500 xl:mt-0">
-        Confirmation is skipped when your answers are already clear.
+      <p className="sr-only">
+        {placement ? `${placementStageLabel(placement.stage)} stage` : 'The check has not started'}.
+        Confirmation is skipped when the saved evidence is already clear.
       </p>
     </div>
   );
@@ -130,9 +104,15 @@ export function PlacementStageRail({ placement }: PlacementStageRailProps) {
 interface SchoolPlacementActivityProps {
   placement: SchoolPlacementResponse | null;
   targetClassNo: number | null;
+  coachAvatarId: string | null | undefined;
+  coachPaletteId: string | null | undefined;
   canStartPlacement: boolean;
   placementLoadFailed: boolean;
   placementRedirecting: boolean;
+  placementRecoveryRequired: boolean;
+  awaitingEvaluation: boolean;
+  reportAvailable: boolean;
+  stateMessage: string;
   starting: boolean;
   submitting: boolean;
   abandoning: boolean;
@@ -142,12 +122,11 @@ interface SchoolPlacementActivityProps {
   questionHeadingRef: RefObject<HTMLHeadingElement>;
   onAnswerChange: (answer: string) => void;
   onBegin: () => void;
-  onSubmit: (answer?: string) => void;
+  onSubmit: () => void;
   onRequestAbandon: () => void;
   onCancelAbandon: () => void;
   onConfirmAbandon: () => void;
   onRefresh: () => void;
-  onResume: () => void;
   onReturnToSchool: () => void;
   onViewReport: () => void;
 }
@@ -172,69 +151,120 @@ function ActionButton({
       : schoolSecondaryActionClass;
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={toneClass}
-    >
+    <button type="button" onClick={onClick} disabled={disabled} className={toneClass}>
       {icon}
       {children}
     </button>
   );
 }
 
-function MessagePanel({
+export function SchoolPlacementSkeleton() {
+  return (
+    <main
+      className="mx-auto grid min-h-[calc(100dvh-68px)] w-full max-w-[1240px] items-center gap-10 px-4 py-12 sm:px-7 lg:grid-cols-[minmax(0,1.08fr)_minmax(340px,0.72fr)] lg:px-10"
+      aria-busy="true"
+      aria-label="Loading starting-point check"
+    >
+      <div className="space-y-5">
+        <div className="h-3 w-44 animate-pulse rounded-full bg-slate-200 motion-reduce:animate-none" />
+        <div className="h-16 w-full max-w-xl animate-pulse rounded-2xl bg-slate-100 motion-reduce:animate-none" />
+        <div className="h-4 w-full max-w-lg animate-pulse rounded-full bg-slate-100 motion-reduce:animate-none" />
+        <div className="h-11 w-40 animate-pulse rounded-xl bg-slate-200 motion-reduce:animate-none" />
+      </div>
+      <div className="mx-auto h-[370px] w-full max-w-[420px] animate-pulse rounded-t-[48%] rounded-b-[30px] border border-slate-200 bg-slate-100 motion-reduce:animate-none lg:h-[520px]" />
+    </main>
+  );
+}
+
+function PlacementCoachScene({
+  avatarId,
+  paletteId,
+}: {
+  avatarId: string | null | undefined;
+  paletteId: string | null | undefined;
+}) {
+  const theme = getSchoolAvatarTheme(avatarId, paletteId);
+
+  return (
+    <div
+      className="relative mx-auto min-h-[370px] w-full max-w-[450px] overflow-hidden rounded-t-[48%] rounded-b-[30px] border border-[var(--school-accent-border)] bg-[var(--school-accent-soft)] lg:min-h-[520px]"
+      style={theme.style}
+    >
+      <span aria-hidden="true" className="absolute left-1/2 top-14 h-[min(72vw,300px)] w-[min(72vw,300px)] -translate-x-1/2 rounded-full border border-[var(--school-accent-border)] opacity-80" />
+      <span aria-hidden="true" className="absolute left-1/2 top-24 h-[min(52vw,214px)] w-[min(52vw,214px)] -translate-x-1/2 rounded-full border border-[var(--school-accent-border)] opacity-55" />
+      <div className="absolute right-4 top-7 z-20 max-w-[142px] rounded-xl border border-[var(--school-accent-border)] bg-[var(--school-paper)] px-3 py-2.5 shadow-[0_12px_30px_rgba(30,37,63,0.08)] sm:right-6">
+        <strong className="block text-[11px] font-semibold text-slate-700">Your coach</strong>
+        <span className="mt-1 block text-[10px] leading-4 text-slate-500">I will guide each prompt.</span>
+      </div>
+      <Image
+        src={theme.avatar.url}
+        alt="Your Zidd School coach ready to guide the starting point"
+        fill
+        sizes="(max-width: 860px) 92vw, 450px"
+        className={`z-10 object-contain object-bottom ${getAvatarScaleClass(theme.avatar.url)}`}
+        priority
+      />
+    </div>
+  );
+}
+
+function PlacementTerminal({
   eyebrow,
   title,
   body,
   icon,
-  tone = 'plain',
-  children,
+  tone = 'accent',
+  note,
   role,
+  children,
 }: {
   eyebrow: string;
   title: string;
   body: string;
   icon: ReactNode;
-  tone?: 'plain' | 'warning' | 'error';
+  tone?: 'accent' | 'success' | 'warning' | 'error';
+  note?: ReactNode;
+  role?: 'status' | 'alert';
   children?: ReactNode;
-  role?: 'alert' | 'status';
 }) {
-  const toneClass = tone === 'warning'
-    ? 'border-orange-200 bg-orange-50/70'
-    : tone === 'error'
-      ? 'border-red-200 bg-red-50/70'
-      : 'border-[var(--school-accent-border)] bg-[var(--school-accent-soft)]';
-  const iconClass = tone === 'warning'
-    ? 'bg-orange-100 text-orange-800'
-    : tone === 'error'
-      ? 'bg-red-100 text-red-800'
-      : 'bg-[var(--school-surface,#fcfdff)] text-[var(--school-accent-deep)]';
+  const markClass = tone === 'success'
+    ? 'border-teal-200 bg-teal-50 text-teal-800'
+    : tone === 'warning'
+      ? 'border-orange-200 bg-orange-50 text-orange-800'
+      : tone === 'error'
+        ? 'border-red-200 bg-red-50 text-red-800'
+        : 'border-[var(--school-accent-border)] bg-[var(--school-accent-soft)] text-[var(--school-accent-deep)]';
 
   return (
-    <section role={role} aria-live={role === 'status' ? 'polite' : undefined} className={`rounded-2xl border p-5 sm:p-7 ${toneClass}`}>
-      <div className="flex items-start gap-4">
-        <span className={`flex h-11 w-11 flex-none items-center justify-center rounded-lg ${iconClass}`}>
+    <main className="mx-auto flex min-h-[calc(100dvh-68px)] w-full max-w-[900px] flex-col items-start justify-center px-4 py-14 sm:px-7 lg:px-10 lg:py-20">
+      <section role={role} aria-live={role === 'status' ? 'polite' : undefined} className="w-full">
+        <div className={`flex h-14 w-14 items-center justify-center rounded-2xl border ${markClass}`} aria-hidden="true">
           {icon}
-        </span>
-        <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase text-[var(--school-accent-deep)]">{eyebrow}</p>
-          <h2 className="mt-2 font-display text-[2rem] font-normal leading-[1.05] text-slate-950 sm:text-[2.4rem]">{title}</h2>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">{body}</p>
         </div>
-      </div>
-      {children ? <div className="mt-6 flex flex-col gap-3 sm:flex-row">{children}</div> : null}
-    </section>
+        <p className="mt-7 font-mono text-[10px] font-semibold uppercase text-[var(--school-accent-deep)]">{eyebrow}</p>
+        <h1 className="mt-3 max-w-3xl font-display text-[2.75rem] font-normal leading-[1.02] text-slate-950 sm:text-[3.5rem]">
+          {title}
+        </h1>
+        <p className="mt-4 max-w-2xl text-sm leading-6 text-[var(--school-muted)] sm:text-base sm:leading-7">{body}</p>
+        {note ? <div className="mt-6 max-w-2xl border-y border-[var(--school-line)] py-4 text-sm leading-6 text-slate-600">{note}</div> : null}
+        {children ? <div className="mt-7 flex w-full flex-col gap-3 sm:w-auto sm:flex-row">{children}</div> : null}
+      </section>
+    </main>
   );
 }
 
 export function SchoolPlacementActivity({
   placement,
   targetClassNo,
+  coachAvatarId,
+  coachPaletteId,
   canStartPlacement,
   placementLoadFailed,
   placementRedirecting,
+  placementRecoveryRequired,
+  awaitingEvaluation,
+  reportAvailable,
+  stateMessage,
   starting,
   submitting,
   abandoning,
@@ -249,7 +279,6 @@ export function SchoolPlacementActivity({
   onCancelAbandon,
   onConfirmAbandon,
   onRefresh,
-  onResume,
   onReturnToSchool,
   onViewReport,
 }: SchoolPlacementActivityProps) {
@@ -257,290 +286,328 @@ export function SchoolPlacementActivity({
 
   if (placementRedirecting) {
     return (
-      <MessagePanel
+      <PlacementTerminal
         role="status"
-        eyebrow="Check complete"
-        title="Opening your starting-point report"
-        body="Your answers are saved. We are taking you to the path chosen from them."
-        icon={<FileTextIcon className="h-5 w-5" aria-hidden="true" />}
+        eyebrow="Saved School state"
+        title="Opening your current School step"
+        body="Your latest backend-approved path is ready. This page will move there without changing your saved work."
+        icon={<ArrowRightIcon className="h-6 w-6" />}
       />
     );
   }
 
   if (placementLoadFailed) {
     return (
-      <MessagePanel
+      <PlacementTerminal
         role="alert"
         tone="error"
         eyebrow="Could not open the check"
-        title="Let's try that again"
-        body={error || 'Return to your School path or retry loading your saved check.'}
-        icon={<ReloadIcon className="h-5 w-5" aria-hidden="true" />}
+        title="Your saved starting point could not be loaded"
+        body={error || 'Return to your School path or retry loading the canonical check.'}
+        icon={<ExclamationTriangleIcon className="h-6 w-6" />}
       >
-        <ActionButton tone="danger" icon={<ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />} onClick={onReturnToSchool}>
-          Return to School
-        </ActionButton>
-        <ActionButton tone="secondary" icon={<ReloadIcon className="h-4 w-4" aria-hidden="true" />} onClick={onRefresh}>
-          Retry loading
-        </ActionButton>
-      </MessagePanel>
+        <ActionButton icon={<ReloadIcon className="h-4 w-4" />} onClick={onRefresh}>Retry loading</ActionButton>
+        <ActionButton tone="secondary" icon={<ArrowLeftIcon className="h-4 w-4" />} onClick={onReturnToSchool}>Back to School</ActionButton>
+      </PlacementTerminal>
+    );
+  }
+
+  if (placementRecoveryRequired) {
+    return (
+      <PlacementTerminal
+        role="alert"
+        tone="warning"
+        eyebrow="Saved work needs recovery"
+        title="Current School step needs confirmation"
+        body={stateMessage || 'No next question is available until the current School session and profile version are confirmed.'}
+        icon={<ExclamationTriangleIcon className="h-6 w-6" />}
+        note="Answering is disabled in this recovery state so a mutation response cannot replace authoritative School state."
+      >
+        <ActionButton icon={<ReloadIcon className="h-4 w-4" />} onClick={onRefresh}>Refresh School state</ActionButton>
+        <ActionButton tone="secondary" icon={<ArrowLeftIcon className="h-4 w-4" />} onClick={onReturnToSchool}>Back to School</ActionButton>
+      </PlacementTerminal>
+    );
+  }
+
+  if (awaitingEvaluation) {
+    return (
+      <PlacementTerminal
+        role="status"
+        eyebrow="Answer saved"
+        title="Your answer is still being checked"
+        body={stateMessage || 'Stay on this page. Zidd will reload this same check when the next question or report is ready.'}
+        icon={<ClockIcon className="h-6 w-6" />}
+        note={answer ? <p>Your response stays visible here while checking: <strong className="text-slate-800">{answer}</strong></p> : undefined}
+      >
+        <ActionButton tone="secondary" icon={<ReloadIcon className="h-4 w-4" />} onClick={onRefresh}>Refresh now</ActionButton>
+      </PlacementTerminal>
     );
   }
 
   if (!placement) {
     return (
-      <MessagePanel
-        eyebrow="Before your lessons"
-        title="Let's find the right place to begin"
-        body={`You will answer a few English questions for Class ${targetClassNo ?? 'your class'}. This is not a school exam, and there are no marks.`}
-        icon={<ClipboardIcon className="h-5 w-5" aria-hidden="true" />}
-      >
-        <ActionButton tone="secondary" icon={<ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />} onClick={onReturnToSchool}>
-          Back
-        </ActionButton>
-        {canStartPlacement ? (
-          <ActionButton
-            icon={<MagicWandIcon className="h-4 w-4" aria-hidden="true" />}
-            onClick={onBegin}
-            disabled={starting}
-          >
-            <span className="min-w-[10.5rem] text-center">
-              {starting ? 'Starting your check' : 'Begin the check'}
-            </span>
-          </ActionButton>
-        ) : null}
-        {error ? <p role="alert" className="w-full text-sm font-semibold text-red-800">{error}</p> : null}
-      </MessagePanel>
+      <main className="mx-auto grid min-h-[calc(100dvh-68px)] w-full max-w-[1240px] items-center gap-10 px-4 py-10 sm:px-7 sm:py-14 lg:grid-cols-[minmax(0,1.08fr)_minmax(380px,0.72fr)] lg:gap-[clamp(3.5rem,8vw,7rem)] lg:px-10">
+        <section className="min-w-0">
+          <p className="font-mono text-[10px] font-semibold uppercase text-[var(--school-accent-deep)]">Find the right first step</p>
+          <h1 className="mt-3 max-w-[650px] font-display text-[3rem] font-normal leading-[0.98] text-slate-950 sm:text-[4rem]">
+            A starting point, not a test.
+          </h1>
+          <p className="mt-5 max-w-[620px] text-sm leading-6 text-[var(--school-muted)] sm:text-base sm:leading-7">
+            A few reading and writing prompts help choose where Class {targetClassNo ?? 'your class'} learning should begin. We look for useful evidence, not marks.
+          </p>
+          {error ? <p role="alert" className="mt-4 max-w-xl text-sm font-semibold text-red-800">{error}</p> : null}
+          <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+            {canStartPlacement ? (
+              <ActionButton icon={<MagicWandIcon className="h-4 w-4" />} onClick={onBegin} disabled={starting}>
+                <span className="min-w-[8rem] text-center">{starting ? 'Starting safely' : 'Begin'}</span>
+                {!starting ? <ArrowRightIcon className="h-4 w-4" /> : null}
+              </ActionButton>
+            ) : (
+              <ActionButton icon={<ReloadIcon className="h-4 w-4" />} onClick={onRefresh}>Refresh School state</ActionButton>
+            )}
+            {reportAvailable ? (
+              <ActionButton tone="secondary" icon={<FileTextIcon className="h-4 w-4" />} onClick={onViewReport}>See my starting point</ActionButton>
+            ) : null}
+          </div>
+          <p className="mt-5 flex items-center gap-2 text-[11px] text-slate-500">
+            <ClockIcon className="h-4 w-4 flex-none" aria-hidden="true" />
+            <span>About 8 minutes. Pause whenever you need.</span>
+          </p>
+        </section>
+        <PlacementCoachScene avatarId={coachAvatarId} paletteId={coachPaletteId} />
+      </main>
     );
   }
 
   if (item) {
     return (
-      <section data-testid="school-placement-card" className="flex min-h-full flex-col">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-7">
-          <div>
-            <p className="text-[10px] font-semibold uppercase text-[var(--school-accent-deep)]">
-              {placementStageLabel(placement.stage)}
-            </p>
-            <p className="mt-1 text-xs font-semibold text-slate-500">
-              {placement.answered_count} answered so far
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {placement.status === 'in_progress' ? (
+      <main className="mx-auto min-h-[calc(100dvh-68px)] w-full max-w-[940px] px-4 pb-16 pt-8 sm:px-7 lg:px-10 lg:pt-10">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <button
+            type="button"
+            onClick={onReturnToSchool}
+            className="inline-flex min-h-11 items-center gap-2 self-start px-1 text-xs font-semibold text-slate-600 hover:text-slate-950"
+          >
+            <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />
+            School
+          </button>
+          <PlacementStageRail placement={placement} />
+        </div>
+
+        <article data-testid="school-placement-card" className="mt-6 overflow-hidden rounded-[28px] border border-[var(--school-line)] bg-[var(--school-paper)] shadow-[var(--school-shadow)]">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--school-line)] px-5 py-3 sm:px-8">
+            <div>
+              <p className="font-mono text-[10px] font-semibold uppercase text-[var(--school-accent-deep)]">{placementStageLabel(placement.stage)}</p>
+              <p className="mt-1 text-xs text-slate-500">{placement.answered_count} answered so far</p>
+            </div>
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={onRequestAbandon}
-                className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-[var(--school-surface,#fcfdff)] px-3 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+                disabled={submitting}
+                className="inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
               >
-                <StopIcon className="h-3.5 w-3.5" aria-hidden="true" />
-                Stop check
+                <StopIcon className="h-4 w-4" aria-hidden="true" />
+                Stop for now
               </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={onRefresh}
-              aria-label="Refresh readiness check"
-              title="Refresh readiness check"
-              className="flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 bg-[var(--school-surface,#fcfdff)] text-slate-600 transition-colors hover:bg-slate-50"
-            >
-              <ReloadIcon className="h-4 w-4" aria-hidden="true" />
-            </button>
+              <button
+                type="button"
+                onClick={onRefresh}
+                disabled={submitting}
+                aria-label="Refresh starting-point check"
+                title="Refresh starting-point check"
+                className="flex h-11 w-11 items-center justify-center rounded-lg border border-[var(--school-line)] text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              >
+                <ReloadIcon className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
           </div>
-        </div>
 
-        {confirmingAbandon ? (
-          <section role="region" aria-labelledby="stop-readiness-title" className="border-b border-orange-200 bg-orange-50 px-4 py-4 text-orange-950 sm:px-7">
-            <h2 id="stop-readiness-title" className="text-base font-semibold">Stop this readiness check?</h2>
-            <p className="mt-1 text-sm font-semibold leading-6">
-              Your answers stay saved, but an unfinished check cannot choose your class path.
-            </p>
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-              <ActionButton tone="secondary" icon={<ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />} onClick={onCancelAbandon} disabled={abandoning}>
-                Keep going
-              </ActionButton>
-              <ActionButton tone="danger" icon={<StopIcon className="h-4 w-4" aria-hidden="true" />} onClick={onConfirmAbandon} disabled={abandoning}>
-                <span className="min-w-[9rem] text-center">
-                  {abandoning ? 'Stopping safely' : 'Stop for now'}
-                </span>
-              </ActionButton>
-            </div>
-          </section>
-        ) : null}
-
-        <div className="flex-1 px-4 py-6 sm:px-8 sm:py-8">
-          <div className="mx-auto max-w-3xl">
-            <SchoolStatusChip>{item.learner_skill_label}</SchoolStatusChip>
-            <p data-testid="school-placement-instruction" className="mt-3 text-sm font-medium leading-6 text-slate-600">
-              {item.instruction}
-            </p>
-
-            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-5 sm:px-5">
-              <p className="text-[10px] font-semibold uppercase text-slate-500">Read this</p>
-              <p data-testid="school-placement-passage" className="mt-2 font-display text-[1.35rem] font-normal leading-8 text-slate-800 sm:text-[1.55rem]">
-                {item.passage}
-              </p>
-            </div>
-
-            <h2
-              ref={questionHeadingRef}
-              data-testid="school-placement-question"
-              tabIndex={-1}
-              aria-live="polite"
-              className="mt-7 font-display text-[2rem] font-normal leading-[1.08] text-slate-950 outline-none sm:text-[2.35rem]"
-            >
-              {item.prompt}
-            </h2>
-
-            {item.options?.length ? (
-              <div className="mt-7 grid gap-3 sm:grid-cols-2">
-                {item.options.map((option, index) => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => onSubmit(option)}
-                    disabled={submitting}
-                    className="group flex min-h-14 items-center gap-3 rounded-xl border border-slate-200 bg-[var(--school-surface,#fcfdff)] px-4 py-3 text-left text-sm font-semibold text-slate-800 transition-[background-color,border-color,color] hover:border-[var(--school-accent)] hover:bg-[var(--school-accent-soft)] disabled:cursor-wait disabled:opacity-60"
-                  >
-                    <span aria-hidden="true" className="flex h-7 w-7 flex-none items-center justify-center rounded-md bg-slate-100 text-xs font-semibold text-slate-500 group-hover:bg-[var(--school-surface,#fcfdff)]">
-                      {String.fromCharCode(65 + index)}
-                    </span>
-                    <span>{option}</span>
-                  </button>
-                ))}
+          {confirmingAbandon ? (
+            <section role="region" aria-labelledby="stop-starting-point-title" className="border-b border-orange-200 bg-orange-50 px-5 py-5 text-orange-950 sm:px-8">
+              <h2 id="stop-starting-point-title" className="text-base font-semibold">Stop this starting point?</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6">Your answers stay saved, but an unfinished check cannot choose a learning path.</p>
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                <ActionButton tone="secondary" icon={<ArrowLeftIcon className="h-4 w-4" />} onClick={onCancelAbandon} disabled={abandoning}>Keep going</ActionButton>
+                <ActionButton tone="danger" icon={<StopIcon className="h-4 w-4" />} onClick={onConfirmAbandon} disabled={abandoning}>
+                  <span className="min-w-[8rem] text-center">{abandoning ? 'Stopping safely' : 'Stop for now'}</span>
+                </ActionButton>
               </div>
-            ) : (
-              <div className="mt-7">
-                <label htmlFor="school-placement-answer" className="block text-sm font-semibold text-slate-800">Your answer</label>
-                <div className="mt-2 flex flex-col gap-3 sm:flex-row">
-                  <input
+            </section>
+          ) : null}
+
+          <div className="px-5 py-7 sm:px-10 sm:py-10">
+            <div className="mx-auto max-w-3xl">
+              <SchoolStatusChip>{item.learner_skill_label}</SchoolStatusChip>
+              <p data-testid="school-placement-instruction" className="mt-3 text-sm leading-6 text-slate-600">{item.instruction}</p>
+
+              {item.passage ? (
+                <div className="mt-6 border-l-2 border-[var(--school-accent-border)] pl-5">
+                  <p className="font-mono text-[10px] font-semibold uppercase text-slate-500">Read this</p>
+                  <p data-testid="school-placement-passage" className="mt-3 font-display text-[1.4rem] font-normal leading-8 text-slate-800 sm:text-[1.6rem]">{item.passage}</p>
+                </div>
+              ) : null}
+
+              <h1
+                ref={questionHeadingRef}
+                data-testid="school-placement-question"
+                tabIndex={-1}
+                aria-live="polite"
+                className="mt-8 max-w-3xl font-display text-[2rem] font-normal leading-[1.08] text-slate-950 outline-none sm:text-[2.45rem]"
+              >
+                {item.prompt}
+              </h1>
+
+              {item.options?.length ? (
+                <fieldset className="mt-7" disabled={submitting}>
+                  <legend className="sr-only">Choose one answer</legend>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {item.options.map((option, index) => (
+                      <label
+                        key={option}
+                        htmlFor={`school-placement-option-${index}`}
+                        className={`group flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold text-slate-800 transition-[background-color,border-color,color] ${
+                          answer === option
+                            ? 'border-[var(--school-accent)] bg-[var(--school-accent-soft)]'
+                            : 'border-slate-200 bg-[var(--school-paper)] hover:border-[var(--school-accent)] hover:bg-[var(--school-accent-soft)]'
+                        }`}
+                      >
+                        <input
+                          id={`school-placement-option-${index}`}
+                          type="radio"
+                          name="school-placement-answer"
+                          value={option}
+                          checked={answer === option}
+                          onChange={() => onAnswerChange(option)}
+                          disabled={submitting}
+                          className="h-4 w-4 flex-none accent-[var(--school-accent)]"
+                        />
+                        <span aria-hidden="true" className="font-mono text-[10px] font-semibold text-slate-400">{String.fromCharCode(65 + index)}</span>
+                        <span>{option}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="mt-4 flex justify-end">
+                    <ActionButton icon={submitting ? <ClockIcon className="h-4 w-4" /> : <CheckIcon className="h-4 w-4" />} onClick={() => onSubmit()} disabled={submitting || !answer.trim()}>
+                      <span className="min-w-[8rem] text-center">{submitting ? 'Checking safely' : 'Check my answer'}</span>
+                    </ActionButton>
+                  </div>
+                </fieldset>
+              ) : (
+                <div className="mt-7">
+                  <label htmlFor="school-placement-answer" className="block text-sm font-semibold text-slate-800">Your answer</label>
+                  <textarea
                     id="school-placement-answer"
                     value={answer}
                     onChange={(event) => onAnswerChange(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') onSubmit();
-                    }}
                     disabled={submitting}
-                    placeholder="Type your answer"
-                    className="min-h-12 flex-1 rounded-xl border border-slate-300 bg-[var(--school-surface,#fcfdff)] px-4 py-3 text-base font-medium text-slate-900 outline-none transition-[border-color,box-shadow] focus:border-[var(--school-accent)] focus:ring-4 focus:ring-[var(--school-accent-soft)] disabled:bg-slate-50"
+                    rows={4}
+                    placeholder="Write one or two sentences"
+                    className="mt-2 min-h-28 w-full resize-y rounded-xl border border-slate-300 bg-[var(--school-paper)] px-4 py-3 text-base leading-6 text-slate-900 outline-none transition-[border-color,box-shadow] focus:border-[var(--school-accent)] focus:ring-4 focus:ring-[var(--school-accent-soft)] disabled:bg-slate-50"
                   />
-                  <ActionButton
-                    icon={submitting ? <CheckIcon className="h-4 w-4" aria-hidden="true" /> : <PaperPlaneIcon className="h-4 w-4" aria-hidden="true" />}
-                    onClick={() => onSubmit()}
-                    disabled={submitting || !answer.trim()}
-                  >
-                    <span className="min-w-[7.5rem] text-center">
-                      {submitting ? 'Checking your answer' : 'Check answer'}
-                    </span>
-                  </ActionButton>
+                  <div className="mt-4 flex justify-end">
+                    <ActionButton icon={submitting ? <ClockIcon className="h-4 w-4" /> : <PaperPlaneIcon className="h-4 w-4" />} onClick={() => onSubmit()} disabled={submitting || !answer.trim()}>
+                      <span className="min-w-[8rem] text-center">{submitting ? 'Checking safely' : 'Submit answer'}</span>
+                    </ActionButton>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            <div data-testid="school-placement-support" className="mt-5 flex items-start gap-3 rounded-xl bg-[var(--school-accent-soft)] px-4 py-3 text-sm leading-6 text-slate-700">
-              <InfoCircledIcon className="mt-0.5 h-4 w-4 flex-none text-[var(--school-accent-deep)]" aria-hidden="true" />
-              <p>{item.support}</p>
+              {item.support ? (
+                <div data-testid="school-placement-support" className="mt-5 flex items-start gap-3 border-y border-[var(--school-line)] py-3 text-sm leading-6 text-slate-600">
+                  <InfoCircledIcon className="mt-1 h-4 w-4 flex-none text-[var(--school-accent-deep)]" aria-hidden="true" />
+                  <p>{item.support}</p>
+                </div>
+              ) : <div data-testid="school-placement-support" className="sr-only">No extra prompt support was provided.</div>}
+
+              {submitting ? <p role="status" aria-live="polite" className="mt-5 text-sm font-semibold text-[var(--school-accent-deep)]">Your answer is being checked. Please keep this page open.</p> : null}
+              {error ? <p role="alert" className="mt-5 border-y border-red-200 bg-red-50 px-3 py-3 text-sm font-semibold text-red-800">{error}</p> : null}
             </div>
-
-            {submitting && item.options?.length ? (
-              <p role="status" aria-live="polite" className="mt-5 text-sm font-semibold text-[var(--school-accent-deep)]">
-                Checking your answer...
-              </p>
-            ) : null}
-            {error ? <p role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{error}</p> : null}
           </div>
-        </div>
-      </section>
+        </article>
+      </main>
     );
   }
 
   if (placement.status === 'target_ready' || placement.status === 'below_target') {
     return (
-      <MessagePanel
+      <PlacementTerminal
         role="status"
-        eyebrow="All done"
-        title="Your starting path is ready"
-        body="You gave enough answers for Zidd to choose what you should learn next."
-        icon={<CheckCircledIcon className="h-5 w-5" aria-hidden="true" />}
+        tone="success"
+        eyebrow="Starting point saved"
+        title="Your first learning path is ready"
+        body="Your report explains what the saved evidence supports and shows the next School step authorized by the backend."
+        icon={<CheckCircledIcon className="h-6 w-6" />}
+        note="This is an evidence summary, not a mark or rank."
       >
-        <ActionButton icon={<FileTextIcon className="h-4 w-4" aria-hidden="true" />} onClick={onViewReport}>
-          View readiness report
-        </ActionButton>
-      </MessagePanel>
+        <ActionButton icon={<ReloadIcon className="h-4 w-4" />} onClick={onRefresh}>Open current School step</ActionButton>
+        {reportAvailable ? (
+          <ActionButton tone="secondary" icon={<FileTextIcon className="h-4 w-4" />} onClick={onViewReport}>See my starting point</ActionButton>
+        ) : null}
+      </PlacementTerminal>
     );
   }
 
   if (placement.status === 'insufficient_evidence') {
     return (
-      <MessagePanel
+      <PlacementTerminal
         role="status"
         tone="warning"
-        eyebrow="A few answers are still needed"
-        title="Let's finish finding your starting point"
-        body="Your work is saved. Continue from here so Zidd can choose the right lessons for you."
-        icon={<ClipboardIcon className="h-5 w-5" aria-hidden="true" />}
+        eyebrow="More evidence needed"
+        title="This saved check cannot continue yet"
+        body="The backend has no additional question for this saved session. Starting again could replace your saved answers, so Zidd will not restart it here."
+        icon={<PauseIcon className="h-6 w-6" />}
+        note={stateMessage || 'No learning path, class readiness, or unlock has been assigned from this incomplete evidence.'}
       >
-        <ActionButton
-          icon={<ReloadIcon className="h-4 w-4" aria-hidden="true" />}
-          onClick={onResume}
-          disabled={starting || !canStartPlacement}
-        >
-          {starting ? 'Preparing more questions' : 'Continue the check'}
-        </ActionButton>
-        <ActionButton tone="secondary" icon={<ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />} onClick={onReturnToSchool}>
-          Back to School
-        </ActionButton>
-      </MessagePanel>
+        <ActionButton icon={<ArrowLeftIcon className="h-4 w-4" />} onClick={onReturnToSchool}>Back to School</ActionButton>
+        <ActionButton tone="secondary" icon={<ReloadIcon className="h-4 w-4" />} onClick={onRefresh}>Check for another question</ActionButton>
+      </PlacementTerminal>
     );
   }
 
   if (placement.status === 'abandoned') {
     return (
-      <MessagePanel
+      <PlacementTerminal
         role="status"
-        eyebrow="Check stopped"
-        title="No starting point was chosen"
-        body="Your answers are saved in the report. You can start a new check from your School path."
-        icon={<StopIcon className="h-5 w-5" aria-hidden="true" />}
+        tone="warning"
+        eyebrow="Saved for later"
+        title="Your starting point is paused"
+        body="The answers already given are saved. No learning path has been assigned from partial work."
+        icon={<PauseIcon className="h-6 w-6" />}
       >
-        <ActionButton icon={<FileTextIcon className="h-4 w-4" aria-hidden="true" />} onClick={onViewReport}>
-          View saved report
-        </ActionButton>
-        <ActionButton tone="secondary" icon={<ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />} onClick={onReturnToSchool}>
-          Back to School
-        </ActionButton>
-      </MessagePanel>
+        <ActionButton icon={<ReloadIcon className="h-4 w-4" />} onClick={onRefresh}>Open current School step</ActionButton>
+        {reportAvailable ? (
+          <ActionButton tone="secondary" icon={<FileTextIcon className="h-4 w-4" />} onClick={onViewReport}>View saved evidence</ActionButton>
+        ) : null}
+      </PlacementTerminal>
     );
   }
 
   if (placement.status === 'in_progress') {
     return (
-      <MessagePanel
+      <PlacementTerminal
         role="status"
-        eyebrow="Your check is saved"
-        title="The next question is getting ready"
-        body="Refresh to continue from this same place."
-        icon={<ReloadIcon className="h-5 w-5" aria-hidden="true" />}
+        tone="warning"
+        eyebrow="Question unavailable"
+        title="The next question is not available yet"
+        body="Everything already answered is safe. Refresh this same session instead of starting a new check."
+        icon={<ReloadIcon className="h-6 w-6" />}
       >
-        <ActionButton icon={<ReloadIcon className="h-4 w-4" aria-hidden="true" />} onClick={onRefresh}>
-          Refresh
-        </ActionButton>
-      </MessagePanel>
+        <ActionButton icon={<ReloadIcon className="h-4 w-4" />} onClick={onRefresh}>Refresh this check</ActionButton>
+      </PlacementTerminal>
     );
   }
 
   return (
-    <MessagePanel
+    <PlacementTerminal
       role="alert"
       tone="error"
       eyebrow="Check unavailable"
       title="Return to your School path"
-      body="Zidd could not recognize this saved check safely."
-      icon={<ReloadIcon className="h-5 w-5" aria-hidden="true" />}
+      body="Zidd could not recognize this saved check safely, so no progression has been inferred."
+      icon={<ExclamationTriangleIcon className="h-6 w-6" />}
     >
-      <ActionButton tone="danger" icon={<ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />} onClick={onReturnToSchool}>
-        Back to School
-      </ActionButton>
-    </MessagePanel>
+      <ActionButton icon={<ArrowLeftIcon className="h-4 w-4" />} onClick={onReturnToSchool}>Back to School</ActionButton>
+    </PlacementTerminal>
   );
 }

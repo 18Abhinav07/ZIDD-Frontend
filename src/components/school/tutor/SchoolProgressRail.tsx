@@ -28,18 +28,15 @@ export function SchoolProgressRail({ session }: SchoolProgressRailProps) {
 
   return (
     <div data-testid="school-tutor-progress" className="min-w-0">
-      <section aria-labelledby="school-current-stage">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--school-accent-deep)]">
-          Chapter progress
-        </p>
-        <h2 id="school-current-stage" className="mt-2 font-display text-2xl font-normal leading-tight text-slate-950">
-          {currentLevel?.title || 'Chapter challenge'}
-        </h2>
-        <p className="mt-2 break-words text-sm font-medium leading-5 text-slate-600">
-          {activity?.title || assessmentLabel(session)}
-        </p>
+      <section aria-labelledby="school-current-stage" className="grid min-w-0 gap-3 sm:grid-cols-[minmax(150px,auto)_minmax(180px,1fr)_auto] sm:items-center sm:gap-5">
+        <div className="min-w-0">
+          <p className="font-mono text-[9px] font-semibold uppercase text-[var(--school-accent-deep)]">Lesson progress</p>
+          <h2 id="school-current-stage" className="mt-1 truncate text-sm font-semibold text-[var(--school-ink)]">
+            {currentLevel?.title || 'Chapter challenge'}
+          </h2>
+        </div>
         <div
-          className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-200"
+          className="h-1.5 overflow-hidden rounded-full bg-[#dedfdc]"
           role="progressbar"
           aria-label="Completed lesson stages"
           aria-valuemin={0}
@@ -51,66 +48,54 @@ export function SchoolProgressRail({ session }: SchoolProgressRailProps) {
             style={{ width: `${progressPercent}%` }}
           />
         </div>
-        <p className="mt-2 text-xs font-medium text-slate-500">
-          {session.progress.completed_levels} of {session.progress.total_levels} stages complete
+        <p className="whitespace-nowrap font-mono text-[10px] font-semibold text-[var(--school-faint)]">
+          {String(session.progress.completed_levels).padStart(2, '0')} / {String(session.progress.total_levels).padStart(2, '0')}
         </p>
       </section>
 
-      <ol className="mt-6 border-y border-slate-200 py-3">
-        {session.levels.map((level, index) => {
-          const current = index === session.progress.current_level_index && session.phase !== 'complete';
-          const complete = isComplete(level.status);
-          return (
-            <li
-              key={level.level_id}
-              aria-current={current ? 'step' : undefined}
-              className="flex min-w-0 items-center gap-3 py-2"
-            >
-              <span
-                className={`flex h-7 w-7 flex-none items-center justify-center rounded-md border text-xs font-semibold ${
-                  complete
-                    ? 'border-teal-700 bg-teal-700 text-white'
-                    : current
-                      ? 'border-[var(--school-accent)] bg-[var(--school-accent-soft)] text-[var(--school-accent-deep)]'
-                      : 'border-slate-300 bg-white text-slate-400'
-                }`}
-              >
-                {complete ? <CheckIcon className="h-4 w-4" aria-hidden="true" /> : index + 1}
-              </span>
-              <div className="min-w-0">
-                <p className={`break-words text-sm font-semibold leading-5 ${current ? 'text-slate-950' : 'text-slate-600'}`}>
-                  {level.title}
-                </p>
-                <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-400">
-                  {complete ? 'Complete' : current ? 'Now' : 'Coming up'}
-                </p>
+      <details className="group mt-3 border-t border-[var(--school-line)] pt-3">
+        <summary className="-my-1.5 flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 py-1.5 text-xs font-semibold text-[var(--school-muted)] focus-visible:outline-none">
+          <span>{activity?.title || assessmentLabel(session)}</span>
+          <span className="font-mono text-[9px] uppercase text-[var(--school-accent-deep)] group-open:hidden">View stages</span>
+          <span className="hidden font-mono text-[9px] uppercase text-[var(--school-accent-deep)] group-open:inline">Hide stages</span>
+        </summary>
+        <div className="mt-3 grid gap-5 border-t border-[var(--school-line)] pt-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+          <ol className="grid gap-2 sm:grid-cols-2">
+            {session.levels.map((level, index) => {
+              const current = index === session.progress.current_level_index && session.phase !== 'complete';
+              const complete = isComplete(level.status);
+              return (
+                <li key={level.level_id} aria-current={current ? 'step' : undefined} className="flex min-w-0 items-center gap-2.5">
+                  <span className={`flex h-6 w-6 flex-none items-center justify-center rounded-md border text-[10px] font-semibold ${
+                    complete
+                      ? 'border-[var(--school-green)] bg-[var(--school-green)] text-white'
+                      : current
+                        ? 'border-[var(--school-accent)] bg-[var(--school-accent-soft)] text-[var(--school-accent-deep)]'
+                        : 'border-[var(--school-line-strong)] bg-[var(--school-paper)] text-[var(--school-faint)]'
+                  }`}>
+                    {complete ? <CheckIcon className="h-3.5 w-3.5" aria-hidden="true" /> : index + 1}
+                  </span>
+                  <span className={`min-w-0 truncate text-xs font-semibold ${current ? 'text-[var(--school-ink)]' : 'text-[var(--school-muted)]'}`}>
+                    {level.title}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+          <div className="space-y-3 border-t border-[var(--school-line)] pt-3 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
+            <div className="flex gap-2 text-[var(--school-muted)]">
+              <TargetIcon className="mt-0.5 h-3.5 w-3.5 flex-none" aria-hidden="true" />
+              <p className="text-xs font-medium leading-5">{assessmentLabel(session)}</p>
+            </div>
+            {memory ? (
+              <div data-testid="school-tutor-memory" className="flex gap-2 text-[var(--school-muted)]" aria-label="Learning memory">
+                <BookmarkIcon className="mt-0.5 h-3.5 w-3.5 flex-none" aria-hidden="true" />
+                <p className="break-words text-xs leading-5">{memory.recommended_next_action}</p>
               </div>
-            </li>
-          );
-        })}
-      </ol>
-
-      <section className="py-5" aria-label="Chapter challenge">
-        <div className="flex items-center gap-2 text-[var(--school-accent-deep)]">
-          <TargetIcon className="h-4 w-4" aria-hidden="true" />
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em]">Chapter challenge</p>
-        </div>
-        <p className="mt-2 text-sm font-semibold leading-5 text-slate-700">{assessmentLabel(session)}</p>
-      </section>
-
-      {memory ? (
-        <aside
-          data-testid="school-tutor-memory"
-          className="border-t border-slate-200 pt-5 text-slate-500"
-          aria-label="Learning memory"
-        >
-          <div className="flex items-center gap-2">
-            <BookmarkIcon className="h-3.5 w-3.5" aria-hidden="true" />
-            <p className="text-[10px] font-semibold uppercase tracking-[0.12em]">What I am watching</p>
+            ) : null}
           </div>
-          <p className="mt-2 break-words text-xs leading-5">{memory.recommended_next_action}</p>
-        </aside>
-      ) : null}
+        </div>
+      </details>
     </div>
   );
 }

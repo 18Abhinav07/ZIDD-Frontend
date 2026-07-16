@@ -11,6 +11,7 @@ import {
   schoolCurriculumSessionOwnedByState,
   resolveSchoolStateAction,
   resolveSchoolStateDestination,
+  resolveSchoolPassiveStateDestination,
   schoolMasterclassLineage,
   schoolMasterclassShellBackAction,
   schoolSubjectLabel,
@@ -79,6 +80,33 @@ test('school navigation fails closed for an unapproved or external destination',
     nextAction: 'resume_recap',
     allowedNextActions: ['resume_recap'],
     nextActionUrl: '/career',
+  }), null);
+});
+
+test('awaiting evaluation may retain only its passive backend route', () => {
+  assert.equal(resolveSchoolPassiveStateDestination({
+    status: 'awaiting_evaluation',
+    nextAction: null,
+    allowedNextActions: [],
+    nextActionUrl: '/school/session/session-1',
+  }), '/school/session/session-1');
+  assert.equal(resolveSchoolPassiveStateDestination({
+    status: 'in_progress',
+    nextAction: null,
+    allowedNextActions: [],
+    nextActionUrl: '/school/session/session-1',
+  }), null);
+  assert.equal(resolveSchoolPassiveStateDestination({
+    status: 'awaiting_evaluation',
+    nextAction: null,
+    allowedNextActions: ['resume_curriculum'],
+    nextActionUrl: '/school/session/session-1',
+  }), null);
+  assert.equal(resolveSchoolPassiveStateDestination({
+    status: 'awaiting_evaluation',
+    nextAction: null,
+    allowedNextActions: [],
+    nextActionUrl: 'https://example.com/school/session/session-1',
   }), null);
 });
 

@@ -6,7 +6,6 @@ import { ExclamationTriangleIcon, ReloadIcon } from '@radix-ui/react-icons';
 import { SchoolLevelMapSkeleton } from '@/components/learning/LearningSkeletons';
 import { SchoolLevelMap } from '@/components/school/catalog/SchoolLevelMap';
 import { SchoolPageHeading, schoolPrimaryActionClass } from '@/components/school/SchoolPrimitives';
-import { AppHeader } from '@/components/shared/AppHeader';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 import { resolveSchoolStateDestination } from '@/lib/schoolActivityPolicy';
 import {
@@ -162,7 +161,6 @@ export default function SchoolChapterPage() {
 
   return (
     <div className="mode-school min-h-[100dvh] bg-background font-body text-slate-950">
-      <AppHeader title="School Prep" appearance="school" />
       {snapshot ? (
         <>
           {error ? (

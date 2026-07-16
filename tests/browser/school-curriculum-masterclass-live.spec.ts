@@ -29,7 +29,8 @@ async function visibleSchoolPage(): Promise<Page> {
 async function answerOption(page: Page, answer: string) {
   const previousKind = ((await page.getByTestId('school-curriculum-kind').textContent()) ?? '').trim();
   const previousQuestion = (await page.getByTestId('school-curriculum-question').innerText()).trim();
-  await page.getByRole('button', { name: answer, exact: true }).click();
+  await page.getByRole('radio', { name: answer, exact: true }).check();
+  await page.getByRole('button', { name: 'Check my answer', exact: true }).click();
   await page.waitForFunction(({ kind, question }) => {
     const handoff = document.querySelector('[data-testid="school-curriculum-masterclass-handoff"]');
     const currentKind = document.querySelector('[data-testid="school-curriculum-kind"]')?.textContent?.trim();
@@ -88,7 +89,8 @@ test('visible learner pauses a chapter, completes linked practice, and resumes e
     question: (await page.getByTestId('school-masterclass-question').innerText()).trim(),
     answer: 'share',
   });
-  await page.getByRole('button', { name: 'share', exact: true }).click();
+  await page.getByRole('radio', { name: 'share', exact: true }).check();
+  await page.getByRole('button', { name: 'Check my answer', exact: true }).click();
   await expect(page.getByTestId('school-masterclass-complete')).toBeVisible({
     timeout: SCHOOL_EVALUATOR_EXPECT_TIMEOUT_MS,
   });

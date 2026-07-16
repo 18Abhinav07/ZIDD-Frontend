@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
-import { resolveSchoolPlacementReportAction } from '../src/lib/schoolPlacementReportPolicy.ts';
+import {
+  constrainPlacementReportActionToSession,
+  placementEvaluatedClassLabel,
+  placementEvidenceLead,
+  placementLearningPathDetail,
+  recapModuleDisplayLabel,
+  resolveSchoolPlacementReportAction,
+} from '../src/lib/schoolPlacementReportPolicy.ts';
 import {
   createSchoolRouteLoadSingleFlight,
   isSchoolRouteLoadCurrent,
@@ -135,6 +142,133 @@ test('placement report maps recap, focused practice, and placement without mutat
   });
   assert.equal(placementAction.kind, 'current');
   assert.equal(placementAction.kind === 'current' ? placementAction.url : '', '/school/placement/placement-v1');
+});
+
+test('placement report never promises continuation when the saved session has no next question', () => {
+  const action = resolveSchoolPlacementReportAction(report, {
+    ...state,
+    next_action: 'resume_placement',
+    next_action_url: '/school/placement/placement-v1',
+    allowed_next_actions: ['resume_placement'],
+  });
+  const constrained = constrainPlacementReportActionToSession(
+    action,
+    { placementSessionId: 'placement-v1', profileVersionId: 'profile-v1' },
+    {
+      session_id: 'placement-v1',
+      profile_version_id: 'profile-v1',
+      status: 'insufficient_evidence',
+      next_item: null,
+    },
+  );
+
+  assert.deepEqual(constrained, {
+    kind: 'current_unavailable',
+    action: 'resume_placement',
+    label: 'Starting-point check is waiting',
+    learnerMessage: 'Your saved answers are safe, but no additional question is available yet. Zidd will not pretend this check can continue.',
+  });
+});
+
+test('placement report keeps continuation only for the matching active session with a next item', () => {
+  const action = resolveSchoolPlacementReportAction(report, {
+    ...state,
+    next_action: 'resume_placement',
+    next_action_url: '/school/placement/placement-v1',
+    allowed_next_actions: ['resume_placement'],
+  });
+  const context = { placementSessionId: 'placement-v1', profileVersionId: 'profile-v1' };
+  const constrained = constrainPlacementReportActionToSession(action, context, {
+    session_id: 'placement-v1',
+    profile_version_id: 'profile-v1',
+    status: 'in_progress',
+    next_item: { item_id: 'item-v2' },
+  });
+
+  assert.deepEqual(constrained, action);
+  assert.equal(constrainPlacementReportActionToSession(action, context, null).kind, 'current_unavailable');
+  assert.equal(constrainPlacementReportActionToSession(action, context, {
+    session_id: 'other-placement',
+    profile_version_id: 'profile-v1',
+    status: 'in_progress',
+    next_item: { item_id: 'item-v2' },
+  }).kind, 'current_unavailable');
+});
+
+test('locked placement reports do not claim that learning begins in the evaluated class', () => {
+  assert.deepEqual(placementLearningPathDetail({
+    unlock_state: 'locked',
+    active_learning_class_no: 4,
+  }), {
+    label: 'Learning path',
+    value: 'No learning path assigned',
+  });
+  assert.deepEqual(placementLearningPathDetail({
+    unlock_state: 'target_unlocked',
+    active_learning_class_no: 5,
+  }), {
+    label: 'Learning begins in',
+    value: 'Class 5',
+  });
+});
+
+test('placement report never renders a missing evaluated class as bare Class null', () => {
+  assert.equal(placementEvaluatedClassLabel({
+    placement_status: 'below_target',
+    evaluated_class_no: null,
+  }), 'Skill-by-skill foundation path');
+  assert.equal(placementEvaluatedClassLabel({
+    placement_status: 'below_target',
+    evaluated_class_no: 4,
+  }), 'Class 4');
+  assert.equal(placementEvaluatedClassLabel({
+    placement_status: 'insufficient_evidence',
+    evaluated_class_no: null,
+  }), 'Not decided');
+});
+
+test('recap module display removes duplicate skill wording without hiding distinct focus', () => {
+  assert.equal(recapModuleDisplayLabel({
+    title: 'Recap: Infer an unstated reason from evidence',
+    focus: 'Infer an unstated reason from evidence',
+  }), 'Recap: Infer an unstated reason from evidence');
+  assert.equal(recapModuleDisplayLabel({
+    title: 'Recap: Reading clues',
+    focus: 'Infer an unstated reason from evidence',
+  }), 'Recap: Reading clues: Infer an unstated reason from evidence');
+});
+
+test('placement report lead evidence is qualitative and status-compatible', () => {
+  const blocking = [{
+    label: 'Sequence events',
+    learner_reason: 'Connect each event to the clue that proves what happened next.',
+  }];
+  const watchlist = [{ label: 'Character motivation', source_class_no: 4 }];
+
+  assert.deepEqual(placementEvidenceLead({
+    placement_status: 'below_target',
+    blocking_skills: blocking,
+    watchlist_skills: watchlist,
+  }), {
+    rows: ['Connect each event to the clue that proves what happened next.'],
+    emptyMessage: '',
+  });
+  assert.deepEqual(placementEvidenceLead({
+    placement_status: 'target_ready',
+    blocking_skills: blocking,
+    watchlist_skills: watchlist,
+  }), {
+    rows: ['Character motivation will be checked again during Class 4 work.'],
+    emptyMessage: '',
+  });
+  assert.deepEqual(placementEvidenceLead({
+    placement_status: 'insufficient_evidence',
+    blocking_skills: blocking,
+    watchlist_skills: watchlist,
+  }), {
+    rows: [],
+    emptyMessage: 'This check did not produce enough reliable evidence to name a strength or a gap. Saved answer counts remain available in report details.',
+  });
 });
 
 test('route load single-flight shares concurrent work and ownership rejects stale commits', async () => {

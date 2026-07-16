@@ -10,7 +10,6 @@ import {
   schoolPrimaryActionClass,
   schoolSecondaryActionClass,
 } from '@/components/school/SchoolPrimitives';
-import { AppHeader } from '@/components/shared/AppHeader';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 import { resolveSchoolStateDestination } from '@/lib/schoolActivityPolicy';
 import {
@@ -172,7 +171,6 @@ export default function SchoolClassPage() {
 
   return (
     <div className="mode-school min-h-[100dvh] bg-background font-body text-slate-950">
-      <AppHeader title="School Prep" appearance="school" />
       {snapshot ? (
         <>
           {error ? (

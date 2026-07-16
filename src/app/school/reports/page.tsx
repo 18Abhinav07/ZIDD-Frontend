@@ -6,7 +6,7 @@ import { ExclamationTriangleIcon, ReloadIcon } from '@radix-ui/react-icons';
 import { SchoolReportSkeleton } from '@/components/learning/LearningSkeletons';
 import { SchoolPageHeading, schoolPrimaryActionClass } from '@/components/school/SchoolPrimitives';
 import { LearnerGrowthSummary } from '@/components/school/reports/LearnerGrowthSummary';
-import { AppHeader } from '@/components/shared/AppHeader';
+import { reportPlacementContinuationOverride } from '@/components/school/reports/reportEvidence.mjs';
 import { resolveSchoolStateDestination } from '@/lib/schoolActivityPolicy';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 import {
@@ -20,6 +20,8 @@ import {
   getSchoolCurriculumSession,
   getSchoolLoadScope,
   getSchoolMasterclass,
+  getSchoolPlacement,
+  getSchoolOnboarding,
   getSchoolPlacementReport,
   getSchoolState,
   getSchoolSupportPlan,
@@ -38,6 +40,12 @@ interface LearnerReportSnapshot {
   curriculumSession: SchoolCurriculumSession | null;
   supportPlan: SchoolSupportPlan | null;
   activeCoachIdentity: SchoolCoachIdentity | null;
+  learnerName: string | null;
+  nextStepOverride: {
+    heading: string;
+    actionLabel: string;
+    message: string;
+  } | null;
   limitations: string[];
 }
 
@@ -58,6 +66,8 @@ async function loadLearnerReportSnapshot(): Promise<LearnerReportSnapshot> {
       curriculumSession: null,
       supportPlan: null,
       activeCoachIdentity: null,
+      learnerName: null,
+      nextStepOverride: null,
       limitations: [],
     };
   }
@@ -131,10 +141,18 @@ async function loadLearnerReportSnapshot(): Promise<LearnerReportSnapshot> {
       };
     }
   })();
-  const [placement, classMap, learning] = await Promise.all([
+  const learnerNamePromise = getSchoolOnboarding()
+    .then((onboarding) => onboarding.active_profile?.display_name?.trim() || null)
+    .catch(() => null);
+  const activePlacementPromise = state.active_flow === 'placement' && state.active_session_id
+    ? getSchoolPlacement(state.active_session_id).catch(() => null)
+    : Promise.resolve(null);
+  const [placement, classMap, learning, learnerName, activePlacement] = await Promise.all([
     placementPromise,
     classMapPromise,
     learningPromise,
+    learnerNamePromise,
+    activePlacementPromise,
   ]);
   return {
     state,
@@ -143,6 +161,8 @@ async function loadLearnerReportSnapshot(): Promise<LearnerReportSnapshot> {
     curriculumSession: learning.value?.curriculumSession ?? null,
     supportPlan: learning.value?.supportPlan ?? null,
     activeCoachIdentity: learning.value?.activeCoachIdentity ?? null,
+    learnerName,
+    nextStepOverride: reportPlacementContinuationOverride(state, activePlacement),
     limitations: [placement.limitation, classMap.limitation, learning.limitation]
       .filter((value): value is string => Boolean(value)),
   };
@@ -237,7 +257,6 @@ export default function SchoolReportsPage() {
 
   return (
     <div className="mode-school min-h-[100dvh] bg-background font-body text-slate-950">
-      <AppHeader title="My growth" appearance="school" />
       {loading ? <SchoolReportSkeleton /> : snapshot ? (
         <LearnerGrowthSummary
           state={snapshot.state}
@@ -246,8 +265,10 @@ export default function SchoolReportsPage() {
           curriculumSession={snapshot.curriculumSession}
           supportPlan={snapshot.supportPlan}
           activeCoachIdentity={snapshot.activeCoachIdentity}
+          learnerName={snapshot.learnerName}
+          nextStepOverride={snapshot.nextStepOverride}
           limitations={snapshot.limitations}
-          onNextAction={followAuthoritativeState}
+          onNextAction={snapshot.nextStepOverride ? () => void load() : followAuthoritativeState}
           onOpenClassMap={() => {
             const classNo = snapshot.classMap?.class_no;
             router.push(classNo ? `/school/classes/${classNo}` : '/school');

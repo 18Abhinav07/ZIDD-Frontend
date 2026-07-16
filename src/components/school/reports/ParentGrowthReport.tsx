@@ -15,7 +15,11 @@ import {
   schoolSecondaryActionClass,
 } from '@/components/school/SchoolPrimitives';
 import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
+import { placementEvaluatedClassLabel } from '@/lib/schoolPlacementReportPolicy';
 import {
+  createLearnerSafeSkillLabeler,
+  describeSavedAttempts,
+  groupSkillEvidenceByLabel,
   resolveParentCurrentClassNo,
   selectParentCurrentChapter,
   selectParentNextChapter,
@@ -38,16 +42,15 @@ interface ParentGrowthReportProps {
   recapSession: SchoolRecapPath | null;
   supportPlan: SchoolSupportPlan | null;
   activeCoachIdentity: SchoolCoachIdentity | null;
+  learnerName: string | null;
+  nextStepOverride: {
+    heading: string;
+    actionLabel: string;
+    message: string;
+  } | null;
   limitations?: readonly string[];
   onNextAction: () => void;
   onOpenLearnerView: () => void;
-}
-
-function readableSkill(value: string): string {
-  const leaf = value.split('.').at(-1) ?? value;
-  return leaf
-    .replaceAll('_', ' ')
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function chapterStatus(status: SchoolClassMap['chapters'][number]['status']): string {
@@ -73,6 +76,8 @@ export function ParentGrowthReport({
   recapSession,
   supportPlan,
   activeCoachIdentity,
+  learnerName,
+  nextStepOverride,
   limitations = [],
   onNextAction,
   onOpenLearnerView,
@@ -83,6 +88,12 @@ export function ParentGrowthReport({
   const strongSkillIds = curriculumSession?.memory_summary?.strong_skill_ids ?? [];
   const improvingSkillIds = curriculumSession?.memory_summary?.improving_skill_ids ?? [];
   const improvingSkills = curriculumSession?.memory_summary?.improving_skills ?? [];
+  const labelSkill = createLearnerSafeSkillLabeler(curriculumSession?.levels);
+  const improvingEvidenceRows = groupSkillEvidenceByLabel(improvingSkills, labelSkill);
+  const latestAssessment = curriculumSession?.chapter_assessment?.last_result;
+  const latestAssessmentPercent = latestAssessment
+    ? Math.round(latestAssessment.score * 100)
+    : null;
   const interruptHistory = curriculumSession?.interrupt_history ?? [];
   const assessmentSupportHistory = supportPlan?.history ?? [];
   const supportHistoryCount = interruptHistory.length + assessmentSupportHistory.length;
@@ -109,17 +120,21 @@ export function ParentGrowthReport({
   );
   const improvingCount = classMap?.recent_growth.improving_count ?? improvingSkillIds.length;
 
-  const changeTitle = improvingSkillIds.length > 0
-    ? `${readableSkill(improvingSkillIds[0])} is improving`
+  const changeTitle = latestAssessment?.passed && curriculumSession
+    ? `${curriculumSession.chapter.title} chapter check passed`
+    : improvingEvidenceRows.length > 0
+    ? `${improvingEvidenceRows[0].label} is improving`
     : improvingCount > 0
       ? `${improvingCount} ${improvingCount === 1 ? 'skill is' : 'skills are'} improving`
     : completedChapters.length > 0
       ? `${completedChapters.length} ${completedChapters.length === 1 ? 'chapter is' : 'chapters are'} complete`
       : 'No change has been confirmed yet';
-  const changeDetail = improvingSkills[0]?.latest_evidence
-    ? `Latest saved evidence for ${readableSkill(improvingSkills[0].skill_id)}: “${improvingSkills[0].latest_evidence}” (${improvingSkills[0].last_attempt_type.replaceAll('_', ' ') || 'saved check'}).`
+  const changeDetail = latestAssessment?.passed && latestAssessmentPercent !== null && curriculumSession
+    ? `${curriculumSession.chapter_assessment?.total_items ?? 0} independent questions were completed with a saved score of ${latestAssessmentPercent}%.`
+    : improvingEvidenceRows[0]
+    ? `${improvingEvidenceRows[0].label} is improving across ${describeSavedAttempts(improvingEvidenceRows[0].attempts, improvingEvidenceRows[0].last_attempt_type)}.`
     : improvingSkillIds.length > 0
-      ? `Recent saved class evidence identifies ${readableSkill(improvingSkillIds[0])} as improving${improvingSkillIds.length > 1 ? `, with ${improvingSkillIds.length - 1} more improving skill${improvingSkillIds.length === 2 ? '' : 's'}` : ''}.`
+      ? `Recent saved class evidence identifies ${labelSkill(improvingSkillIds[0])} as improving${improvingSkillIds.length > 1 ? `, with ${improvingSkillIds.length - 1} more improving skill${improvingSkillIds.length === 2 ? '' : 's'}` : ''}.`
     : improvingCount > 0
       ? 'This count comes from recent saved class evidence.'
     : completedChapters.length > 0
@@ -131,7 +146,7 @@ export function ParentGrowthReport({
     : cappedEvents.length > 0
     ? 'A focused-support limit was reached'
     : activeGaps.length > 0
-      ? readableSkill(activeGaps[0].skill_id)
+      ? activeGaps[0].skill_label || labelSkill(activeGaps[0].skill_id)
       : recapModule
         ? recapModule.focus
       : currentFocusCount > 0
@@ -142,9 +157,7 @@ export function ParentGrowthReport({
     : cappedEvents.length > 0
     ? `${cappedEvents[0].focus} reached the saved extra-support limit after ${cappedEvents[0].trigger_count} support attempts.`
     : activeGaps.length > 0
-      ? activeGaps[0].latest_evidence
-        ? `${activeGaps[0].gap} Latest saved answer: “${activeGaps[0].latest_evidence}”.`
-        : activeGaps[0].gap
+      ? activeGaps[0].gap
       : recapModule
         ? `The readiness path paused at ${recapModule.title}. The saved module focus is ${recapModule.focus}.`
       : currentFocusCount > 0
@@ -153,7 +166,7 @@ export function ParentGrowthReport({
 
   return (
     <main
-      className="mx-auto w-full max-w-[1080px] overflow-x-hidden px-5 pb-24 pt-28 sm:px-8 lg:px-12"
+      className="mx-auto w-full max-w-[1180px] overflow-x-hidden px-5 pb-24 pt-14 sm:px-8 sm:pt-16 lg:px-12"
       style={theme.style}
     >
       <header className="flex flex-col gap-6 border-b border-slate-200 pb-9 md:flex-row md:items-end md:justify-between">
@@ -167,7 +180,7 @@ export function ParentGrowthReport({
           />
           <SchoolPageHeading
             eyebrow={currentClassNo ? `Parent view · Class ${currentClassNo} English` : 'Parent view'}
-            title="Learning evidence, at a glance."
+            title={learnerName ? `${learnerName}'s learning, at a glance.` : 'Learning evidence, at a glance.'}
             description="A concise view of the learner's current position, saved change, attention needs, and next step."
           />
         </div>
@@ -247,13 +260,15 @@ export function ParentGrowthReport({
           <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase text-[var(--school-accent-deep)]">This week</p>
-              <h2 id="parent-week-heading" className="mt-2 font-display text-[2rem] font-normal leading-[1.05] text-slate-950">Recommended next action</h2>
+              <h2 id="parent-week-heading" className="mt-2 font-display text-[2rem] font-normal leading-[1.05] text-slate-950">
+                {nextStepOverride?.heading ?? 'Recommended next action'}
+              </h2>
               <p className="mt-3 max-w-[64ch] break-words text-sm leading-6 text-slate-600">
-                {state.parent_message || "Continue from the next step saved in the learner's path."}
+                {nextStepOverride?.message || state.parent_message || "Continue from the next step saved in the learner's path."}
               </p>
             </div>
             <button type="button" onClick={onNextAction} className={schoolPrimaryActionClass}>
-              Open next step
+              {nextStepOverride?.actionLabel ?? 'Open next step'}
               <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
@@ -281,7 +296,7 @@ export function ParentGrowthReport({
                 </p>
                 <dl className="divide-y divide-slate-200 border-y border-slate-200">
                   <div className="flex flex-wrap justify-between gap-3 py-3"><dt>Target class selected for placement</dt><dd className="font-semibold text-slate-950">Class {placementReport.target_class_no}</dd></div>
-                  <div className="flex flex-wrap justify-between gap-3 py-3"><dt>Starting point</dt><dd className="font-semibold text-slate-950">{placementIsConclusive ? `Class ${placementReport.evaluated_class_no}` : 'Not decided'}</dd></div>
+                  <div className="flex flex-wrap justify-between gap-3 py-3"><dt>Starting point</dt><dd className="font-semibold text-slate-950">{placementEvaluatedClassLabel(placementReport)}</dd></div>
                 </dl>
                 {!placementIsConclusive ? (
                   <p className="font-medium text-orange-900">Preliminary misses are not presented as lasting weaknesses until enough evidence is saved.</p>
@@ -345,7 +360,7 @@ export function ParentGrowthReport({
                   <ul className="mt-3 space-y-3">
                     {activeGaps.map((gap) => (
                       <li key={`${gap.skill_id}-${gap.gap}`}>
-                        <strong className="font-semibold text-slate-950">{readableSkill(gap.skill_id)}</strong>
+                        <strong className="font-semibold text-slate-950">{labelSkill(gap.skill_id)}</strong>
                         <span className="block">{gap.gap}</span>
                         <span className="block text-xs text-[var(--school-accent-deep)]">Next support: {gap.recommended_next_action}</span>
                       </li>
@@ -389,7 +404,7 @@ export function ParentGrowthReport({
                         ? `Saved after chapter check ${event.attempt_no}.`
                         : 'Saved during the chapter support path.'}
                       {event.skill_ids?.length
-                        ? ` Focused on ${event.skill_ids.map(readableSkill).join(', ')}.`
+                        ? ` Focused on ${event.skill_ids.map(labelSkill).join(', ')}.`
                         : ''}
                     </p>
                   </article>

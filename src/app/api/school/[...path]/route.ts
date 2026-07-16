@@ -5,7 +5,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const BACKEND_URL = process.env.BACKEND_INTERNAL_URL;
-const SCHOOL_LOCAL_EVALUATOR_UNBOUNDED = process.env.NEXT_PUBLIC_SCHOOL_LOCAL_MODE === '1';
+const SCHOOL_LOCAL_REQUESTS_UNBOUNDED = process.env.NEXT_PUBLIC_SCHOOL_LOCAL_MODE === '1';
 const REQUEST_HEADER_ALLOWLIST = new Set([
   'accept',
   'authorization',
@@ -131,7 +131,7 @@ function forwardedResponseHeaders(upstream: Response): Headers {
 async function proxySchool(request: NextRequest, context: RouteContext): Promise<Response> {
   const method = request.method.toUpperCase();
   const path = context.params.path ?? [];
-  const timeoutMs = schoolProxyTimeoutMs(path, SCHOOL_LOCAL_EVALUATOR_UNBOUNDED);
+  const timeoutMs = schoolProxyTimeoutMs(path, SCHOOL_LOCAL_REQUESTS_UNBOUNDED);
   const upstreamAbort = createUpstreamAbort(request.signal, timeoutMs);
 
   try {

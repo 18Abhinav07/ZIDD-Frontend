@@ -17,11 +17,11 @@ import {
   schoolPrimaryActionClass,
   schoolSecondaryActionClass,
 } from '@/components/school/SchoolPrimitives';
-import { AppHeader } from '@/components/shared/AppHeader';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 import { resolveSchoolStateDestination } from '@/lib/schoolActivityPolicy';
 import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
 import {
+  continueSchoolCurriculumAfterSupportCap,
   getSchoolState,
   getSchoolSupportPlan,
   type SchoolState,
@@ -68,6 +68,7 @@ export default function SchoolSupportPage() {
   const sessionId = params.sessionId;
   const [snapshot, setSnapshot] = useState<SupportSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
+  const [continuing, setContinuing] = useState(false);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
@@ -105,6 +106,25 @@ export default function SchoolSupportPage() {
     void load();
   }, [load]);
 
+  const continueLesson = useCallback(async () => {
+    setContinuing(true);
+    setError('');
+    try {
+      const continued = await continueSchoolCurriculumAfterSupportCap(sessionId);
+      if (continued.session_id !== sessionId) {
+        throw new Error('school_support_session_mismatch');
+      }
+      router.replace(`/school/session/${continued.session_id}`);
+    } catch (continueError: unknown) {
+      setError(learnerSafeErrorMessage(
+        continueError,
+        'Could not continue this lesson yet. Your saved work is still safe.',
+      ));
+    } finally {
+      setContinuing(false);
+    }
+  }, [router, sessionId]);
+
   if (loading) return <SchoolReportSkeleton />;
 
   const supportPlan = snapshot?.supportPlan ?? null;
@@ -121,9 +141,8 @@ export default function SchoolSupportPage() {
 
   return (
     <div className="mode-school min-h-[100dvh] bg-background font-body text-slate-950" style={theme.style}>
-      <AppHeader title="Support plan" appearance="school" />
       {snapshot && supportPlan ? (
-        <main className="mx-auto w-full max-w-[1040px] overflow-x-hidden px-5 pb-24 pt-28 sm:px-8 lg:px-12">
+        <main className="mx-auto w-full max-w-[1180px] overflow-x-hidden px-5 pb-24 pt-14 sm:px-8 sm:pt-16 lg:px-12">
           <header className="grid gap-7 border-b border-slate-200 pb-9 md:grid-cols-[minmax(0,1fr)_280px] md:items-end">
             <SchoolPageHeading
               eyebrow="Support plan"
@@ -180,13 +199,25 @@ export default function SchoolSupportPage() {
               id="support-next-heading"
             />
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-              <button type="button" onClick={() => router.push('/school/reports')} className={schoolPrimaryActionClass}>
+              {supportPlan.reason === 'masterclass_cap_exceeded' && supportPlan.parent_flow_type === 'curriculum' ? (
+                <button
+                  type="button"
+                  onClick={() => void continueLesson()}
+                  disabled={continuing}
+                  className={schoolPrimaryActionClass}
+                >
+                  {continuing ? 'Continuing lesson' : 'Continue this lesson'}
+                  {!continuing ? <ArrowRightIcon className="h-4 w-4" aria-hidden="true" /> : null}
+                </button>
+              ) : null}
+              <button type="button" onClick={() => router.push('/school/reports')} className={schoolSecondaryActionClass}>
                 See learner report <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
               </button>
               <button type="button" onClick={() => router.push('/school/parent')} className={schoolSecondaryActionClass}>
                 <PersonIcon className="h-4 w-4" aria-hidden="true" /> Open parent view
               </button>
             </div>
+            {error ? <p role="alert" className="mt-4 text-sm font-medium text-red-800">{error}</p> : null}
           </section>
 
           <SchoolDisclosure title="Why Zidd stopped the automatic loop" summary="The rule behind this support plan">

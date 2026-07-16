@@ -52,7 +52,15 @@ test('placement report uses current same-version state while keeping report acti
   assert.match(placementReport, /resolveSchoolPlacementReportAction/);
   assert.match(placementReport, /await startSchoolRecap\(\)/);
   assert.match(placementReport, /startingRef\.current/);
-  assert.match(placementReport, /router\.push\(currentAction\.url\)/);
-  assert.match(placementReport, /Actions available when placement was completed/);
+  assert.match(
+    placementReport,
+    /const refreshedState = await getSchoolState\(\{ force: true \}\)/,
+  );
+  assert.match(
+    placementReport,
+    /resolveSchoolPlacementReportAction\(report, refreshedState\)/,
+  );
+  assert.match(placementReport, /router\.push\(refreshedAction\.url\)/);
+  assert.match(placementReport, /Return to current School plan/);
   assert.doesNotMatch(placementReport, /allowed_next_actions\.includes/);
 });

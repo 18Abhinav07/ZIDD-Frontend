@@ -6,9 +6,12 @@ import { ExclamationTriangleIcon, ReloadIcon } from '@radix-ui/react-icons';
 import { SchoolClassHomeSkeleton } from '@/components/learning/LearningSkeletons';
 import { SchoolClassHome } from '@/components/school/catalog/SchoolClassHome';
 import { SchoolPageHeading, schoolPrimaryActionClass } from '@/components/school/SchoolPrimitives';
-import { AppHeader } from '@/components/shared/AppHeader';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 import { resolveSchoolStateDestination } from '@/lib/schoolActivityPolicy';
+import {
+  schoolHomeActionLabel,
+  shouldRenderUnlockedSchoolHome,
+} from '@/lib/schoolHomePolicy.mjs';
 import {
   getSchoolClassMap,
   getSchoolStateResponse,
@@ -20,12 +23,14 @@ export default function SchoolPage() {
   const [schoolClass, setSchoolClass] = useState<SchoolClassMap | null>(null);
   const [learnerMessage, setLearnerMessage] = useState('Your coach is ready for the next chapter.');
   const [schoolUnavailable, setSchoolUnavailable] = useState(false);
+  const [primaryAction, setPrimaryAction] = useState<{ label: string; href: string } | null>(null);
   const [error, setError] = useState('');
   const [retryKey, setRetryKey] = useState(0);
 
   const resolveSchoolHome = useCallback(async () => {
     setError('');
     setSchoolClass(null);
+    setPrimaryAction(null);
     setSchoolUnavailable(false);
     try {
       const state = await getSchoolStateResponse({ force: true });
@@ -40,7 +45,7 @@ export default function SchoolPage() {
         nextActionUrl: state.next_action_url,
       });
       if (!destination) throw new Error('school_state_unresolved');
-      if (destination !== '/school') {
+      if (!shouldRenderUnlockedSchoolHome(state)) {
         router.replace(destination);
         return;
       }
@@ -50,6 +55,10 @@ export default function SchoolPage() {
         throw new Error('school_catalog_profile_mismatch');
       }
       setLearnerMessage(state.learner_message);
+      setPrimaryAction(destination === '/school' ? null : {
+        label: schoolHomeActionLabel(state.next_action),
+        href: destination,
+      });
       setSchoolClass(result);
     } catch (err: unknown) {
       setError(learnerSafeErrorMessage(err, 'Could not open your school journey. Please retry.'));
@@ -62,14 +71,16 @@ export default function SchoolPage() {
 
   return (
     <div className="mode-school min-h-[100dvh] bg-background font-body text-slate-950">
-      <AppHeader title="School Prep" appearance="school" />
       {schoolClass ? (
         <SchoolClassHome
           schoolClass={schoolClass}
           learnerMessage={learnerMessage}
-          primaryAction={undefined}
+          primaryAction={primaryAction ? {
+            label: primaryAction.label,
+            onSelect: () => router.push(primaryAction.href),
+          } : undefined}
           onViewMap={() => router.push(`/school/classes/${schoolClass.class_no}`)}
-          onChangeSetup={() => router.push('/school/onboarding?step=2')}
+          onChangeSetup={() => router.push('/school/onboarding?intent=edit_profile&step=2')}
         />
       ) : schoolUnavailable ? (
         <main className="mx-auto flex min-h-[100dvh] w-full max-w-[760px] items-center px-5 py-28 sm:px-8">

@@ -6,7 +6,7 @@ import { ExclamationTriangleIcon, ReloadIcon } from '@radix-ui/react-icons';
 import { SchoolReportSkeleton } from '@/components/learning/LearningSkeletons';
 import { SchoolPageHeading, schoolPrimaryActionClass } from '@/components/school/SchoolPrimitives';
 import { ParentGrowthReport } from '@/components/school/reports/ParentGrowthReport';
-import { AppHeader } from '@/components/shared/AppHeader';
+import { reportPlacementContinuationOverride } from '@/components/school/reports/reportEvidence.mjs';
 import { resolveSchoolStateDestination } from '@/lib/schoolActivityPolicy';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 import {
@@ -21,6 +21,8 @@ import {
   getActiveSchoolRecap,
   getSchoolLoadScope,
   getSchoolMasterclass,
+  getSchoolPlacement,
+  getSchoolOnboarding,
   getSchoolPlacementReport,
   getSchoolState,
   getSchoolSupportPlan,
@@ -41,6 +43,12 @@ interface ParentReportSnapshot {
   recapSession: SchoolRecapPath | null;
   supportPlan: SchoolSupportPlan | null;
   activeCoachIdentity: SchoolCoachIdentity | null;
+  learnerName: string | null;
+  nextStepOverride: {
+    heading: string;
+    actionLabel: string;
+    message: string;
+  } | null;
   limitations: string[];
 }
 
@@ -62,6 +70,8 @@ async function loadParentReportSnapshot(): Promise<ParentReportSnapshot> {
       recapSession: null,
       supportPlan: null,
       activeCoachIdentity: null,
+      learnerName: null,
+      nextStepOverride: null,
       limitations: [],
     };
   }
@@ -168,10 +178,18 @@ async function loadParentReportSnapshot(): Promise<ParentReportSnapshot> {
     }
   })();
 
-  const [placement, classMap, learning] = await Promise.all([
+  const learnerNamePromise = getSchoolOnboarding()
+    .then((onboarding) => onboarding.active_profile?.display_name?.trim() || null)
+    .catch(() => null);
+  const activePlacementPromise = state.active_flow === 'placement' && state.active_session_id
+    ? getSchoolPlacement(state.active_session_id).catch(() => null)
+    : Promise.resolve(null);
+  const [placement, classMap, learning, learnerName, activePlacement] = await Promise.all([
     placementPromise,
     classMapPromise,
     learningPromise,
+    learnerNamePromise,
+    activePlacementPromise,
   ]);
   return {
     state,
@@ -181,6 +199,8 @@ async function loadParentReportSnapshot(): Promise<ParentReportSnapshot> {
     recapSession: learning.value?.recapSession ?? null,
     supportPlan: learning.value?.supportPlan ?? null,
     activeCoachIdentity: learning.value?.activeCoachIdentity ?? null,
+    learnerName,
+    nextStepOverride: reportPlacementContinuationOverride(state, activePlacement),
     limitations: [placement.limitation, classMap.limitation, learning.limitation]
       .filter((value): value is string => Boolean(value)),
   };
@@ -275,7 +295,6 @@ export default function SchoolParentPage() {
 
   return (
     <div className="mode-school min-h-[100dvh] bg-background font-body text-slate-950">
-      <AppHeader title="Parent report" appearance="school" />
       {loading ? <SchoolReportSkeleton /> : snapshot ? (
         <ParentGrowthReport
           state={snapshot.state}
@@ -285,8 +304,10 @@ export default function SchoolParentPage() {
           recapSession={snapshot.recapSession}
           supportPlan={snapshot.supportPlan}
           activeCoachIdentity={snapshot.activeCoachIdentity}
+          learnerName={snapshot.learnerName}
+          nextStepOverride={snapshot.nextStepOverride}
           limitations={snapshot.limitations}
-          onNextAction={followAuthoritativeState}
+          onNextAction={snapshot.nextStepOverride ? () => void load() : followAuthoritativeState}
           onOpenLearnerView={() => router.push('/school/reports')}
         />
       ) : (

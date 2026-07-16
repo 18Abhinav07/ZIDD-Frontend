@@ -78,6 +78,52 @@ test('activity renderer translates engine activity kinds and renders the complet
   );
 });
 
+test('v2 explicit Continue steps preserve answer interactions and suppress stale non-scored feedback', () => {
+  const curriculumActivity = service.match(
+    /export interface SchoolCurriculumSession[\s\S]*?current_activity: \{([\s\S]*?)\n  \} \| null;/,
+  )?.[1] ?? '';
+
+  for (const [kind, label] of [
+    ['v2_connect', 'Connect the idea'],
+    ['v2_co_construct', 'Build it together'],
+    ['v2_guided_practice', 'Practise together'],
+    ['v2_independent_application', 'Apply it yourself'],
+    ['v2_transfer', 'Use it somewhere new'],
+    ['v2_review', 'Review and strengthen'],
+    ['v2_support', 'Get extra support'],
+  ]) {
+    assert.match(curriculumActivity, new RegExp(`'${kind}'`), `curriculum activity type must include ${kind}`);
+    assert.match(
+      renderer,
+      new RegExp(`case '${kind}':[\\s\\S]{0,100}return '${label}';`),
+      `renderer must label ${kind} as ${label}`,
+    );
+  }
+  for (const unsupportedAlias of ['v2_independent_check', 'v2_transfer_check']) {
+    assert.doesNotMatch(curriculumActivity, new RegExp(`'${unsupportedAlias}'`));
+    assert.doesNotMatch(renderer, new RegExp(`case '${unsupportedAlias}':`));
+  }
+
+  assert.match(curriculumActivity, /interaction_type\?: SchoolCurriculumInteractionType \| null;/);
+  assert.match(curriculumActivity, /evidence_role\?: SchoolCurriculumEvidenceRole \| null;/);
+  const continueOnlyRule = renderer.match(/const isContinueOnlyActivity =[^;]+;/)?.[0] ?? '';
+  assert.match(continueOnlyRule, /activity\.interaction_type === 'continue'/);
+  assert.doesNotMatch(continueOnlyRule, /evidence_role/);
+  assert.match(renderer, /const TEACHING_STEP_ACKNOWLEDGEMENT = 'continue';/);
+  assert.match(renderer, /isContinueOnlyActivity \? 'Learn and continue' : 'Think and answer'/);
+
+  const continueBranch = renderer.match(
+    /\{isContinueOnlyActivity \? \(([\s\S]*?)\) : canSubmit && activity\.options\?\.length \? \(/,
+  )?.[1] ?? '';
+  assert.match(continueBranch, /onSubmit\(TEACHING_STEP_ACKNOWLEDGEMENT\)/);
+  assert.match(continueBranch, />Continue</);
+  assert.doesNotMatch(continueBranch, /<input|<textarea|Think and answer|Your answer|Check my answer/);
+  assert.match(
+    renderer,
+    /const priorFeedback = session\.last_feedback[\s\S]*?session\.last_feedback\.result_visible !== false[\s\S]*?\? session\.last_feedback/,
+  );
+});
+
 test('progress keeps backend stage, activity, and memory context compact and secondary', () => {
   assert.match(progress, /session\.progress\.current_level_index/);
   assert.match(progress, /session\.current_activity/);

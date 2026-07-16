@@ -2,11 +2,14 @@
 
 import Image from 'next/image';
 import { motion, useReducedMotion } from 'framer-motion';
-import { InfoCircledIcon } from '@radix-ui/react-icons';
 import { getAvatarScaleClass } from '@/lib/avatarRegistry';
 import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
+import {
+  resolveSchoolCoachIdentity,
+  useSchoolShellCoachIdentity,
+} from '@/components/school/shell/SchoolCoachIdentityContext';
 
-type SchoolCoachVariant = 'immersive' | 'supporting';
+type SchoolCoachVariant = 'immersive' | 'supporting' | 'inline';
 
 interface SchoolCoachPanelProps {
   avatarId: string | null | undefined;
@@ -26,13 +29,39 @@ export function SchoolCoachPanel({
   variant = 'supporting',
 }: SchoolCoachPanelProps) {
   const reduceMotion = useReducedMotion();
-  const theme = getSchoolAvatarTheme(avatarId, paletteId);
+  const shellIdentity = useSchoolShellCoachIdentity();
+  const coachIdentity = resolveSchoolCoachIdentity({ avatarId, paletteId }, shellIdentity);
+  const theme = getSchoolAvatarTheme(coachIdentity.avatarId, coachIdentity.paletteId);
   const { avatar } = theme;
+
+  if (variant === 'inline') {
+    return (
+      <div className="flex min-w-0 items-center gap-3 text-[var(--school-ink)]" style={theme.style}>
+        <div className="relative h-12 w-12 flex-none overflow-hidden rounded-xl border border-[var(--school-accent-border)] bg-[var(--school-accent-soft)]">
+          <Image
+            src={avatar.url}
+            alt="Zidd school coach"
+            fill
+            sizes="48px"
+            className="origin-bottom scale-[1.12] object-contain object-bottom"
+            priority
+          />
+        </div>
+        <div className="min-w-0">
+          <p className="flex items-center gap-2 font-mono text-[9px] font-semibold uppercase text-[var(--school-accent-deep)]">
+            <span className="h-1.5 w-1.5 flex-none rounded-full bg-[var(--school-accent)]" aria-hidden="true" />
+            <span className="truncate">{status}</span>
+          </p>
+          <p className="mt-1 break-words text-xs font-medium leading-5 text-[var(--school-muted)]">{note}</p>
+        </div>
+      </div>
+    );
+  }
 
   if (compact) {
     return (
       <div
-        className="relative h-12 w-12 flex-none overflow-hidden rounded-2xl border border-[var(--school-accent-border)] bg-[var(--school-accent-soft)] shadow-sm"
+        className="relative h-11 w-11 flex-none overflow-hidden rounded-xl border border-[var(--school-accent-border)] bg-[var(--school-accent-soft)]"
         style={theme.style}
         aria-label={`Coach status: ${status}`}
       >
@@ -40,10 +69,9 @@ export function SchoolCoachPanel({
           src={avatar.url}
           alt="Zidd school coach"
           fill
-          sizes="48px"
-          className="object-cover object-top scale-[1.8] origin-top translate-y-1"
+          sizes="44px"
+          className="object-contain object-bottom scale-[1.12] origin-bottom"
           priority
-          unoptimized
         />
       </div>
     );
@@ -54,34 +82,31 @@ export function SchoolCoachPanel({
       initial={reduceMotion ? false : { opacity: 0, x: -16 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: reduceMotion ? 0 : 0.4, ease: [0.16, 1, 0.3, 1] }}
-      className={`relative h-full overflow-hidden border border-[var(--school-accent-border)] bg-[var(--school-accent-soft)] text-slate-900 shadow-[0_24px_60px_-38px_rgba(15,23,42,0.35)] ${
-        variant === 'immersive' ? 'min-h-[520px] rounded-[2.5rem]' : 'min-h-[300px] rounded-3xl'
+      className={`flex h-full min-w-0 flex-col text-[var(--school-ink)] ${
+        variant === 'immersive' ? 'border-r border-[var(--school-line)] pr-6' : 'rounded-2xl border border-[var(--school-line)] bg-[var(--school-paper)] p-5'
       }`}
       style={theme.style}
     >
-      <div className="absolute left-5 top-5 z-20 inline-flex items-center gap-2 rounded-full border border-[var(--school-accent-border)] bg-[var(--school-surface,#fcfdff)] px-3 py-1.5 text-[var(--school-accent-deep)] shadow-sm">
-        <span className="h-2 w-2 rounded-full bg-[var(--school-accent)]" />
-        <span className="text-[10px] font-semibold uppercase tracking-[0.16em]">{status}</span>
-      </div>
-
-      <div className={`absolute inset-x-0 ${variant === 'immersive' ? 'bottom-24 top-12' : 'bottom-20 top-12'}`}>
+      <div className={`relative w-full overflow-hidden border border-[var(--school-accent-border)] bg-[var(--school-accent-soft)] ${
+        variant === 'immersive' ? 'aspect-[4/5] rounded-[34px]' : 'aspect-[5/4] rounded-2xl'
+      }`}>
+        <div className="absolute left-3 top-3 z-20 inline-flex max-w-[calc(100%-1.5rem)] items-center gap-2 rounded-lg border border-[var(--school-accent-border)] bg-[var(--school-paper)] px-2.5 py-1.5 text-[var(--school-accent-deep)]">
+          <span className="h-1.5 w-1.5 flex-none rounded-full bg-[var(--school-accent)]" />
+          <span className="truncate font-mono text-[9px] font-semibold uppercase">{status}</span>
+        </div>
         <Image
           src={avatar.url}
           alt="Zidd school coach"
           fill
-          sizes="(max-width: 1024px) 0px, 380px"
-          className={`object-contain object-bottom drop-shadow-[0_24px_38px_rgba(15,23,42,0.28)] ${getAvatarScaleClass(avatar.url)}`}
+          sizes="(max-width: 820px) 0px, 244px"
+          className={`object-contain object-bottom drop-shadow-[0_18px_22px_rgba(18,26,45,0.16)] ${getAvatarScaleClass(avatar.url)}`}
           priority
-          unoptimized
         />
       </div>
 
-      <div className="absolute inset-x-4 bottom-4 z-20 rounded-2xl border border-slate-200/80 bg-[var(--school-surface,#fcfdff)] p-4 text-slate-800 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.4)]">
-        <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--school-accent-deep)]">
-          <InfoCircledIcon className="h-3.5 w-3.5" aria-hidden="true" />
-          Coach note
-        </div>
-        <p className="mt-2 text-sm font-semibold leading-5">{note}</p>
+      <div className={variant === 'immersive' ? 'pt-6' : 'pt-4'}>
+        <p className="font-mono text-[10px] font-semibold uppercase text-[var(--school-accent-deep)]">Your coach</p>
+        <p className="mt-3 break-words text-sm font-medium leading-6 text-[var(--school-muted)]">{note}</p>
       </div>
     </motion.div>
   );

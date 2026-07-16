@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from 'react';
 import Image from 'next/image';
 import {
   ArrowLeftIcon,
@@ -7,7 +8,9 @@ import {
   CheckIcon,
   ExclamationTriangleIcon,
   LockClosedIcon,
+  StarIcon,
 } from '@radix-ui/react-icons';
+import { getAvatarScaleClass } from '@/lib/avatarRegistry';
 import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
 import {
   SchoolPageHeading,
@@ -16,6 +19,13 @@ import {
   schoolSecondaryActionClass,
 } from '@/components/school/SchoolPrimitives';
 import { buildSchoolLevelStages } from './schoolLevelStages.mjs';
+import {
+  buildSchoolWindingPath,
+  getSchoolPathAvatar,
+  schoolPathMetrics,
+  schoolPathSide,
+} from './schoolPathMap.mjs';
+import styles from './SchoolPathMap.module.css';
 import type { SchoolChapterMap, SchoolMapStatus } from '@/services/schoolRebuild';
 
 interface SchoolLevelMapProps {
@@ -37,7 +47,6 @@ const STAGE_DESCRIPTION = {
 } as const;
 
 type LearnerStage = keyof typeof STAGE_DESCRIPTION;
-
 type Stage = ReturnType<typeof buildSchoolLevelStages>[number] & { label: LearnerStage };
 
 function stageStatusLabel(status: SchoolMapStatus) {
@@ -48,17 +57,116 @@ function stageStatusLabel(status: SchoolMapStatus) {
   return 'Locked';
 }
 
-function CompactMarker({ status, number }: { status: SchoolMapStatus; number: number }) {
-  if (status === 'complete') {
-    return <CheckIcon className="h-5 w-5" aria-hidden="true" />;
-  }
-  if (status === 'locked') {
-    return <LockClosedIcon className="h-4 w-4" aria-hidden="true" />;
-  }
-  if (status === 'needs_support') {
-    return <ExclamationTriangleIcon className="h-5 w-5" aria-hidden="true" />;
-  }
-  return <>{number}</>;
+function statusClass(status: SchoolMapStatus) {
+  if (status === 'complete') return styles.complete;
+  if (status === 'active') return styles.active;
+  if (status === 'ready') return styles.ready;
+  if (status === 'needs_support') return styles.needsSupport;
+  return styles.locked;
+}
+
+function StageStateIcon({ status }: { status: SchoolMapStatus }) {
+  if (status === 'complete') return <CheckIcon aria-hidden="true" />;
+  if (status === 'locked') return <LockClosedIcon aria-hidden="true" />;
+  if (status === 'needs_support') return <ExclamationTriangleIcon aria-hidden="true" />;
+  return null;
+}
+
+function LevelPathNode({
+  stage,
+  index,
+  isCurrent,
+  busy,
+  authorizedAction,
+}: {
+  stage: Stage;
+  index: number;
+  isCurrent: boolean;
+  busy: boolean;
+  authorizedAction: SchoolLevelMapProps['authorizedAction'];
+}) {
+  const action = isCurrent && stage.status !== 'locked' ? authorizedAction : undefined;
+  const side = schoolPathSide(index);
+  const avatar = getSchoolPathAvatar(stage.id);
+  const isChallenge = stage.label === 'Chapter Challenge';
+  const label = stageStatusLabel(stage.status);
+  const showStateBadge = ['complete', 'locked', 'needs_support'].includes(stage.status);
+  const className = [
+    styles.node,
+    styles.levelNode,
+    side === 'right' ? styles.sideRight : styles.sideLeft,
+    statusClass(stage.status),
+    isCurrent ? styles.current : '',
+  ].filter(Boolean).join(' ');
+  const nodeStyle = { '--school-path-index': index } as CSSProperties;
+
+  return (
+    <li
+      className={className}
+      style={nodeStyle}
+      data-status={stage.status}
+      aria-current={isCurrent ? 'step' : undefined}
+      aria-disabled={stage.status === 'locked' ? true : undefined}
+      aria-label={`${stage.label}, ${label}. ${stage.title}`}
+    >
+      <div
+        className={`${styles.nodeAvatar} ${isChallenge ? styles.challengeAvatar : ''}`}
+        aria-hidden="true"
+      >
+        {isChallenge ? (
+          <span className={styles.challengeMark}>
+            <StarIcon />
+          </span>
+        ) : (
+          <>
+            <span className={styles.nodeGround} />
+            <span className={styles.nodeRing} />
+            <Image
+              src={avatar}
+              alt=""
+              width={250}
+              height={300}
+              sizes="(max-width: 780px) 128px, 250px"
+              className={`${styles.nodeImage} ${getAvatarScaleClass(avatar)}`}
+              priority={index === 0}
+            />
+          </>
+        )}
+        {showStateBadge ? (
+          <span className={styles.nodeBadge}>
+            <StageStateIcon status={stage.status} />
+          </span>
+        ) : null}
+      </div>
+
+      <div className={styles.nodeCallout}>
+        <div className={styles.levelMeta}>
+          <span>{label}</span>
+          <span aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
+        </div>
+        <h2 className={styles.nodeHeading}>{stage.label}</h2>
+        {isCurrent ? (
+          <>
+            <p className={styles.nodeDescription}>{stage.title}</p>
+            <p className={styles.nodeDescription}>{STAGE_DESCRIPTION[stage.label]}</p>
+          </>
+        ) : stage.title !== stage.label ? (
+          <p className={styles.nodeDescription}>{stage.title}</p>
+        ) : null}
+        {action ? (
+          <button
+            type="button"
+            onClick={action.onSelect}
+            disabled={busy}
+            className={`${schoolPrimaryActionClass} ${styles.nodeAction}`}
+          >
+            {busy ? 'Starting chapter' : action.label}
+            <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
+          </button>
+        ) : null}
+      </div>
+    </li>
+  );
 }
 
 export function SchoolLevelMap({ chapter, busy = false, onBack, authorizedAction }: SchoolLevelMapProps) {
@@ -66,98 +174,63 @@ export function SchoolLevelMap({ chapter, busy = false, onBack, authorizedAction
   const stages = buildSchoolLevelStages(chapter.levels, chapter.chapter_check, chapter.chapter_id) as Stage[];
   const activeIndex = stages.findIndex((stage) => ['active', 'ready', 'needs_support'].includes(stage.status));
   const completedStages = stages.filter((stage) => stage.status === 'complete').length;
+  const metrics = schoolPathMetrics(stages.length, 'levels');
+  const route = buildSchoolWindingPath(stages.length, 'levels');
+  const mapStyle = {
+    '--school-path-map-height': `${metrics.desktopHeight}px`,
+    '--school-path-map-height-mobile': `${metrics.mobileHeight}px`,
+    '--school-path-start': `${metrics.desktopStart}px`,
+    '--school-path-start-mobile': `${metrics.mobileStart}px`,
+    '--school-path-step': `${metrics.desktopStep}px`,
+    '--school-path-step-mobile': `${metrics.mobileStep}px`,
+  } as CSSProperties;
 
   return (
-    <main
-      className="mx-auto w-full max-w-[1100px] overflow-x-hidden px-5 pb-24 pt-28 sm:px-8 lg:px-12"
-      style={theme.style}
-    >
-      <button type="button" onClick={onBack} className={schoolSecondaryActionClass}>
-        <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />
-        Class {chapter.class_no} chapters
-      </button>
-
-      <header className="mt-8 flex flex-col gap-5 border-b border-slate-200 pb-8 sm:flex-row sm:items-end sm:justify-between">
-        <SchoolPageHeading
-          eyebrow={`Chapter ${chapter.chapter_no} · ${chapter.book_title ?? 'English'}`}
-          title={chapter.title}
-          description="Learn the idea, practise it, and show what you can do independently."
-        />
-        <SchoolStatusChip tone={chapter.status === 'needs_support' ? 'support' : completedStages > 0 ? 'success' : 'accent'}>
-          {completedStages} of {stages.length} stages complete
-        </SchoolStatusChip>
+    <main className={styles.mapPage} style={theme.style}>
+      <header className={styles.mapHeader}>
+        <div className={styles.mapHeaderTop}>
+          <button type="button" onClick={onBack} className={schoolSecondaryActionClass}>
+            <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />
+            Class {chapter.class_no} chapters
+          </button>
+          <SchoolStatusChip tone={chapter.status === 'needs_support' ? 'support' : completedStages > 0 ? 'success' : 'accent'}>
+            {completedStages} of {stages.length} stages complete
+          </SchoolStatusChip>
+        </div>
+        <div className={styles.mapHeaderBottom}>
+          <div className={styles.mapHeaderCopy}>
+            <SchoolPageHeading
+              eyebrow={`Chapter ${chapter.chapter_no} · ${chapter.book_title ?? 'English'}`}
+              title={chapter.title}
+              description="Learn the idea, practise it, and show what you can do independently."
+            />
+          </div>
+        </div>
       </header>
 
-      <div className="relative mt-10">
-        <span className="pointer-events-none absolute bottom-10 left-[37px] top-10 w-px bg-slate-200 sm:bottom-auto sm:left-[10%] sm:right-[10%] sm:top-[52px] sm:h-px sm:w-auto" aria-hidden="true" />
-        <ol className="relative grid grid-cols-1 gap-0 sm:grid-cols-5 sm:gap-3" aria-label="Chapter learning stages">
-        {stages.map((stage, index) => {
-          const active = index === activeIndex;
-          const tone = stage.status === 'complete'
-            ? 'border-teal-600 bg-teal-600 text-white'
-            : stage.status === 'needs_support'
-              ? 'border-orange-300 bg-orange-50 text-orange-800'
-              : stage.status === 'locked'
-                ? 'border-slate-200 bg-slate-50 text-slate-400'
-                : 'border-[var(--school-accent-border)] bg-[var(--school-accent-soft)] text-[var(--school-accent-deep)]';
-
-          return (
-            <li
+      <section className={styles.mapCanvas} style={mapStyle} aria-label="Chapter learning stages">
+        <svg
+          className={styles.route}
+          viewBox={`0 0 600 ${metrics.desktopHeight}`}
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        >
+          <path className={styles.routeBed} d={route} />
+          <path className={styles.routeDash} d={route} />
+        </svg>
+        <ol className={styles.mapList}>
+          {stages.map((stage, index) => (
+            <LevelPathNode
               key={stage.id}
-              className={`relative z-10 grid min-h-[116px] grid-cols-[76px_minmax(0,1fr)] items-center gap-4 py-3 sm:block sm:min-h-0 sm:px-1 sm:py-0 sm:text-center ${stage.status === 'locked' ? 'opacity-65' : ''}`}
-              aria-current={active ? 'step' : undefined}
-              data-status={stage.status}
-            >
-              {active ? (
-                <div className="relative h-[76px] w-[76px] overflow-hidden rounded-full border-4 border-[var(--school-accent)] bg-[var(--school-accent-soft)] shadow-[0_0_0_7px_var(--school-accent-soft)] sm:mx-auto sm:h-[104px] sm:w-[104px]">
-                  <Image
-                    src={theme.avatar.url}
-                    alt="Current learning coach"
-                    fill
-                    sizes="(max-width: 639px) 76px, 104px"
-                    className="object-contain object-bottom scale-100 p-1"
-                    priority
-                    unoptimized
-                  />
-                </div>
-              ) : (
-                <span className={`flex h-12 w-12 items-center justify-center rounded-full border-2 font-display text-xl font-normal sm:mx-auto sm:mt-7 ${tone}`}>
-                  <CompactMarker status={stage.status} number={index + 1} />
-                </span>
-              )}
-
-              <div className={`min-w-0 sm:mt-4 ${active ? 'sm:mt-3' : ''}`}>
-                <p className={`text-[11px] font-semibold uppercase ${
-                  stage.status === 'complete'
-                    ? 'text-teal-700'
-                    : stage.status === 'needs_support'
-                      ? 'text-orange-700'
-                      : stage.status === 'locked'
-                        ? 'text-slate-400'
-                        : 'text-[var(--school-accent-deep)]'
-                }`}>
-                  {stageStatusLabel(stage.status)}
-                </p>
-                <h2 className="mt-1 text-sm font-semibold leading-5 text-slate-900">{stage.label}</h2>
-                <p className="mt-1 text-xs font-medium leading-5 text-slate-700 sm:px-1">{stage.title}</p>
-                <p className="mt-1 text-xs leading-5 text-slate-500 sm:px-1">{STAGE_DESCRIPTION[stage.label]}</p>
-                {active && authorizedAction ? (
-                  <button
-                    type="button"
-                    onClick={authorizedAction.onSelect}
-                    disabled={busy}
-                    className={`${schoolPrimaryActionClass} mt-4 w-full sm:px-3`}
-                  >
-                    {busy ? 'Starting chapter' : authorizedAction.label}
-                    <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
-                  </button>
-                ) : null}
-              </div>
-            </li>
-          );
-        })}
+              stage={stage}
+              index={index}
+              isCurrent={index === activeIndex}
+              busy={busy}
+              authorizedAction={authorizedAction}
+            />
+          ))}
         </ol>
-      </div>
+      </section>
     </main>
   );
 }

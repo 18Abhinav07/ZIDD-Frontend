@@ -14,12 +14,18 @@ test('class page loads the active backend class map and fails closed on mismatch
   assert.match(route, /<SchoolChapterMap/);
 });
 
-test('chapter map keeps one expressive current row and compact backend-derived rows', () => {
+test('chapter map renders every backend chapter on the canonical winding avatar path', () => {
   assert.doesNotMatch(component, /from '@\/components\/learning\/JourneyMap'/);
   assert.doesNotMatch(component, /<JourneyMap/);
   assert.match(component, /Your class journey/);
   assert.match(component, /<SchoolPageHeading/);
-  assert.match(component, /<SchoolDisclosure/);
+  assert.match(component, /SchoolPathMap\.module\.css/);
+  assert.match(component, /buildSchoolWindingPath/);
+  assert.match(component, /getSchoolPathAvatar/);
+  assert.match(component, /schoolPathMetrics/);
+  assert.match(component, /<svg/);
+  assert.match(component, /schoolClass\.chapters\.map/);
+  assert.doesNotMatch(component, /<SchoolDisclosure|function ChapterRow/);
   assert.match(component, /activeChapter/);
   assert.equal((component.match(/<Image\b/g) ?? []).length, 1);
   for (const state of ['complete', 'active', 'ready', 'locked', 'needs_support']) {
@@ -30,11 +36,13 @@ test('chapter map keeps one expressive current row and compact backend-derived r
   assert.match(component, /total_levels/);
 });
 
-test('chapter map keeps the complete coach visible in a stable mobile frame', () => {
-  assert.match(component, /min-h-\[220px\]/);
-  assert.match(component, /object-contain object-bottom scale-100/);
-  assert.match(component, /sm:scale-\[1\.35\]/);
-  assert.doesNotMatch(component, /getAvatarScaleClass/);
+test('chapter map uses deterministic optimized decorative avatars', () => {
+  assert.match(component, /getSchoolPathAvatar\(chapter\.chapter_id\)/);
+  assert.match(component, /getAvatarScaleClass/);
+  assert.match(component, /width=\{250\}/);
+  assert.match(component, /height=\{300\}/);
+  assert.doesNotMatch(component, /Math\.random|unoptimized/);
+  assert.match(component, /const showStateBadge = \['complete', 'locked', 'needs_support'\]\.includes\(chapter\.status\)/);
 });
 
 test('class route owns one StrictMode-safe map load at a time', () => {
@@ -45,8 +53,10 @@ test('class route owns one StrictMode-safe map load at a time', () => {
 
 test('chapter statuses are descriptive and only an explicit state-authorized chapter is actionable', () => {
   assert.match(component, /const action = authorizedAction\?\.chapterId === chapter\.chapter_id/);
-  assert.match(component, /return action \? \(/);
+  assert.match(component, /chapter\.status !== 'locked'/);
+  assert.match(component, /\{action \? \(/);
   assert.match(component, /disabled={action\.busy}/);
+  assert.match(component, /aria-current=/);
   assert.doesNotMatch(component, /onOpenChapter/);
   assert.doesNotMatch(component, /lucide-react|font-black|gradient/i);
 });

@@ -18,6 +18,8 @@ import type { SchoolCurriculumSession } from '@/services/schoolRebuild';
 type SchoolActivity = NonNullable<SchoolCurriculumSession['current_activity']>;
 type SchoolFeedback = NonNullable<SchoolCurriculumSession['last_feedback']>;
 
+const TEACHING_STEP_ACKNOWLEDGEMENT = 'continue';
+
 interface SchoolActivityRendererProps {
   session: SchoolCurriculumSession;
   view: CurriculumActivityView;
@@ -35,9 +37,13 @@ interface SchoolActivityRendererProps {
 export function schoolActivityLabel(kind: SchoolActivity['kind']) {
   switch (kind) {
     case 'guided_check':
+    case 'v2_guided_practice':
       return 'Practise together';
     case 'bridge':
+    case 'v2_connect':
       return 'Connect the idea';
+    case 'v2_co_construct':
+      return 'Build it together';
     case 'masterclass':
       return 'Focused practice';
     case 'revision_level_1':
@@ -46,8 +52,15 @@ export function schoolActivityLabel(kind: SchoolActivity['kind']) {
       return 'Try it another way';
     case 'independent_check':
       return 'Try it yourself';
+    case 'v2_independent_application':
+      return 'Apply it yourself';
     case 'transfer_check':
+    case 'v2_transfer':
       return 'Use it somewhere new';
+    case 'v2_review':
+      return 'Review and strengthen';
+    case 'v2_support':
+      return 'Get extra support';
     case 'chapter_check':
       return 'Chapter challenge';
   }
@@ -104,24 +117,25 @@ function ActivityCard({
   onSubmit: (answer?: string) => void;
 }) {
   const questionHeadingRef = useRef<HTMLHeadingElement | null>(null);
+  const isContinueOnlyActivity = activity.interaction_type === 'continue';
 
   useEffect(() => {
-    const frame = requestAnimationFrame(() => questionHeadingRef.current?.focus());
+    const frame = requestAnimationFrame(() => questionHeadingRef.current?.focus({ preventScroll: true }));
     return () => cancelAnimationFrame(frame);
   }, [activity.activity_id]);
 
   return (
     <article data-testid="school-tutor-activity" className="flex min-h-full flex-col">
-      <div className="px-5 pb-7 pt-6 sm:px-8 sm:pb-9 sm:pt-8">
-        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--school-accent-deep)]">
+      <div className="px-5 pb-8 pt-7 sm:px-9 sm:pb-10 sm:pt-9">
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] font-semibold uppercase text-[var(--school-accent-deep)]">
           <span>{schoolActivityLabel(activity.kind)}</span>
           <span aria-hidden="true" className="text-slate-300">/</span>
           <span className="break-words text-slate-500">{activity.focus}</span>
         </p>
 
         {activity.teaching_block ? (
-          <section data-testid="school-tutor-teaching" className="mt-6 border-y border-[var(--school-accent-border)] bg-[var(--school-accent-soft)] px-4 py-4 text-sm font-medium leading-6 text-slate-700 sm:px-5">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--school-accent-deep)]">
+          <section data-testid="school-tutor-teaching" className="mt-7 border-l-2 border-[var(--school-accent-border)] bg-[var(--school-accent-soft)] px-5 py-4 text-sm font-medium leading-6 text-[var(--school-muted)]">
+            <p className="font-mono text-[10px] font-semibold uppercase text-[var(--school-accent-deep)]">
               {activity.kind === 'chapter_check' ? 'Instructions' : 'Coach clue'}
             </p>
             <p className="mt-2">{activity.teaching_block}</p>
@@ -129,22 +143,24 @@ function ActivityCard({
         ) : null}
 
         {activity.passage ? (
-          <section className="mt-6 border-b border-slate-200 pb-6">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Read</p>
-            <p data-testid="school-tutor-passage" className="mt-3 whitespace-pre-wrap break-words text-base font-medium leading-7 text-slate-800">
+          <section className="mt-7 border-l-2 border-[var(--school-accent-border)] py-1 pl-5 sm:pl-6">
+            <p className="font-mono text-[10px] font-semibold uppercase text-[var(--school-faint)]">Read the passage</p>
+            <p data-testid="school-tutor-passage" className="mt-3 whitespace-pre-wrap break-words font-display text-[1.45rem] font-normal leading-[1.45] text-[var(--school-ink)] sm:text-[1.65rem]">
               {activity.passage}
             </p>
           </section>
         ) : null}
 
-        <section className="pt-6" aria-labelledby="school-tutor-question">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--school-accent-deep)]">Think and answer</p>
+        <section className="pt-8" aria-labelledby="school-tutor-question">
+          <p className="font-mono text-[10px] font-semibold uppercase text-[var(--school-accent-deep)]">
+            {isContinueOnlyActivity ? 'Learn and continue' : 'Think and answer'}
+          </p>
           <h2
             id="school-tutor-question"
             ref={questionHeadingRef}
             tabIndex={-1}
             data-testid="school-tutor-question"
-            className="mt-2 max-w-[34ch] break-words font-display text-[2rem] font-normal leading-[1.08] text-slate-950 outline-none sm:text-[2.4rem]"
+            className="mt-2 max-w-[31ch] break-words font-sans text-[1.85rem] font-bold leading-[1.08] text-[var(--school-ink)] outline-none sm:text-[2.35rem]"
           >
             {activity.prompt}
           </h2>
@@ -154,25 +170,58 @@ function ActivityCard({
         </section>
       </div>
 
-      {canSubmit && activity.options?.length ? (
+      {isContinueOnlyActivity ? (
         <div className="mt-auto border-t border-slate-200 px-4 py-5 sm:px-6 sm:py-6">
-          <div className="grid gap-2 sm:grid-cols-2">
-            {activity.options.map((option, index) => (
-              <button
-                key={`${index}-${option}`}
-                type="button"
-                onClick={() => onSubmit(option)}
-                disabled={submitting}
-                className="group flex min-h-14 min-w-0 items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-left text-sm font-semibold text-slate-800 transition-colors hover:border-[var(--school-accent)] hover:bg-[var(--school-accent-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--school-accent)] focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60"
-              >
-                <span aria-hidden="true" className="flex h-7 w-7 flex-none items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-500">
-                  {String.fromCharCode(65 + index)}
-                </span>
-                <span className="min-w-0 break-words">{option}</span>
-              </button>
-            ))}
-          </div>
-          {submitting ? <p role="status" className="mt-3 text-xs font-semibold text-slate-500">Checking your answer</p> : null}
+          <button
+            type="button"
+            onClick={() => onSubmit(TEACHING_STEP_ACKNOWLEDGEMENT)}
+            disabled={submitting || !canSubmit}
+            className={`${schoolPrimaryActionClass} w-full sm:w-auto`}
+          >
+            <PlayIcon className="h-4 w-4" aria-hidden="true" />
+            <span>Continue</span>
+          </button>
+        </div>
+      ) : canSubmit && activity.options?.length ? (
+        <div className="mt-auto border-t border-slate-200 px-4 py-5 sm:px-6 sm:py-6">
+          <fieldset disabled={submitting}>
+            <legend className="sr-only">Choose one answer</legend>
+            <div className="grid gap-2.5">
+              {activity.options.map((option, index) => (
+                <label
+                  key={`${index}-${option}`}
+                  className={`group flex min-h-14 min-w-0 cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold text-[var(--school-ink)] transition-colors ${
+                    answer === option
+                      ? 'border-[var(--school-accent)] bg-[var(--school-accent-soft)]'
+                      : 'border-[var(--school-line-strong)] bg-[var(--school-paper)] hover:border-[var(--school-accent)] hover:bg-[var(--school-accent-soft)]'
+                  } has-[:disabled]:cursor-wait has-[:disabled]:opacity-60`}
+                >
+                  <input
+                    type="radio"
+                    name={`school-tutor-choice-${activity.activity_id}`}
+                    value={option}
+                    checked={answer === option}
+                    onChange={() => onAnswerChange(option)}
+                    disabled={submitting}
+                    className="h-5 w-5 flex-none accent-[var(--school-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--school-accent)] focus-visible:ring-offset-2"
+                  />
+                  <span aria-hidden="true" className="flex h-7 w-7 flex-none items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-500">
+                    {String.fromCharCode(65 + index)}
+                  </span>
+                  <span className="min-w-0 break-words">{option}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <button
+            type="button"
+            onClick={() => onSubmit()}
+            disabled={submitting || !answer.trim()}
+            className={`${schoolPrimaryActionClass} mt-4 w-full sm:w-auto`}
+          >
+            <PaperPlaneIcon className="h-4 w-4" aria-hidden="true" />
+            {submitting ? 'Checking your answer' : 'Check my answer'}
+          </button>
         </div>
       ) : canSubmit ? (
         <div className="mt-auto border-t border-slate-200 px-4 py-5 sm:px-6 sm:py-6">
@@ -209,7 +258,7 @@ function ActivityCard({
               className={`${schoolPrimaryActionClass} flex-none`}
             >
               <PaperPlaneIcon className="h-4 w-4" aria-hidden="true" />
-              {submitting ? 'Checking your answer' : 'Check answer'}
+              {submitting ? 'Checking your answer' : 'Check my answer'}
             </button>
           </div>
         </div>
@@ -238,10 +287,17 @@ export function SchoolActivityRenderer({
   onRetry,
 }: SchoolActivityRendererProps) {
   const activity = session.current_activity;
-  const priorFeedback = session.last_feedback && activity && session.last_feedback.activity_id !== activity.activity_id
+  const priorFeedback = session.phase !== 'chapter_check'
+    && session.last_feedback
+    && activity
+    && session.last_feedback.activity_id !== activity.activity_id
+    && session.last_feedback.result_visible !== false
     ? session.last_feedback
     : null;
-  const currentFeedback = session.last_feedback && activity && session.last_feedback.activity_id === activity.activity_id
+  const currentFeedback = session.phase !== 'chapter_check'
+    && session.last_feedback
+    && activity
+    && session.last_feedback.activity_id === activity.activity_id
     ? session.last_feedback
     : null;
 

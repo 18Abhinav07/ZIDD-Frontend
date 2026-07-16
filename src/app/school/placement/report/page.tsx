@@ -5,22 +5,23 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
-  CheckCircledIcon,
   ExclamationTriangleIcon,
   ReloadIcon,
 } from '@radix-ui/react-icons';
 import { SchoolReportSkeleton } from '@/components/learning/LearningSkeletons';
-import { SchoolCoachPanel } from '@/components/school/SchoolCoachPanel';
 import {
   SchoolDisclosure,
   SchoolPageHeading,
-  SchoolStatusChip,
   schoolPrimaryActionClass,
   schoolSecondaryActionClass,
 } from '@/components/school/SchoolPrimitives';
-import { AppHeader } from '@/components/shared/AppHeader';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 import {
+  constrainPlacementReportActionToSession,
+  placementEvaluatedClassLabel,
+  placementEvidenceLead,
+  placementLearningPathDetail,
+  recapModuleDisplayLabel,
   resolveSchoolPlacementReportAction,
   type SchoolPlacementReportAction,
 } from '@/lib/schoolPlacementReportPolicy';
@@ -33,6 +34,7 @@ import {
 import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
 import {
   getSchoolPlacementReport,
+  getSchoolPlacement,
   getSchoolLoadScope,
   getSchoolState,
   startSchoolRecap,
@@ -65,14 +67,14 @@ function placementBasisCopy(scoringSource: string) {
 function conclusionLabel(report: SchoolPlacementReport) {
   if (report.placement_status === 'target_ready') return `Ready for Class ${report.target_class_no}`;
   if (report.placement_status === 'below_target') return 'A foundation path comes first';
-  if (report.placement_status === 'insufficient_evidence') return 'More answers are needed';
-  return 'More answers are needed';
+  if (report.placement_status === 'insufficient_evidence') return 'More evidence is needed';
+  return 'Starting point paused';
 }
 
-function conclusionTone(report: SchoolPlacementReport): 'success' | 'support' | 'neutral' {
-  if (report.placement_status === 'target_ready') return 'success';
-  if (report.placement_status === 'below_target') return 'support';
-  return 'neutral';
+function conclusionColor(report: SchoolPlacementReport) {
+  if (report.placement_status === 'target_ready') return 'border-teal-700 text-teal-800';
+  if (report.placement_status === 'below_target') return 'border-orange-600 text-orange-800';
+  return 'border-[var(--school-accent)] text-[var(--school-accent-deep)]';
 }
 
 interface PlacementReportSnapshot {
@@ -90,9 +92,29 @@ async function loadPlacementReportSnapshot(): Promise<PlacementReportSnapshot> {
   if (reportResult.status === 'rejected') throw reportResult.reason;
   const report = reportResult.value;
   const state = stateResult.status === 'fulfilled' ? stateResult.value : null;
+  const proposedAction = resolveSchoolPlacementReportAction(report, state);
+  if (
+    proposedAction.kind === 'current'
+    && ['resume_placement', 'finish_placement'].includes(proposedAction.action)
+  ) {
+    const placementResult = await Promise.allSettled([
+      getSchoolPlacement(report.placement_session_id),
+    ]);
+    return {
+      report,
+      currentAction: constrainPlacementReportActionToSession(
+        proposedAction,
+        {
+          placementSessionId: report.placement_session_id,
+          profileVersionId: report.profile_version_id,
+        },
+        placementResult[0].status === 'fulfilled' ? placementResult[0].value : null,
+      ),
+    };
+  }
   return {
     report,
-    currentAction: resolveSchoolPlacementReportAction(report, state),
+    currentAction: proposedAction,
   };
 }
 
@@ -103,6 +125,7 @@ function PlacementReportContent({
   error,
   onBack,
   onPrimaryAction,
+  onRetry,
 }: {
   report: SchoolPlacementReport;
   currentAction: SchoolPlacementReportAction;
@@ -110,88 +133,108 @@ function PlacementReportContent({
   error: string;
   onBack: () => void;
   onPrimaryAction: () => void;
+  onRetry: () => void;
 }) {
   const theme = getSchoolAvatarTheme(report.coach_avatar_id, report.coach_palette_id);
   const stageEvidence = Object.entries(report.evidence_summary.stage_counts)
     .filter(([, count]) => count > 0)
     .map(([stage, count]) => ({ stage: placementStageLabel(stage), count }));
-
+  const leadEvidence = placementEvidenceLead(report);
+  const historical = currentAction.kind === 'historical_only';
+  const continuationUnavailable = currentAction.kind === 'current_unavailable';
   const nextReason = currentAction.learnerMessage;
+  const learningPath = placementLearningPathDetail(report);
 
   return (
     <main
-      className="mx-auto min-h-[100dvh] w-full max-w-[1160px] overflow-x-hidden px-5 pb-24 pt-28 sm:px-8 lg:px-12"
+      className="mx-auto min-h-[calc(100dvh-68px)] w-full max-w-[1240px] overflow-x-hidden px-4 pb-24 pt-12 sm:px-7 sm:pt-16 lg:px-10"
       style={theme.style}
     >
-      <SchoolPageHeading
-        eyebrow="Starting-point report"
-        title={report.learner_summary}
-        description="This is the conclusion from your saved answers, not a school mark."
-      />
+      <header className="grid gap-9 border-b border-[var(--school-line-strong)] pb-10 lg:grid-cols-[minmax(0,1fr)_230px] lg:items-end lg:gap-[clamp(3rem,8vw,7rem)] lg:pb-14">
+        <SchoolPageHeading
+          eyebrow="Starting-point report"
+          title={report.learner_summary}
+          description="This conclusion comes from saved evidence. It is not a school mark, percentage, or rank."
+        />
+        <div className={`border-l-2 py-1 pl-5 ${conclusionColor(report)}`}>
+          <span className="block font-mono text-[9px] font-semibold uppercase text-slate-500">
+            {historical ? 'Past starting point' : 'Current starting point'}
+          </span>
+          <strong className="mt-2 block text-sm font-semibold text-slate-800">{conclusionLabel(report)}</strong>
+          <small className="mt-2 block font-mono text-[9px] font-semibold uppercase text-slate-500">Evidence summary. No mark.</small>
+        </div>
+      </header>
 
-      <section className="mt-8 grid gap-7 border-y border-slate-200 py-8 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-stretch" aria-label="Placement result">
-        <div className="min-w-0">
-          <SchoolStatusChip tone={conclusionTone(report)}>{conclusionLabel(report)}</SchoolStatusChip>
+      <div className="grid gap-12 pt-10 lg:grid-cols-[minmax(0,1.2fr)_minmax(300px,0.68fr)] lg:gap-[clamp(3.5rem,9vw,8rem)] lg:pt-14">
+        <section aria-labelledby="placement-evidence-title">
+          <p className="font-mono text-[10px] font-semibold uppercase text-[var(--school-muted)]">What we saw</p>
+          <h2 id="placement-evidence-title" className="mt-3 font-display text-[2.15rem] font-normal leading-[1.04] text-slate-950 sm:text-[2.65rem]">
+            What the evidence supports
+          </h2>
+          {leadEvidence.rows.length > 0 ? (
+            <ol className="mt-7 border-t border-[var(--school-line)]">
+              {leadEvidence.rows.map((row, index) => (
+              <li key={`${index}-${row}`} className="grid grid-cols-[32px_minmax(0,1fr)] gap-4 border-b border-[var(--school-line)] py-5 sm:grid-cols-[40px_minmax(0,1fr)] sm:gap-5">
+                <span className="pt-1 font-mono text-[10px] font-semibold text-slate-400">{String(index + 1).padStart(2, '0')}</span>
+                <p className="text-sm leading-6 text-slate-600">{row}</p>
+              </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="mt-7 border-y border-[var(--school-line)] py-5 text-sm leading-6 text-slate-600">
+              {leadEvidence.emptyMessage}
+            </p>
+          )}
+        </section>
 
-          <dl className="mt-6 divide-y divide-slate-200 border-y border-slate-200 text-sm">
-            <div className="flex flex-wrap justify-between gap-2 py-3">
-              <dt className="text-slate-500">Target class</dt>
-              <dd className="font-semibold text-slate-900">Class {report.target_class_no}</dd>
-            </div>
-            <div className="flex flex-wrap justify-between gap-2 py-3">
-              <dt className="text-slate-500">Starting point evaluated</dt>
-              <dd className="font-semibold text-slate-900">Class {report.evaluated_class_no}</dd>
-            </div>
-            <div className="flex flex-wrap justify-between gap-2 py-3">
-              <dt className="text-slate-500">Learning begins in</dt>
-              <dd className="font-semibold text-slate-900">Class {report.active_learning_class_no}</dd>
-            </div>
-          </dl>
-
-          <div className="mt-7 rounded-2xl border border-[var(--school-accent-border)] bg-[var(--school-accent-soft)] p-5">
-            <p className="text-[11px] font-semibold uppercase text-[var(--school-accent-deep)]">One next step</p>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-700">{nextReason}</p>
-            {error ? <p role="alert" className="mt-3 text-sm font-semibold text-red-800">{error}</p> : null}
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-              {currentAction.kind === 'current' ? (
-                <button
-                  type="button"
-                  onClick={onPrimaryAction}
-                  disabled={starting && currentAction.effect === 'start_recap'}
-                  aria-busy={starting && currentAction.effect === 'start_recap'}
-                  className={schoolPrimaryActionClass}
-                >
-                  <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
-                  {starting && currentAction.effect === 'start_recap'
-                    ? 'Opening foundation path'
-                    : currentAction.label}
-                </button>
-              ) : (
-                <p className="text-sm font-medium text-slate-700">Current School action unavailable. This report remains historical.</p>
-              )}
-              <button type="button" onClick={onBack} className={schoolSecondaryActionClass}>
+        <aside className="self-start border-t border-[var(--school-line-strong)] pt-7 lg:border-l lg:border-t-0 lg:pl-7 lg:pt-1" aria-labelledby="placement-next-title">
+          <span className="block h-1 w-10 rounded-full bg-[var(--school-accent)]" aria-hidden="true" />
+          <p className="mt-7 font-mono text-[10px] font-semibold uppercase text-[var(--school-muted)]">What happens next</p>
+          <h2 id="placement-next-title" className="mt-3 font-display text-[2rem] font-normal leading-[1.05] text-slate-950">
+            {historical ? 'This result remains in your learning history' : currentAction.label}
+          </h2>
+          <p className="mt-4 text-sm leading-6 text-slate-600">{nextReason}</p>
+          {error ? <p role="alert" className="mt-4 border-y border-red-200 bg-red-50 px-3 py-3 text-sm font-semibold text-red-800">{error}</p> : null}
+          <div className="mt-7 flex flex-col items-start gap-3">
+            {currentAction.kind === 'current' ? (
+              <button
+                type="button"
+                onClick={onPrimaryAction}
+                disabled={starting && currentAction.effect === 'start_recap'}
+                aria-busy={starting && currentAction.effect === 'start_recap'}
+                className={`${schoolPrimaryActionClass} w-full sm:w-auto`}
+              >
+                {starting && currentAction.effect === 'start_recap'
+                  ? 'Opening foundation path'
+                  : currentAction.label}
+                <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
+              </button>
+            ) : continuationUnavailable ? (
+              <button type="button" onClick={onRetry} className={`${schoolSecondaryActionClass} w-full sm:w-auto`}>
+                <ReloadIcon className="h-4 w-4" aria-hidden="true" />
+                Check for another question
+              </button>
+            ) : (
+              <button type="button" onClick={onBack} className={`${schoolPrimaryActionClass} w-full sm:w-auto`}>
+                Return to current School plan
+                <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
+              </button>
+            )}
+            {!historical ? (
+              <button type="button" onClick={onBack} className="inline-flex min-h-11 items-center gap-2 text-xs font-semibold text-slate-600 underline decoration-slate-300 underline-offset-4 hover:text-[var(--school-accent-deep)]">
                 <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />
                 Back to School
               </button>
-            </div>
+            ) : null}
           </div>
-        </div>
-
-        <aside className="h-[280px] lg:h-auto lg:min-h-[420px]" aria-label="Starting-point coach">
-          <SchoolCoachPanel
-            avatarId={report.coach_avatar_id}
-            paletteId={report.coach_palette_id}
-            status={conclusionLabel(report)}
-            note={nextReason}
-          />
         </aside>
-      </section>
+      </div>
 
-      <section className="mt-10 max-w-[900px]" aria-label="Placement report details">
+      <section className="mt-14 max-w-[900px] border-t border-[var(--school-line-strong)] pt-10" aria-label="Placement report details">
         <SchoolPageHeading
           eyebrow="Report details"
-          title="See the evidence when you need it."
-          description="The conclusion stays first. Open any section for the saved detail behind it."
+          title="Open the saved detail when you need it"
+          description="The conclusion and current next step stay above. These sections preserve the evidence behind them."
           level="h2"
           size="section"
         />
@@ -203,40 +246,35 @@ function PlacementReportContent({
 
           <SchoolDisclosure title="How this starting point was chosen" summary="Evidence method and current School state">
             <p>{placementBasisCopy(report.evidence_summary.scoring_source)}</p>
+            <dl className="mt-4 divide-y divide-[var(--school-line)] border-y border-[var(--school-line)]">
+              <div className="flex flex-wrap justify-between gap-3 py-3"><dt>Target class</dt><dd className="font-semibold text-slate-900">Class {report.target_class_no}</dd></div>
+              <div className="flex flex-wrap justify-between gap-3 py-3"><dt>Starting point evaluated</dt><dd className="font-semibold text-slate-900">{placementEvaluatedClassLabel(report)}</dd></div>
+              <div className="flex flex-wrap justify-between gap-3 py-3"><dt>{learningPath.label}</dt><dd className="font-semibold text-slate-900">{learningPath.value}</dd></div>
+            </dl>
             <div className="mt-4">
               <p className="font-semibold text-slate-900">Current next step</p>
-              <p className="mt-2">
-                {currentAction.kind === 'current'
-                  ? currentAction.label
-                  : 'Open School to confirm the current next step.'}
-              </p>
-              <p className="mt-2 text-xs text-slate-500">
-                This comes from your latest School state, so an older report cannot override your current path.
-              </p>
+              <p className="mt-2">{currentAction.kind === 'historical_only' ? 'Open School to confirm the current next step.' : currentAction.label}</p>
+              <p className="mt-2 text-xs text-slate-500">This comes from the latest School state. An older report cannot override the current path.</p>
             </div>
           </SchoolDisclosure>
 
           <SchoolDisclosure title="Saved answer details" summary={`${report.evidence_summary.total_attempts} saved answers were used`}>
-            <dl className="divide-y divide-slate-200 border-y border-slate-200">
+            <dl className="divide-y divide-[var(--school-line)] border-y border-[var(--school-line)]">
               <div className="flex justify-between gap-4 py-3"><dt>Saved answers used</dt><dd className="font-semibold text-slate-900">{report.evidence_summary.total_attempts}</dd></div>
               <div className="flex justify-between gap-4 py-3"><dt>Strong checks</dt><dd className="font-semibold text-slate-900">{report.evidence_summary.correct_attempts}</dd></div>
               <div className="flex justify-between gap-4 py-3"><dt>Needs another look</dt><dd className="font-semibold text-slate-900">{report.evidence_summary.incorrect_attempts}</dd></div>
             </dl>
             {stageEvidence.length > 0 ? (
               <ul className="mt-4 space-y-2" aria-label="Evidence gathered by stage">
-                {stageEvidence.map((entry) => (
-                  <li key={entry.stage} className="flex items-center gap-2">
-                    <CheckCircledIcon className="h-4 w-4 text-teal-700" aria-hidden="true" />
-                    {entry.stage}: {entry.count}
-                  </li>
-                ))}
+                {stageEvidence.map((entry) => <li key={entry.stage}>{entry.stage}: {entry.count}</li>)}
               </ul>
             ) : null}
           </SchoolDisclosure>
 
-          <SchoolDisclosure title="Skills to strengthen" summary={`${report.blocking_skills.length} blocking ${report.blocking_skills.length === 1 ? 'skill' : 'skills'} recorded`}>
+          {report.placement_status === 'below_target' ? (
+            <SchoolDisclosure title="Foundation skills to strengthen" summary={`${report.blocking_skills.length} ${report.blocking_skills.length === 1 ? 'skill needs' : 'skills need'} focused practice`}>
             {report.blocking_skills.length > 0 ? (
-              <div className="divide-y divide-slate-200 border-y border-slate-200">
+              <div className="divide-y divide-[var(--school-line)] border-y border-[var(--school-line)]">
                 {report.blocking_skills.map((skill) => (
                   <article key={`${skill.label}-${skill.source_class_no}`} className="py-4">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -253,17 +291,17 @@ function PlacementReportContent({
               <div className="mt-5">
                 <p className="font-semibold text-slate-900">Recommended foundation work</p>
                 <ul className="mt-2 space-y-2">
-                  {report.recommended_recap_modules.map((module) => (
-                    <li key={module.module_id}>{module.title}: {module.focus}</li>
-                  ))}
+                  {report.recommended_recap_modules.map((module) => <li key={module.module_id}>{recapModuleDisplayLabel(module)}</li>)}
                 </ul>
               </div>
             ) : null}
-          </SchoolDisclosure>
+            </SchoolDisclosure>
+          ) : null}
 
-          <SchoolDisclosure title="Skills to keep watching" summary={`${report.watchlist_skills.length} ${report.watchlist_skills.length === 1 ? 'skill' : 'skills'} on the watchlist`}>
+          {report.placement_status === 'target_ready' ? (
+            <SchoolDisclosure title="Skills to keep watching" summary={`${report.watchlist_skills.length} ${report.watchlist_skills.length === 1 ? 'skill' : 'skills'} to revisit during class work`}>
             {report.watchlist_skills.length > 0 ? (
-              <ul className="divide-y divide-slate-200 border-y border-slate-200">
+              <ul className="divide-y divide-[var(--school-line)] border-y border-[var(--school-line)]">
                 {report.watchlist_skills.map((skill) => (
                   <li key={`${skill.label}-${skill.source_class_no}`} className="py-4">
                     <p className="font-semibold text-slate-950">{skill.label}</p>
@@ -272,7 +310,8 @@ function PlacementReportContent({
                 ))}
               </ul>
             ) : <p>No additional watchlist skill was recorded.</p>}
-          </SchoolDisclosure>
+            </SchoolDisclosure>
+          ) : null}
         </div>
       </section>
     </main>
@@ -299,12 +338,7 @@ export default function SchoolPlacementReportPage() {
       if (!requestOwner) return mountedRef.current && loadRequestIdRef.current === requestId ? 'commit' : 'ignore';
       try {
         const currentScope = await getSchoolLoadScope();
-        return schoolRouteLoadDisposition(
-          loadOwnerRef.current,
-          requestOwner,
-          mountedRef.current,
-          currentScope,
-        );
+        return schoolRouteLoadDisposition(loadOwnerRef.current, requestOwner, mountedRef.current, currentScope);
       } catch {
         return 'ignore';
       }
@@ -337,9 +371,7 @@ export default function SchoolPlacementReportPage() {
       setReport(null);
       setCurrentAction(null);
     } finally {
-      if (await requestDisposition() === 'commit') {
-        setLoading(false);
-      }
+      if (await requestDisposition() === 'commit') setLoading(false);
     }
   }, []);
 
@@ -359,15 +391,27 @@ export default function SchoolPlacementReportPage() {
       router.push(currentAction.url);
       return;
     }
-    if (startingRef.current) return;
+    if (!report || startingRef.current) return;
     startingRef.current = true;
     setStarting(true);
     setError('');
+    let recapStarted = false;
     try {
       await startSchoolRecap();
-      router.push(currentAction.url);
+      recapStarted = true;
+      const refreshedState = await getSchoolState({ force: true });
+      const refreshedAction = resolveSchoolPlacementReportAction(report, refreshedState);
+      if (refreshedAction.kind !== 'current') throw new Error('school_state_unresolved');
+      setCurrentAction(refreshedAction);
+      router.push(refreshedAction.url);
     } catch (err: unknown) {
-      setError(learnerSafeErrorMessage(err, 'Could not start the foundation path.'));
+      setError(learnerSafeErrorMessage(
+        err,
+        recapStarted
+          ? 'The foundation path started, but its current route could not be confirmed. Reloading the saved School state.'
+          : 'Could not start the foundation path.',
+      ));
+      if (recapStarted) queueMicrotask(() => void load());
     } finally {
       startingRef.current = false;
       setStarting(false);
@@ -376,7 +420,6 @@ export default function SchoolPlacementReportPage() {
 
   return (
     <div className="mode-school min-h-[100dvh] bg-background font-body text-slate-950">
-      <AppHeader title="Starting-point report" appearance="school" showCredits={false} />
       {loading ? <SchoolReportSkeleton /> : report && currentAction ? (
         <PlacementReportContent
           report={report}
@@ -385,18 +428,17 @@ export default function SchoolPlacementReportPage() {
           error={error}
           onBack={() => router.push('/school')}
           onPrimaryAction={() => void runPrimaryAction()}
+          onRetry={() => void load()}
         />
       ) : (
-        <main className="mx-auto flex min-h-[100dvh] w-full max-w-[760px] items-center px-5 py-28 sm:px-8">
-          <section className="w-full rounded-2xl border border-red-200 bg-[var(--school-surface,#fcfdff)] px-6 py-7" role="alert">
+        <main className="mx-auto flex min-h-[calc(100dvh-68px)] w-full max-w-[760px] items-center px-4 py-16 sm:px-8">
+          <section className="w-full border-y border-red-200 py-8" role="alert">
             <div className="flex items-start gap-3 text-red-800">
-              <ExclamationTriangleIcon className="mt-0.5 h-5 w-5 flex-none" aria-hidden="true" />
+              <ExclamationTriangleIcon className="mt-1 h-5 w-5 flex-none" aria-hidden="true" />
               <div className="min-w-0">
-                <h1 className="font-display text-[2rem] font-normal leading-tight text-slate-950">We could not open your starting-point report</h1>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  {error || 'No completed starting-point report is available yet.'}
-                </p>
-                <button type="button" onClick={() => void load()} className={`${schoolPrimaryActionClass} mt-5`}>
+                <h1 className="font-display text-[2.3rem] font-normal leading-[1.05] text-slate-950">We could not open your starting-point report</h1>
+                <p className="mt-3 text-sm leading-6 text-slate-600">{error || 'No saved starting-point report is available yet.'}</p>
+                <button type="button" onClick={() => void load()} className={`${schoolPrimaryActionClass} mt-6`}>
                   <ReloadIcon className="h-4 w-4" aria-hidden="true" />
                   Retry
                 </button>

@@ -108,14 +108,7 @@ export function resolveSchoolStateAction<Action extends string>(input: {
   return { action: input.nextAction, href: input.nextActionUrl };
 }
 
-export function resolveSchoolStateDestination<Action extends string>(input: {
-  nextAction: Action | null;
-  allowedNextActions: readonly Action[];
-  nextActionUrl: string;
-}): string | null {
-  const destination = resolveSchoolStateAction(input)?.href;
-  if (!destination) return null;
-
+function canonicalSchoolDestination(destination: string): string {
   if (/^\/school\/readiness\/report(?:[?#]|$)/.test(destination)) {
     return destination.replace('/school/readiness/report', '/school/placement/report');
   }
@@ -124,6 +117,33 @@ export function resolveSchoolStateDestination<Action extends string>(input: {
     return `/school/placement${suffix}`;
   }
   return destination;
+}
+
+export function resolveSchoolStateDestination<Action extends string>(input: {
+  nextAction: Action | null;
+  allowedNextActions: readonly Action[];
+  nextActionUrl: string;
+}): string | null {
+  const destination = resolveSchoolStateAction(input)?.href;
+  if (!destination) return null;
+
+  return canonicalSchoolDestination(destination);
+}
+
+export function resolveSchoolPassiveStateDestination<Action extends string>(input: {
+  status: string;
+  nextAction: Action | null;
+  allowedNextActions: readonly Action[];
+  nextActionUrl: string;
+}): string | null {
+  if (
+    input.status !== 'awaiting_evaluation'
+    || input.nextAction !== null
+    || input.allowedNextActions.length !== 0
+    || !/^\/school(?:[/?#]|$)/.test(input.nextActionUrl)
+  ) return null;
+
+  return canonicalSchoolDestination(input.nextActionUrl);
 }
 
 export function schoolSubjectLabel(subjectId: string | null): string {

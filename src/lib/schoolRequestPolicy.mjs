@@ -16,6 +16,7 @@ export function isSchoolEvaluatorPath(path) {
 }
 
 export function schoolProxyTimeoutMs(path, localMode) {
+  if (localMode) return null;
   if (!isSchoolEvaluatorPath(path)) return SCHOOL_PROXY_REQUEST_TIMEOUT_MS;
-  return localMode ? null : SCHOOL_CLOUD_EVALUATOR_TIMEOUT_MS;
+  return SCHOOL_CLOUD_EVALUATOR_TIMEOUT_MS;
 }

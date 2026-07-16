@@ -18,12 +18,23 @@ import {
 import { SchoolSupportActivity } from '@/components/school/support/SchoolSupportActivity';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 import {
+  CURRICULUM_REVALIDATE_MS,
   completedMasterclassReturnAction,
+  releaseSchoolTutorLoad,
+  resolveSchoolPassiveStateDestination,
   resolveSchoolStateDestination,
   schoolMasterclassLineage,
   schoolMasterclassShellBackAction,
+  schoolTutorLoadDecision,
+  schoolTutorLoadOwnedBy,
+  startSingleFlightRevalidation,
   type SchoolMasterclassLineage,
+  type SchoolTutorLoadOwner,
 } from '@/lib/schoolActivityPolicy';
+import {
+  isMasterclassAnswerInProgress,
+  masterclassActivityView,
+} from '@/lib/schoolMasterclassPolicy';
 import {
   abandonSchoolCurriculumMasterclass,
   answerSchoolMasterclass,
@@ -33,6 +44,7 @@ import {
   resumeSchoolCurriculumMasterclass,
   type SchoolCurriculumSession,
   type SchoolMasterclassSession,
+  type SchoolStateStatus,
 } from '@/services/schoolRebuild';
 
 function lineageForSessions(
@@ -70,43 +82,37 @@ function MasterclassProgress({
 
   return (
     <div data-testid="school-masterclass-context" className="min-w-0">
-      <section aria-labelledby="masterclass-return-target">
-        <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--school-accent-deep)]">
-          <ReaderIcon className="h-4 w-4" aria-hidden="true" />
-          Saved chapter place
+      <section className="grid min-w-0 gap-3 sm:grid-cols-[minmax(150px,1fr)_minmax(160px,auto)] sm:items-center sm:gap-5" aria-labelledby="masterclass-return-target">
+        <div className="min-w-0">
+          <p className="flex items-center gap-2 font-mono text-[9px] font-semibold uppercase text-[var(--school-accent-deep)]">
+            <TargetIcon className="h-3.5 w-3.5" aria-hidden="true" /> Focused practice
+          </p>
+          <h2 id="masterclass-return-target" className="mt-1 truncate text-sm font-semibold text-[var(--school-ink)]">{session.focus}</h2>
         </div>
-        <h2 id="masterclass-return-target" className="mt-3 font-display text-2xl font-normal leading-tight text-slate-950">
-          {curriculum.chapter.title}
-        </h2>
-        <p className="mt-2 text-sm leading-6 text-slate-600">
-          Finish this focused practice, then return to the exact lesson step below.
-        </p>
+        <p className="truncate text-xs font-medium text-[var(--school-muted)]">Return to {curriculum.chapter.title}</p>
       </section>
 
-      <dl className="mt-6 border-y border-slate-200 py-3">
-        <div className="py-2">
-          <dt className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Lesson step</dt>
-          <dd className="mt-1 text-sm font-semibold leading-5 text-slate-800">
-            {interruptedLevel?.title || session.focus}
-          </dd>
-        </div>
-        <div className="py-2">
-          <dt className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-            <TargetIcon className="h-3.5 w-3.5" aria-hidden="true" /> Skill focus
-          </dt>
-          <dd className="mt-1 text-sm font-semibold leading-5 text-slate-800">{session.focus}</dd>
-        </div>
-        <div className="py-2">
-          <dt className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Support reason</dt>
-          <dd className="mt-1 text-sm leading-5 text-slate-700">
-            This skill needed focused help during the chapter. Support visit {session.trigger_count} of 2.
-          </dd>
-        </div>
-      </dl>
-
-      <p className="mt-5 text-xs leading-5 text-slate-500">
-        Return target: {curriculum.chapter.title}, {interruptedLevel?.title || session.focus}.
-      </p>
+      <details className="group mt-3 border-t border-[var(--school-line)] pt-3">
+        <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-4 text-xs font-semibold text-[var(--school-muted)]">
+          <span className="flex items-center gap-2"><ReaderIcon className="h-3.5 w-3.5" aria-hidden="true" /> Your exact chapter place is saved</span>
+          <span className="font-mono text-[9px] uppercase text-[var(--school-accent-deep)] group-open:hidden">View context</span>
+          <span className="hidden font-mono text-[9px] uppercase text-[var(--school-accent-deep)] group-open:inline">Hide context</span>
+        </summary>
+        <dl className="mt-3 grid gap-4 border-t border-[var(--school-line)] pt-4 text-xs sm:grid-cols-3">
+          <div>
+            <dt className="font-mono text-[9px] font-semibold uppercase text-[var(--school-faint)]">Lesson step</dt>
+            <dd className="mt-1 font-semibold text-[var(--school-ink)]">{interruptedLevel?.title || session.focus}</dd>
+          </div>
+          <div>
+            <dt className="font-mono text-[9px] font-semibold uppercase text-[var(--school-faint)]">Skill focus</dt>
+            <dd className="mt-1 font-semibold text-[var(--school-ink)]">{session.focus}</dd>
+          </div>
+          <div>
+            <dt className="font-mono text-[9px] font-semibold uppercase text-[var(--school-faint)]">Support visit</dt>
+            <dd className="mt-1 text-[var(--school-muted)]">{session.trigger_count} of 2</dd>
+          </div>
+        </dl>
+      </details>
     </div>
   );
 }
@@ -117,11 +123,13 @@ export default function SchoolMasterclassPage() {
   const sessionId = params.sessionId;
   const [session, setSession] = useState<SchoolMasterclassSession | null>(null);
   const [curriculum, setCurriculum] = useState<SchoolCurriculumSession | null>(null);
+  const [schoolStatus, setSchoolStatus] = useState<SchoolStateStatus | null>(null);
   const [answer, setAnswer] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [confirmingAbandon, setConfirmingAbandon] = useState(false);
   const [error, setError] = useState('');
+  const loadOwnerRef = useRef<SchoolTutorLoadOwner | null>(null);
   const loadRequestIdRef = useRef(0);
   const submitInFlightRef = useRef(false);
   const actionInFlightRef = useRef(false);
@@ -129,19 +137,32 @@ export default function SchoolMasterclassPage() {
   const lastFocusedActivityIdRef = useRef<string | null>(null);
   const abandonDialogRef = useRef<HTMLDialogElement | null>(null);
 
-  const load = useCallback(async () => {
-    const requestId = loadRequestIdRef.current + 1;
-    loadRequestIdRef.current = requestId;
-    setLoading(true);
-    setError('');
+  const load = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    const decision = schoolTutorLoadDecision(loadOwnerRef.current, {
+      sessionId,
+      requestId: loadRequestIdRef.current + 1,
+    });
+    if (decision.kind === 'dedupe') return;
+    const requestOwner = decision.owner;
+    loadOwnerRef.current = requestOwner;
+    loadRequestIdRef.current = requestOwner.requestId;
+    if (!background) {
+      setLoading(true);
+      setError('');
+    }
     try {
       const [state, nextSession] = await Promise.all([
         getSchoolState({ force: true }),
         getSchoolMasterclass(sessionId),
       ]);
-      if (requestId !== loadRequestIdRef.current) return;
+      if (!schoolTutorLoadOwnedBy(loadOwnerRef.current, requestOwner)) return;
       if (nextSession.session_id !== sessionId) throw new Error('school_masterclass_lineage_mismatch');
       const destination = resolveSchoolStateDestination({
+        nextAction: state.next_action,
+        allowedNextActions: state.allowed_next_actions,
+        nextActionUrl: state.next_action_url,
+      }) ?? resolveSchoolPassiveStateDestination({
+        status: state.status,
         nextAction: state.next_action,
         allowedNextActions: state.allowed_next_actions,
         nextActionUrl: state.next_action_url,
@@ -153,23 +174,30 @@ export default function SchoolMasterclassPage() {
       }
 
       const linkedCurriculum = await getSchoolCurriculumSession(nextSession.linked_curriculum_session_id);
-      if (requestId !== loadRequestIdRef.current) return;
+      if (!schoolTutorLoadOwnedBy(loadOwnerRef.current, requestOwner)) return;
       if (!lineageForSessions(nextSession, linkedCurriculum)) {
         throw new Error('school_masterclass_lineage_mismatch');
       }
 
       setSession(nextSession);
       setCurriculum(linkedCurriculum);
-      setLoading(false);
+      setSchoolStatus(state.status);
+      setError('');
     } catch (err: unknown) {
-      if (requestId !== loadRequestIdRef.current) return;
+      if (!schoolTutorLoadOwnedBy(loadOwnerRef.current, requestOwner)) return;
       const lineageMismatch = err instanceof Error && err.message === 'school_masterclass_lineage_mismatch';
-      setSession(null);
-      setCurriculum(null);
+      if (!background || lineageMismatch) {
+        setSession(null);
+        setCurriculum(null);
+        setSchoolStatus(null);
+      }
       setError(lineageMismatch
         ? 'This focused practice is not linked to your active chapter. Return to School to continue safely.'
         : learnerSafeErrorMessage(err, 'Could not load focused practice.'));
-      setLoading(false);
+    } finally {
+      const requestStillOwnsLoad = schoolTutorLoadOwnedBy(loadOwnerRef.current, requestOwner);
+      loadOwnerRef.current = releaseSchoolTutorLoad(loadOwnerRef.current, requestOwner);
+      if (!background && requestStillOwnsLoad) setLoading(false);
     }
   }, [router, sessionId]);
 
@@ -177,13 +205,31 @@ export default function SchoolMasterclassPage() {
     void load();
   }, [load]);
 
+  const activity = session?.current_activity ?? null;
+  const activityView = masterclassActivityView({
+    schoolStatus,
+    sessionStatus: session?.status ?? null,
+    activityId: activity?.activity_id ?? null,
+    canAnswer: activity?.can_answer === true,
+  });
+
+  useEffect(() => {
+    if (!activityView.pollDue) return;
+    const revalidator = startSingleFlightRevalidation({
+      intervalMs: activityView.pollAfterMs ?? CURRICULUM_REVALIDATE_MS,
+      revalidate: () => load({ background: true }),
+      schedule: (callback, intervalMs) => window.setInterval(callback, intervalMs),
+      cancelSchedule: (timer) => window.clearInterval(timer),
+    });
+    return () => revalidator.cancel();
+  }, [activityView.pollAfterMs, activityView.pollDue, load]);
+
   const submit = async (value?: string) => {
-    const activity = session?.current_activity;
     const finalAnswer = value ?? answer;
     if (
       !session
       || !activity
-      || !activity.can_answer
+      || !activityView.canSubmit
       || !finalAnswer.trim()
       || submitting
       || submitInFlightRef.current
@@ -208,7 +254,14 @@ export default function SchoolMasterclassPage() {
       setSession(nextSession);
       setAnswer('');
     } catch (err: unknown) {
-      setError(learnerSafeErrorMessage(err, 'Your answer was not checked. Please try again.'));
+      if (isMasterclassAnswerInProgress(err)) {
+        setSchoolStatus('awaiting_evaluation');
+        setAnswer('');
+        setError('');
+        void load({ background: true });
+      } else {
+        setError(learnerSafeErrorMessage(err, 'Your answer was not checked. Please try again.'));
+      }
     } finally {
       submitInFlightRef.current = false;
       setSubmitting(false);
@@ -266,7 +319,6 @@ export default function SchoolMasterclassPage() {
     }
   };
 
-  const activity = session?.current_activity ?? null;
   const interruptedLevel = curriculum?.levels.find((level) => level.level_id === session?.level_id) ?? null;
   const lineage = session && curriculum ? lineageForSessions(session, curriculum) : null;
   const returnFromComplete = () => {
@@ -297,7 +349,7 @@ export default function SchoolMasterclassPage() {
     const activityId = activity?.activity_id ?? null;
     if (!activityId || lastFocusedActivityIdRef.current === activityId) return;
     lastFocusedActivityIdRef.current = activityId;
-    const frame = requestAnimationFrame(() => questionHeadingRef.current?.focus());
+    const frame = requestAnimationFrame(() => questionHeadingRef.current?.focus({ preventScroll: true }));
     return () => cancelAnimationFrame(frame);
   }, [activity?.activity_id]);
 
@@ -314,7 +366,11 @@ export default function SchoolMasterclassPage() {
     <SchoolLearningShell
       title={activity?.title || session?.focus || 'Focused practice'}
       eyebrow="Focused practice"
-      coachStatus={session?.status === 'complete' ? 'Ready to return' : 'One skill at a time'}
+      coachStatus={session?.status === 'complete'
+        ? 'Ready to return'
+        : activityView.kind === 'pending'
+          ? 'Reviewing your answer'
+          : 'One skill at a time'}
       coachNote={activity?.focus || session?.focus || 'Your chapter place is saved while we strengthen this skill.'}
       coachAvatarId={session?.coach_avatar_id}
       coachPaletteId={session?.coach_palette_id}
@@ -381,7 +437,7 @@ export default function SchoolMasterclassPage() {
           inputId="school-masterclass-answer"
           inputLabel="Your focused practice answer"
           submitting={submitting}
-          canAnswer={activity.can_answer}
+          canAnswer={activityView.canSubmit}
           feedback={session.last_feedback}
           error={error}
           questionRef={questionHeadingRef}

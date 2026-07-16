@@ -41,12 +41,19 @@ test('level map presents only the five learner-facing stages', () => {
   }
   assert.doesNotMatch(component, /from '@\/components\/learning\/JourneyMap'/);
   assert.doesNotMatch(component, /<JourneyMap/);
+  assert.match(component, /SchoolPathMap\.module\.css/);
+  assert.match(component, /buildSchoolWindingPath/);
+  assert.match(component, /getSchoolPathAvatar/);
+  assert.match(component, /schoolPathMetrics/);
+  assert.match(component, /<svg/);
   assert.equal((component.match(/<Image\b/g) ?? []).length, 1);
   assert.match(component, /getSchoolAvatarTheme/);
-  assert.match(component, /grid-cols-\[76px_minmax\(0,1fr\)\]/);
-  assert.match(component, /sm:grid-cols-5/);
-  assert.match(component, /object-contain object-bottom scale-100/);
-  assert.doesNotMatch(component, /getAvatarScaleClass/);
+  assert.match(component, /getAvatarScaleClass/);
+  assert.match(component, /width=\{250\}/);
+  assert.match(component, /height=\{300\}/);
+  assert.doesNotMatch(component, /sm:grid-cols-5|absolute bottom-10 left-\[37px\]/);
+  assert.doesNotMatch(component, /Math\.random|unoptimized/);
+  assert.match(component, /const showStateBadge = \['complete', 'locked', 'needs_support'\]\.includes\(stage\.status\)/);
   assert.doesNotMatch(component, /lucide-react|font-black|gradient/i);
 
   const stages = buildSchoolLevelStages(
@@ -75,7 +82,8 @@ test('level map presents only the five learner-facing stages', () => {
 });
 
 test('level statuses remain descriptive while actions require explicit state authority', () => {
-  assert.match(component, /active && authorizedAction/);
+  assert.match(component, /isCurrent && stage\.status !== 'locked'/);
+  assert.match(component, /aria-current=/);
   assert.doesNotMatch(component, /onOpenSupport/);
   assert.match(component, /disabled={busy/);
   assert.match(component, /Starting chapter/);

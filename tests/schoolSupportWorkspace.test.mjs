@@ -30,7 +30,7 @@ test('recap is a focused readiness workspace with backend-owned progression', as
     'activity.can_answer',
     'path.modules.map',
     'school-recap-complete',
-    'A short bridge to Class',
+    'A short bridge to your class',
     'Start recap path',
     'Open target class',
     'coachAvatarId={path?.coach_avatar_id}',
@@ -114,6 +114,10 @@ test('terminal support opens an evidence-backed plan instead of redirecting to S
     'supportPlan.focus',
     'supportPlan?.cap',
     'supportPlan?.history',
+    'continueSchoolCurriculumAfterSupportCap(sessionId)',
+    "router.replace(`/school/session/${continued.session_id}`)",
+    'Continue this lesson',
+    'Continuing lesson',
     'A different route will help here.',
     "router.push('/school/reports')",
     "router.push('/school/parent')",
@@ -131,7 +135,9 @@ test('terminal support opens an evidence-backed plan instead of redirecting to S
   assert.match(service, /cap: Partial</);
   assert.match(service, /history: Array</);
   assert.match(service, /export async function getSchoolSupportPlan\(sessionId: string\): Promise<SchoolSupportPlan>/);
-  assert.match(service, /schoolApiFetch\(`\/school\/support\/\$\{sessionId\}`\)/);
+  assert.match(service, /schoolReadFetch\(`\/school\/support\/\$\{sessionId\}`\)/);
+  assert.match(service, /export async function continueSchoolCurriculumAfterSupportCap/);
+  assert.match(service, /`\/school\/curriculum\/\$\{curriculumSessionId\}\/continue-after-support-cap`/);
 });
 
 test('support activity retains browser selectors and duplicate-submit controls', async () => {
@@ -149,7 +155,7 @@ test('support activity retains browser selectors and duplicate-submit controls',
     'data-testid={`${testIdPrefix}-feedback`}',
     'disabled={submitting}',
     "if (event.key === 'Enter') onSubmit();",
-    "submitting ? 'Checking answer' : 'Submit'",
+    "submitting ? 'Checking your answer' : 'Check my answer'",
   ]) {
     assert.ok(activity.includes(contract), `support activity contract missing ${contract}`);
   }
@@ -160,5 +166,5 @@ test('support activity retains browser selectors and duplicate-submit controls',
   assert.ok(activity.includes('schoolPrimaryActionClass'));
   assert.match(masterclassToneChrome, /text-\[var\(--school-accent-deep\)\]/);
   assert.doesNotMatch(masterclassToneChrome, /(?:text|border|bg)-orange-/);
-  assert.ok(!/lucide-react|font-black|gradient|border-l-[2-9]|(?:rose|sky|cyan|emerald|amber)-/i.test(activity));
+  assert.ok(!/lucide-react|font-black|gradient|(?:rose|sky|cyan|emerald|amber)-/i.test(activity));
 });

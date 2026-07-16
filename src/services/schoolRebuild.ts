@@ -18,6 +18,28 @@ import {
 
 export type TeachingLanguage = SchoolTeachingLanguage;
 export type EnglishComfort = SchoolEnglishComfort;
+export type SchoolCurriculumInteractionType =
+  | 'continue'
+  | 'single_choice'
+  | 'multi_select'
+  | 'cloze'
+  | 'matching'
+  | 'ordering'
+  | 'classification'
+  | 'sentence_completion'
+  | 'short_text'
+  | 'evidence_text'
+  | 'paragraph_text'
+  | 'dialogue'
+  | 'creative_continuation'
+  | 'summary'
+  | 'reflection';
+export type SchoolCurriculumEvidenceRole =
+  | 'experience'
+  | 'formative'
+  | 'supported'
+  | 'certifying'
+  | 'reflection';
 export type SchoolStateStatus =
   | 'needs_action'
   | 'in_progress'
@@ -315,6 +337,7 @@ export interface SchoolCurriculumLanding {
 
 export interface SchoolSkillEvidenceSummary {
   skill_id: string;
+  skill_label?: string;
   latest_evidence: string;
   last_attempt_type: string;
   last_chapter_id: string;
@@ -355,6 +378,7 @@ export interface SchoolCurriculumSession extends SchoolCoachIdentity {
   memory_summary?: {
     active_gaps: Array<{
       skill_id: string;
+      skill_label?: string;
       gap: string;
       recommended_next_action: string;
       latest_evidence?: string;
@@ -422,7 +446,14 @@ export interface SchoolCurriculumSession extends SchoolCoachIdentity {
       | 'revision_level_3'
       | 'independent_check'
       | 'transfer_check'
-      | 'chapter_check';
+      | 'chapter_check'
+      | 'v2_connect'
+      | 'v2_co_construct'
+      | 'v2_guided_practice'
+      | 'v2_independent_application'
+      | 'v2_transfer'
+      | 'v2_review'
+      | 'v2_support';
     title: string;
     focus: string;
     skill_ids: string[];
@@ -431,6 +462,8 @@ export interface SchoolCurriculumSession extends SchoolCoachIdentity {
     prompt: string;
     options: string[] | null;
     response_mode?: 'short' | 'paragraph';
+    interaction_type?: SchoolCurriculumInteractionType | null;
+    evidence_role?: SchoolCurriculumEvidenceRole | null;
     attempt_no: number;
     can_answer: boolean;
   } | null;
@@ -557,22 +590,26 @@ export interface SchoolChapterMap extends SchoolCoachIdentity {
 
 const SCHOOL_STATE_CACHE_MS = 5_000;
 const stateRequestCache = new SchoolStateRequestCache<SchoolStateResponse>(SCHOOL_STATE_CACHE_MS);
-const SCHOOL_LOCAL_EVALUATOR_UNBOUNDED = process.env.NEXT_PUBLIC_SCHOOL_LOCAL_MODE === '1';
+const SCHOOL_LOCAL_REQUESTS_UNBOUNDED = process.env.NEXT_PUBLIC_SCHOOL_LOCAL_MODE === '1';
 type SchoolApiFetchOptions = Omit<NonNullable<Parameters<typeof apiFetch>[1]>, 'timeoutMs'>;
 
 const schoolReadFetch = (endpoint: string, options: SchoolApiFetchOptions = {}) => apiFetch(endpoint, {
   ...options,
-  timeoutMs: SCHOOL_READ_TIMEOUT_MS,
+  timeoutMs: SCHOOL_LOCAL_REQUESTS_UNBOUNDED
+    ? null
+    : SCHOOL_READ_TIMEOUT_MS,
 });
 
 const schoolControlFetch = (endpoint: string, options: SchoolApiFetchOptions = {}) => apiFetch(endpoint, {
   ...options,
-  timeoutMs: SCHOOL_CONTROL_TIMEOUT_MS,
+  timeoutMs: SCHOOL_LOCAL_REQUESTS_UNBOUNDED
+    ? null
+    : SCHOOL_CONTROL_TIMEOUT_MS,
 });
 
 const schoolEvaluatorFetch = (endpoint: string, options: SchoolApiFetchOptions = {}) => apiFetch(endpoint, {
   ...options,
-  timeoutMs: SCHOOL_LOCAL_EVALUATOR_UNBOUNDED
+  timeoutMs: SCHOOL_LOCAL_REQUESTS_UNBOUNDED
     ? null
     : SCHOOL_CLOUD_EVALUATOR_TIMEOUT_MS,
 });
@@ -788,6 +825,17 @@ export async function abandonSchoolCurriculumMasterclass(
 ): Promise<SchoolCurriculumSession> {
   const result = await schoolControlFetch(
     `/school/curriculum/${curriculumSessionId}/abandon-masterclass`,
+    { method: 'POST' },
+  );
+  invalidateSchoolRebuildCache();
+  return result;
+}
+
+export async function continueSchoolCurriculumAfterSupportCap(
+  curriculumSessionId: string,
+): Promise<SchoolCurriculumSession> {
+  const result = await schoolControlFetch(
+    `/school/curriculum/${curriculumSessionId}/continue-after-support-cap`,
     { method: 'POST' },
   );
   invalidateSchoolRebuildCache();

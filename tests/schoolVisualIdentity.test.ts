@@ -139,3 +139,41 @@ test('canonical School sources do not use local storage or seed-derived coach id
   assert.doesNotMatch(service, /SchoolCatalogSupportStatus = [^;]*(?:supported|unsupported)/);
   assert.match(service, /\| 'start_masterclass'/);
 });
+
+test('canonical School presentation is scoped to its own shell and design tokens', () => {
+  const css = fs.readFileSync('src/components/school/SchoolSurface.module.css', 'utf8');
+  const shell = fs.readFileSync('src/components/school/shell/SchoolShell.tsx', 'utf8');
+  const layout = fs.readFileSync('src/app/school/layout.tsx', 'utf8');
+
+  for (const token of [
+    '--school-canvas: #fbfaf7',
+    '--school-paper: #fffefb',
+    '--school-ink: #121a2d',
+    '--school-navy: #10182d',
+    '--school-accent: #555bd8',
+    '--school-accent-dark: #4248bb',
+  ]) {
+    assert.match(css.toLowerCase(), new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  }
+  assert.doesNotMatch(css, /letter-spacing:\s*-/);
+  assert.match(shell, /Home/);
+  assert.match(shell, /Starting point/);
+  assert.match(shell, /My path/);
+  assert.match(shell, /Reports/);
+  assert.match(shell, /aria-label=.*menu/i);
+  assert.match(layout, /SchoolShell/);
+  assert.doesNotMatch(layout, /AppHeader/);
+});
+
+test('School-owned presentation does not bypass image optimization or reintroduce mock controls', () => {
+  const roots = ['src/app/school', 'src/components/school'];
+  const files = roots.flatMap((root) => fs.readdirSync(root, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile() && /\.(?:ts|tsx)$/.test(entry.name))
+    .map((entry) => `${entry.parentPath}/${entry.name}`));
+
+  for (const file of files) {
+    const source = fs.readFileSync(file, 'utf8');
+    assert.doesNotMatch(source, /\bunoptimized\b/, `${file} bypasses Next image optimization`);
+    assert.doesNotMatch(source, /Surface Review|data-review-|\?state=/, `${file} includes prototype-only controls`);
+  }
+});

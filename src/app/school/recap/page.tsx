@@ -47,62 +47,61 @@ function moduleStateLabel(path: SchoolRecapPath, moduleIndex: number, status: st
 }
 
 function ReadinessProgress({ path }: { path: SchoolRecapPath }) {
-  return (
-    <div data-testid="school-recap-progress" className="py-2">
-      <div className="flex items-center gap-2 text-[10px] font-semibold uppercase text-[var(--school-accent-deep)]">
-        <ReaderIcon className="h-4 w-4" aria-hidden="true" />
-        Readiness path
-      </div>
-      <h2 className="mt-3 font-display text-[2rem] font-normal leading-[1.05] text-slate-950">
-        A short bridge to Class {path.target_class_no}
-      </h2>
-      <p className="mt-2 text-sm leading-6 text-slate-600">
-        This is not another setup check. It includes only the prerequisite skills selected from your saved readiness work.
-      </p>
-      <div className="mt-4">
-        <SchoolStatusChip tone={path.progress.completed_modules === path.progress.total_modules ? 'success' : 'accent'}>
-          {path.progress.completed_modules} of {path.progress.total_modules} skills complete
-        </SchoolStatusChip>
-      </div>
+  const progressPercent = path.progress.total_modules > 0
+    ? Math.round((path.progress.completed_modules / path.progress.total_modules) * 100)
+    : 0;
+  const currentModule = path.modules[path.current_module_index] ?? null;
 
-      <ol className="relative mt-6 space-y-1 before:absolute before:bottom-6 before:left-[15px] before:top-6 before:w-px before:bg-slate-200">
-        {path.modules.map((module, index) => {
-          const state = moduleStateLabel(path, index, module.status);
-          const complete = state === 'Rebuilt';
-          const current = state === 'Learning now';
-          return (
-            <li key={module.module_id} className="relative grid grid-cols-[32px_minmax(0,1fr)] gap-3 py-3">
-              <span
-                aria-hidden="true"
-                className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-full border-2 text-[10px] font-semibold ${
+  return (
+    <div data-testid="school-recap-progress" className="min-w-0">
+      <section className="grid min-w-0 gap-3 sm:grid-cols-[minmax(150px,auto)_minmax(180px,1fr)_auto] sm:items-center sm:gap-5">
+        <div className="min-w-0">
+          <p className="flex items-center gap-2 font-mono text-[9px] font-semibold uppercase text-[var(--school-accent-deep)]">
+            <ReaderIcon className="h-3.5 w-3.5" aria-hidden="true" /> Readiness path
+          </p>
+          <p className="mt-1 truncate text-sm font-semibold text-[var(--school-ink)]">
+            {currentModule?.title || `Bridge to Class ${path.target_class_no}`}
+          </p>
+        </div>
+        <div className="h-1.5 overflow-hidden rounded-full bg-[#dedfdc]" role="progressbar" aria-label="Completed readiness skills" aria-valuemin={0} aria-valuemax={path.progress.total_modules} aria-valuenow={path.progress.completed_modules}>
+          <span className="block h-full rounded-full bg-[var(--school-accent)] transition-[width] motion-reduce:transition-none" style={{ width: `${progressPercent}%` }} />
+        </div>
+        <p className="whitespace-nowrap font-mono text-[10px] font-semibold text-[var(--school-faint)]">
+          {String(path.progress.completed_modules).padStart(2, '0')} / {String(path.progress.total_modules).padStart(2, '0')}
+        </p>
+      </section>
+
+      <details className="group mt-3 border-t border-[var(--school-line)] pt-3">
+        <summary className="-my-1.5 flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 py-1.5 text-xs font-semibold text-[var(--school-muted)] focus-visible:outline-none">
+          <span>Only the prerequisite skills selected from your saved readiness work</span>
+          <span className="font-mono text-[9px] uppercase text-[var(--school-accent-deep)] group-open:hidden">View skills</span>
+          <span className="hidden font-mono text-[9px] uppercase text-[var(--school-accent-deep)] group-open:inline">Hide skills</span>
+        </summary>
+        <ol className="mt-3 grid gap-2 border-t border-[var(--school-line)] pt-4 sm:grid-cols-2">
+          {path.modules.map((module, index) => {
+            const state = moduleStateLabel(path, index, module.status);
+            const complete = state === 'Rebuilt';
+            const current = state === 'Learning now';
+            return (
+              <li key={module.module_id} aria-current={current ? 'step' : undefined} className="flex min-w-0 items-center gap-2.5">
+                <span className={`flex h-6 w-6 flex-none items-center justify-center rounded-md border text-[10px] font-semibold ${
                   complete
-                    ? 'border-teal-600 bg-teal-600 text-white'
+                    ? 'border-[var(--school-green)] bg-[var(--school-green)] text-white'
                     : current
                       ? 'border-[var(--school-accent)] bg-[var(--school-accent-soft)] text-[var(--school-accent-deep)]'
-                      : 'border-slate-300 bg-white text-slate-400'
-                }`}
-              >
-                {complete ? <CheckIcon className="h-3.5 w-3.5" /> : index + 1}
-              </span>
-              <div className="min-w-0 pt-1">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className={`text-sm font-semibold leading-5 ${current ? 'text-slate-950' : 'text-slate-700'}`}>
-                    {module.title}
-                  </p>
-                  <span className={`text-[10px] font-semibold uppercase ${
-                    complete ? 'text-teal-700' : current ? 'text-[var(--school-accent-deep)]' : 'text-slate-400'
-                  }`}>
-                    {state}
-                  </span>
-                </div>
-                <p className="mt-1 text-xs leading-5 text-slate-500">
-                  Class {module.source_class_no} · {module.focus}
-                </p>
-              </div>
-            </li>
-          );
-        })}
-      </ol>
+                      : 'border-[var(--school-line-strong)] bg-[var(--school-paper)] text-[var(--school-faint)]'
+                }`}>
+                  {complete ? <CheckIcon className="h-3.5 w-3.5" aria-hidden="true" /> : index + 1}
+                </span>
+                <span className="min-w-0">
+                  <span className={`block truncate text-xs font-semibold ${current ? 'text-[var(--school-ink)]' : 'text-[var(--school-muted)]'}`}>{module.title}</span>
+                  <span className="block truncate text-[10px] text-[var(--school-faint)]">Class {module.source_class_no} · {module.focus}</span>
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      </details>
     </div>
   );
 }
@@ -228,7 +227,7 @@ export default function SchoolRecapPage() {
     const activityId = activity?.activity_id ?? null;
     if (!activityId || lastFocusedActivityIdRef.current === activityId) return;
     lastFocusedActivityIdRef.current = activityId;
-    const frame = requestAnimationFrame(() => questionHeadingRef.current?.focus());
+    const frame = requestAnimationFrame(() => questionHeadingRef.current?.focus({ preventScroll: true }));
     return () => cancelAnimationFrame(frame);
   }, [activity?.activity_id]);
 

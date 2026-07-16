@@ -15,7 +15,126 @@
  *   active_chapter_id?: string | null,
  *   chapters: PracticeChapterEvidence[],
  * }} PracticeClassMapEvidence
+ * @typedef {{
+ *   title: string,
+ *   focus?: string,
+ *   skill_ids: string[],
+ * }} ReportLevelEvidence
  */
+
+/**
+ * Reports use authored learning labels rather than exposing engine identifiers.
+ * Unknown identifiers deliberately collapse to a neutral learner-safe label.
+ *
+ * @param {ReportLevelEvidence[] | null | undefined} levels
+ * @returns {(skillId: string) => string}
+ */
+export function createLearnerSafeSkillLabeler(levels) {
+  const labels = new Map();
+  for (const level of levels ?? []) {
+    const label = String(level.title || level.focus || '').trim();
+    if (!label) continue;
+    for (const skillId of level.skill_ids ?? []) {
+      if (!labels.has(skillId)) labels.set(skillId, label);
+    }
+  }
+  return (skillId) => labels.get(skillId) ?? 'Current learning skill';
+}
+
+/**
+ * Collapse skills that share one learner-facing authored label. Multi-skill
+ * activities write evidence to each assessed skill, so summing their attempts
+ * would count one answer more than once; the largest persisted count is the
+ * truthful learner-facing total.
+ *
+ * @param {Array<{
+ *   skill_id: string,
+ *   skill_label?: string,
+ *   attempts?: number,
+ *   last_attempt_type?: string,
+ * }>} skills
+ * @param {(skillId: string) => string} labelSkill
+ * @returns {Array<{
+ *   label: string,
+ *   attempts: number,
+ *   last_attempt_type: string,
+ *   skill_count: number,
+ * }>}
+ */
+export function groupSkillEvidenceByLabel(skills, labelSkill) {
+  const grouped = new Map();
+  for (const skill of skills ?? []) {
+    const label = String(skill.skill_label || labelSkill(skill.skill_id) || '').trim();
+    if (!label || label === 'Current learning skill') continue;
+    const attempts = Math.max(0, Number.isFinite(skill.attempts) ? Math.trunc(skill.attempts) : 0);
+    const key = label.toLocaleLowerCase('en');
+    const current = grouped.get(key);
+    if (!current) {
+      grouped.set(key, {
+        label,
+        attempts,
+        last_attempt_type: String(skill.last_attempt_type || ''),
+        skill_count: 1,
+      });
+      continue;
+    }
+    current.skill_count += 1;
+    if (attempts > current.attempts) {
+      current.attempts = attempts;
+      current.last_attempt_type = String(skill.last_attempt_type || '');
+    }
+  }
+  return [...grouped.values()];
+}
+
+/**
+ * @param {number} attempts
+ * @param {string | null | undefined} attemptType
+ * @returns {string}
+ */
+export function describeSavedAttempts(attempts, attemptType) {
+  const count = Math.max(0, Number.isFinite(attempts) ? Math.trunc(attempts) : 0);
+  const kind = String(attemptType || 'learning').replaceAll('_', ' ').trim() || 'learning';
+  const alreadyNamesCheck = /\bcheck$/i.test(kind);
+  const noun = alreadyNamesCheck ? kind : `${kind} check`;
+  return `${count} saved ${noun}${count === 1 ? '' : 's'}`;
+}
+
+/**
+ * A state action cannot safely promise continuation when the active placement
+ * session itself has no next question.
+ *
+ * @param {{
+ *   active_flow?: string | null,
+ *   active_session_id?: string | null,
+ *   profile_version_id?: string | null,
+ *   next_action?: string | null,
+ * }} state
+ * @param {{
+ *   session_id?: string | null,
+ *   profile_version_id?: string | null,
+ *   status?: string | null,
+ *   next_item?: unknown,
+ * } | null | undefined} placement
+ * @returns {{ heading: string, actionLabel: string, message: string } | null}
+ */
+export function reportPlacementContinuationOverride(state, placement) {
+  const placementContinuation = state.active_flow === 'placement'
+    && (state.next_action === 'resume_placement' || state.next_action === 'finish_placement');
+  if (!placementContinuation) return null;
+
+  const canContinue = placement?.session_id === state.active_session_id
+    && placement?.profile_version_id === state.profile_version_id
+    && placement?.status === 'in_progress'
+    && Boolean(placement?.next_item);
+  if (canContinue) return null;
+
+  return {
+    heading: 'Starting-point check is waiting',
+    actionLabel: 'Check for another question',
+    message: 'Your saved answers are safe, but no additional question is available for this check yet.',
+  };
+}
 
 /**
  * @param {{

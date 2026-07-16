@@ -3,18 +3,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ExclamationTriangleIcon, ReloadIcon } from '@radix-ui/react-icons';
-import { LearningWorkspace } from '@/components/learning/LearningWorkspace';
 import { SchoolTutorSkeleton } from '@/components/learning/LearningSkeletons';
 import { SchoolCoachPanel } from '@/components/school/SchoolCoachPanel';
+import { SchoolLearningWorkspace } from '@/components/school/SchoolLearningWorkspace';
 import { schoolPrimaryActionClass, schoolSecondaryActionClass } from '@/components/school/SchoolPrimitives';
 import { SchoolActivityRenderer, schoolActivityLabel } from '@/components/school/tutor/SchoolActivityRenderer';
 import { SchoolProgressRail } from '@/components/school/tutor/SchoolProgressRail';
-import { AppHeader } from '@/components/shared/AppHeader';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
 import {
   CURRICULUM_REVALIDATE_MS,
   curriculumActivityView,
+  resolveSchoolPassiveStateDestination,
   resolveSchoolStateDestination,
   releaseSchoolTutorLoad,
   runCurriculumMutation,
@@ -74,6 +74,11 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
       ]);
       if (!schoolTutorLoadOwnedBy(loadOwnerRef.current, requestOwner)) return;
       const destination = resolveSchoolStateDestination({
+        nextAction: state.next_action,
+        allowedNextActions: state.allowed_next_actions,
+        nextActionUrl: state.next_action_url,
+      }) ?? resolveSchoolPassiveStateDestination({
+        status: state.status,
         nextAction: state.next_action,
         allowedNextActions: state.allowed_next_actions,
         nextActionUrl: state.next_action_url,
@@ -235,7 +240,6 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
   if (!session) {
     return (
       <div className="mode-school min-h-[100dvh] bg-background font-body text-slate-950">
-        <AppHeader title="School Prep" appearance="school" showCredits={false} />
         <main className="mx-auto flex min-h-[100dvh] max-w-2xl items-center px-5 py-28 sm:px-8">
           <section role="alert" className="w-full rounded-lg border border-red-200 bg-white p-6">
             <div className="flex gap-3">
@@ -283,14 +287,13 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
   const canStartMasterclass = schoolNextAction === 'start_masterclass';
 
   return (
-    <LearningWorkspace
+    <SchoolLearningWorkspace
       title={activity?.title || session.chapter.title}
       eyebrow={`${session.chapter.title} · ${learnerStage}`}
       onBack={() => router.push(chapterMapHref)}
       coach={<SchoolCoachPanel avatarId={session.coach_avatar_id} paletteId={session.coach_palette_id} status={coachStatus} note={coachNote} variant="immersive" />}
-      compactCoach={<SchoolCoachPanel avatarId={session.coach_avatar_id} paletteId={session.coach_palette_id} status={coachStatus} note={coachNote} compact />}
+      mobileCoach={<SchoolCoachPanel avatarId={session.coach_avatar_id} paletteId={session.coach_palette_id} status={coachStatus} note={coachNote} variant="inline" />}
       progress={<SchoolProgressRail session={session} />}
-      topBar={<AppHeader title="School Prep" appearance="school" showCredits={false} />}
       headerMeta={<span>{headerMeta}</span>}
       backLabel="Return to chapter map"
       coachLabel="School learning coach"
@@ -313,6 +316,6 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
         onExit={() => router.push(chapterMapHref)}
         onRetry={() => void load()}
       />
-    </LearningWorkspace>
+    </SchoolLearningWorkspace>
   );
 }

@@ -5,13 +5,13 @@ import { useRouter } from 'next/navigation';
 import { ReloadIcon } from '@radix-ui/react-icons';
 import { SchoolClassHomeSkeleton } from '@/components/learning/LearningSkeletons';
 import { SchoolPageHeading, schoolPrimaryActionClass } from '@/components/school/SchoolPrimitives';
-import { AppHeader } from '@/components/shared/AppHeader';
+import { SchoolShell } from '@/components/school/shell/SchoolShell';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
-import { getSchoolStateResponse } from '@/services/schoolRebuild';
+import { getSchoolStateResponse, type SchoolState } from '@/services/schoolRebuild';
 
 type SchoolGateState =
   | { status: 'loading' }
-  | { status: 'ready' }
+  | { status: 'ready'; state: SchoolState }
   | { status: 'unavailable' }
   | { status: 'error'; message: string };
 
@@ -27,7 +27,7 @@ export default function SchoolLayout({ children }: { children: ReactNode }) {
     void getSchoolStateResponse({ force: true })
       .then((state) => {
         if (cancelled) return;
-        setGate(state.available === false ? { status: 'unavailable' } : { status: 'ready' });
+        setGate(state.available === false ? { status: 'unavailable' } : { status: 'ready', state });
       })
       .catch((error: unknown) => {
         if (cancelled) return;
@@ -45,14 +45,15 @@ export default function SchoolLayout({ children }: { children: ReactNode }) {
     };
   }, [retryKey]);
 
-  if (gate.status === 'ready') return children;
-
   return (
-    <div className="mode-school min-h-[100dvh] bg-background font-body text-slate-950">
-      <AppHeader title="School Prep" appearance="school" />
+    <SchoolShell
+      coach_avatar_id={gate.status === 'ready' ? gate.state.coach_avatar_id : null}
+      coach_palette_id={gate.status === 'ready' ? gate.state.coach_palette_id : null}
+    >
+      {gate.status === 'ready' ? children : null}
       {gate.status === 'loading' ? (
         <SchoolClassHomeSkeleton />
-      ) : (
+      ) : gate.status !== 'ready' ? (
         <main className="mx-auto flex min-h-[100dvh] w-full max-w-[760px] items-center px-5 py-28 sm:px-8">
           <section className="w-full border-y border-slate-200 py-8">
             <SchoolPageHeading
@@ -85,7 +86,7 @@ export default function SchoolLayout({ children }: { children: ReactNode }) {
             )}
           </section>
         </main>
-      )}
-    </div>
+      ) : null}
+    </SchoolShell>
   );
 }
