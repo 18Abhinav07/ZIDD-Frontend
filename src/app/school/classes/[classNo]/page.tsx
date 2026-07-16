@@ -11,6 +11,7 @@ import {
   schoolSecondaryActionClass,
 } from '@/components/school/SchoolPrimitives';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
+import { schoolProfileEditHref } from '@/lib/schoolOnboardingPolicy';
 import { resolveSchoolStateDestination } from '@/lib/schoolActivityPolicy';
 import {
   createSchoolRouteLoadSingleFlight,
@@ -188,7 +189,7 @@ export default function SchoolClassPage() {
                   onSelect: () => void startAuthorizedChapter(),
                 }
               : undefined}
-            onChangeSetup={() => router.push('/school/onboarding?step=2')}
+            onChangeSetup={() => router.push(schoolProfileEditHref())}
           />
         </>
       ) : error ? (
@@ -208,7 +209,7 @@ export default function SchoolClassPage() {
                     <ReloadIcon className="h-4 w-4" aria-hidden="true" />
                     Retry
                   </button>
-                  <button type="button" onClick={() => router.push('/school/onboarding?step=2')} className={schoolSecondaryActionClass}>
+                  <button type="button" onClick={() => router.push(schoolProfileEditHref())} className={schoolSecondaryActionClass}>
                     Open setup
                   </button>
                 </div>

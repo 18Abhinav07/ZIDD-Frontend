@@ -6,8 +6,6 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   CheckCircledIcon,
-  CheckIcon,
-  ReaderIcon,
   ReloadIcon,
 } from '@radix-ui/react-icons';
 import { SchoolTutorSkeleton } from '@/components/learning/LearningSkeletons';
@@ -23,6 +21,10 @@ import {
   resolveSchoolStateDestination,
 } from '@/lib/schoolActivityPolicy';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
+import {
+  resolveSchoolCoachPresentation,
+  selectVisibleSchoolCoachFeedback,
+} from '@/lib/schoolTeachingPresentation';
 import {
   answerSchoolRecap,
   getActiveSchoolRecap,
@@ -40,69 +42,25 @@ function activityLabel(kind: string) {
   return 'Learn together';
 }
 
-function moduleStateLabel(path: SchoolRecapPath, moduleIndex: number, status: string) {
-  if (status === 'complete' || status === 'completed' || moduleIndex < path.current_module_index) return 'Rebuilt';
-  if (moduleIndex === path.current_module_index) return 'Learning now';
-  return 'Next';
-}
-
 function ReadinessProgress({ path }: { path: SchoolRecapPath }) {
   const progressPercent = path.progress.total_modules > 0
     ? Math.round((path.progress.completed_modules / path.progress.total_modules) * 100)
     : 0;
-  const currentModule = path.modules[path.current_module_index] ?? null;
 
   return (
-    <div data-testid="school-recap-progress" className="min-w-0">
-      <section className="grid min-w-0 gap-3 sm:grid-cols-[minmax(150px,auto)_minmax(180px,1fr)_auto] sm:items-center sm:gap-5">
-        <div className="min-w-0">
-          <p className="flex items-center gap-2 font-mono text-[9px] font-semibold uppercase text-[var(--school-accent-deep)]">
-            <ReaderIcon className="h-3.5 w-3.5" aria-hidden="true" /> Readiness path
-          </p>
-          <p className="mt-1 truncate text-sm font-semibold text-[var(--school-ink)]">
-            {currentModule?.title || `Bridge to Class ${path.target_class_no}`}
-          </p>
-        </div>
-        <div className="h-1.5 overflow-hidden rounded-full bg-[#dedfdc]" role="progressbar" aria-label="Completed readiness skills" aria-valuemin={0} aria-valuemax={path.progress.total_modules} aria-valuenow={path.progress.completed_modules}>
-          <span className="block h-full rounded-full bg-[var(--school-accent)] transition-[width] motion-reduce:transition-none" style={{ width: `${progressPercent}%` }} />
-        </div>
-        <p className="whitespace-nowrap font-mono text-[10px] font-semibold text-[var(--school-faint)]">
-          {String(path.progress.completed_modules).padStart(2, '0')} / {String(path.progress.total_modules).padStart(2, '0')}
-        </p>
-      </section>
-
-      <details className="group mt-3 border-t border-[var(--school-line)] pt-3">
-        <summary className="-my-1.5 flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 py-1.5 text-xs font-semibold text-[var(--school-muted)] focus-visible:outline-none">
-          <span>Only the prerequisite skills selected from your saved readiness work</span>
-          <span className="font-mono text-[9px] uppercase text-[var(--school-accent-deep)] group-open:hidden">View skills</span>
-          <span className="hidden font-mono text-[9px] uppercase text-[var(--school-accent-deep)] group-open:inline">Hide skills</span>
-        </summary>
-        <ol className="mt-3 grid gap-2 border-t border-[var(--school-line)] pt-4 sm:grid-cols-2">
-          {path.modules.map((module, index) => {
-            const state = moduleStateLabel(path, index, module.status);
-            const complete = state === 'Rebuilt';
-            const current = state === 'Learning now';
-            return (
-              <li key={module.module_id} aria-current={current ? 'step' : undefined} className="flex min-w-0 items-center gap-2.5">
-                <span className={`flex h-6 w-6 flex-none items-center justify-center rounded-md border text-[10px] font-semibold ${
-                  complete
-                    ? 'border-[var(--school-green)] bg-[var(--school-green)] text-white'
-                    : current
-                      ? 'border-[var(--school-accent)] bg-[var(--school-accent-soft)] text-[var(--school-accent-deep)]'
-                      : 'border-[var(--school-line-strong)] bg-[var(--school-paper)] text-[var(--school-faint)]'
-                }`}>
-                  {complete ? <CheckIcon className="h-3.5 w-3.5" aria-hidden="true" /> : index + 1}
-                </span>
-                <span className="min-w-0">
-                  <span className={`block truncate text-xs font-semibold ${current ? 'text-[var(--school-ink)]' : 'text-[var(--school-muted)]'}`}>{module.title}</span>
-                  <span className="block truncate text-[10px] text-[var(--school-faint)]">Class {module.source_class_no} · {module.focus}</span>
-                </span>
-              </li>
-            );
-          })}
-        </ol>
-      </details>
-    </div>
+    <section
+      data-testid="school-recap-progress"
+      className="grid min-w-0 grid-cols-[auto_minmax(36px,1fr)_auto] items-center gap-2 sm:gap-5"
+      aria-label={`Readiness path progress for Class ${path.target_class_no}`}
+    >
+      <p className="whitespace-nowrap font-mono text-[10px] font-semibold uppercase text-[var(--school-muted)]">Readiness path</p>
+      <div className="h-1.5 overflow-hidden rounded-full bg-[#dedfdc]" role="progressbar" aria-label="Completed readiness skills" aria-valuemin={0} aria-valuemax={path.progress.total_modules} aria-valuenow={path.progress.completed_modules}>
+        <span className="block h-full rounded-full bg-[var(--school-accent)] transition-[width] motion-reduce:transition-none" style={{ width: `${progressPercent}%` }} />
+      </div>
+      <p className="whitespace-nowrap font-mono text-[10px] font-semibold text-[var(--school-faint)]">
+        {String(path.progress.completed_modules).padStart(2, '0')} / {String(path.progress.total_modules).padStart(2, '0')}
+      </p>
+    </section>
   );
 }
 
@@ -222,6 +180,34 @@ export default function SchoolRecapPage() {
 
   const activity = path?.current_activity;
   const currentModule = path?.modules[path.current_module_index] ?? null;
+  const visibleFeedback = selectVisibleSchoolCoachFeedback(activity?.activity_id, path?.last_feedback);
+  const coachPresentation = resolveSchoolCoachPresentation({
+    status: visibleFeedback
+      ? visibleFeedback.correct ? 'What worked' : 'Try this next'
+      : activity ? activityLabel(activity.kind) : path?.status === 'complete' ? 'Ready for class' : 'Your next skill',
+    fallbackMessage: activity?.focus || currentModule?.focus || 'We will rebuild only the earlier skills that help you feel ready for your class.',
+    activityKey: activity?.activity_id || path?.status || 'readiness-path',
+    teachingBlock: activity?.teaching_block,
+    feedback: visibleFeedback?.message,
+    pendingMessage: submitting || (path?.status === 'active' && activity?.can_answer === false)
+      ? 'I am reviewing your answer and preparing the next step.'
+      : null,
+    transitionMessage: path?.status === 'complete'
+      ? `Your prerequisite skills are complete. Class ${path.target_class_no} is ready to open.`
+      : path?.status === 'needs_support' || path?.status === 'capped_support'
+        ? 'Your work is saved. Continue from your School path with the support selected for you.'
+        : path?.status === 'needs_path_revision'
+          ? 'Your completed work is saved while I adjust the next skill in your path.'
+          : null,
+    error,
+    tone: visibleFeedback?.correct === true
+      ? 'success'
+      : visibleFeedback?.correct === false
+        ? 'warning'
+        : path?.status === 'complete'
+          ? 'success'
+          : 'neutral',
+  });
 
   useEffect(() => {
     const activityId = activity?.activity_id ?? null;
@@ -236,13 +222,13 @@ export default function SchoolRecapPage() {
   return (
     <SchoolLearningShell
       title={activity?.title || currentModule?.title || 'Your readiness path'}
-      eyebrow="Readiness path"
-      coachStatus={activity ? activityLabel(activity.kind) : path?.status === 'complete' ? 'Ready for class' : 'Your next skill'}
-      coachNote={activity?.teaching_block || 'We will rebuild only the earlier skills that help you feel ready for your class.'}
+      coachStatus={coachPresentation.status}
+      coachNote={coachPresentation.message}
+      coachHint={coachPresentation.hint}
+      coachTone={coachPresentation.tone}
       coachAvatarId={path?.coach_avatar_id}
       coachPaletteId={path?.coach_palette_id}
       onBack={() => router.push('/school')}
-      headerMeta={path ? `${path.progress.completed_modules}/${path.progress.total_modules} skills` : undefined}
       progress={path ? <ReadinessProgress path={path} /> : undefined}
     >
       {recapLoadFailed ? (
@@ -279,7 +265,7 @@ export default function SchoolRecapPage() {
       ) : path?.status === 'needs_support' || path?.status === 'capped_support' ? (
         <section className="px-5 py-8 sm:px-8 sm:py-10">
           <SchoolStatusChip tone="support">A different next step will help</SchoolStatusChip>
-          <h2 className="mt-4 font-display text-[2rem] font-normal leading-tight text-slate-950">Your coach has saved what you tried.</h2>
+          <h2 className="mt-4 font-display text-[2rem] font-normal leading-tight text-slate-950">Your work is saved.</h2>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">Return to your school path to continue with the support step chosen from your work.</p>
           <button type="button" onClick={() => router.push('/school')} className={`${schoolPrimaryActionClass} mt-6`}>
             <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />
@@ -299,11 +285,7 @@ export default function SchoolRecapPage() {
       ) : path?.status === 'active' && activity ? (
         <SchoolSupportActivity
           testIdPrefix="school-recap"
-          tone="readiness"
-          kindLabel={activityLabel(activity.kind)}
-          sourceLabel={`From Class ${activity.source_class_no}`}
           title={activity.title}
-          teachingBlock={activity.teaching_block}
           passage={activity.passage}
           prompt={activity.prompt}
           options={activity.options}
@@ -312,8 +294,6 @@ export default function SchoolRecapPage() {
           inputLabel="Your recap answer"
           submitting={submitting}
           canAnswer={activity.can_answer}
-          feedback={path.last_feedback}
-          error={error}
           questionRef={questionHeadingRef}
           onAnswerChange={setAnswer}
           onSubmit={(value) => void submit(value)}

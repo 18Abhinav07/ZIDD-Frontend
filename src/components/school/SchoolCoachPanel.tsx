@@ -1,21 +1,28 @@
 "use client";
 
+import { useEffect, useState, type CSSProperties } from 'react';
 import Image from 'next/image';
+import { Lightbulb, X } from 'lucide-react';
 import { motion, useReducedMotion } from 'framer-motion';
-import { getAvatarScaleClass } from '@/lib/avatarRegistry';
+import { getAvatarScaleFactor } from '@/lib/avatarRegistry';
 import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
+import type { SchoolCoachHint, SchoolCoachTone } from '@/lib/schoolTeachingPresentation';
 import {
   resolveSchoolCoachIdentity,
   useSchoolShellCoachIdentity,
 } from '@/components/school/shell/SchoolCoachIdentityContext';
+import styles from './SchoolCoachPanel.module.css';
 
 type SchoolCoachVariant = 'immersive' | 'supporting' | 'inline';
+type HintState = 'available' | 'open' | 'dismissed';
 
 interface SchoolCoachPanelProps {
   avatarId: string | null | undefined;
   paletteId: string | null | undefined;
   status: string;
   note: string;
+  hint?: SchoolCoachHint | null;
+  tone?: SchoolCoachTone;
   compact?: boolean;
   variant?: SchoolCoachVariant;
 }
@@ -25,6 +32,8 @@ export function SchoolCoachPanel({
   paletteId,
   status,
   note,
+  hint = null,
+  tone = 'neutral',
   compact = false,
   variant = 'supporting',
 }: SchoolCoachPanelProps) {
@@ -33,26 +42,35 @@ export function SchoolCoachPanel({
   const coachIdentity = resolveSchoolCoachIdentity({ avatarId, paletteId }, shellIdentity);
   const theme = getSchoolAvatarTheme(coachIdentity.avatarId, coachIdentity.paletteId);
   const { avatar } = theme;
+  const avatarScale = getAvatarScaleFactor(avatar.url);
+  const immersiveAvatarScale = variant === 'immersive' ? avatarScale * 1.26 : avatarScale;
+  const avatarStyle = {
+    '--school-avatar-scale': String(immersiveAvatarScale),
+    '--school-avatar-mobile-scale': String(Math.min(avatarScale, 1.12)),
+  } as CSSProperties;
+  const hintKey = hint?.key ?? null;
+  const [hintState, setHintState] = useState<HintState>(hint ? 'available' : 'dismissed');
+
+  useEffect(() => {
+    setHintState(hintKey ? 'available' : 'dismissed');
+  }, [hintKey]);
 
   if (variant === 'inline') {
     return (
-      <div className="flex min-w-0 items-center gap-3 text-[var(--school-ink)]" style={theme.style}>
-        <div className="relative h-12 w-12 flex-none overflow-hidden rounded-xl border border-[var(--school-accent-border)] bg-[var(--school-accent-soft)]">
+      <div className={styles.inline} style={theme.style}>
+        <div className={styles.inlinePortrait}>
           <Image
             src={avatar.url}
             alt="Zidd school coach"
             fill
-            sizes="48px"
-            className="origin-bottom scale-[1.12] object-contain object-bottom"
+            sizes="72px"
+            className={styles.inlineImage}
             priority
           />
         </div>
-        <div className="min-w-0">
-          <p className="flex items-center gap-2 font-mono text-[9px] font-semibold uppercase text-[var(--school-accent-deep)]">
-            <span className="h-1.5 w-1.5 flex-none rounded-full bg-[var(--school-accent)]" aria-hidden="true" />
-            <span className="truncate">{status}</span>
-          </p>
-          <p className="mt-1 break-words text-xs font-medium leading-5 text-[var(--school-muted)]">{note}</p>
+        <div className={styles.inlineCopy}>
+          <p className={styles.inlineStatus}>{status}</p>
+          <p className={styles.inlineNote}>{note}</p>
         </div>
       </div>
     );
@@ -61,52 +79,97 @@ export function SchoolCoachPanel({
   if (compact) {
     return (
       <div
-        className="relative h-11 w-11 flex-none overflow-hidden rounded-xl border border-[var(--school-accent-border)] bg-[var(--school-accent-soft)]"
+        className={styles.compact}
         style={theme.style}
-        aria-label={`Coach status: ${status}`}
+        aria-label={`Coach status: ${status}. ${note}`}
       >
         <Image
           src={avatar.url}
           alt="Zidd school coach"
           fill
           sizes="44px"
-          className="object-contain object-bottom scale-[1.12] origin-bottom"
+          className={styles.compactImage}
           priority
         />
       </div>
     );
   }
 
+  const showHintPrompt = Boolean(hint && hintState === 'available');
+  const showHint = Boolean(hint && hintState === 'open');
+
   return (
     <motion.div
-      initial={reduceMotion ? false : { opacity: 0, x: -16 }}
+      initial={reduceMotion ? false : { opacity: 0, x: -12 }}
       animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: reduceMotion ? 0 : 0.4, ease: [0.16, 1, 0.3, 1] }}
-      className={`flex h-full min-w-0 flex-col text-[var(--school-ink)] ${
-        variant === 'immersive' ? 'border-r border-[var(--school-line)] pr-6' : 'rounded-2xl border border-[var(--school-line)] bg-[var(--school-paper)] p-5'
-      }`}
+      transition={{ duration: reduceMotion ? 0 : 0.36, ease: [0.16, 1, 0.3, 1] }}
+      className={`${styles.panel} ${variant === 'immersive' ? styles.immersive : styles.supporting}`}
       style={theme.style}
+      data-coach-tone={tone}
     >
-      <div className={`relative w-full overflow-hidden border border-[var(--school-accent-border)] bg-[var(--school-accent-soft)] ${
-        variant === 'immersive' ? 'aspect-[4/5] rounded-[34px]' : 'aspect-[5/4] rounded-2xl'
-      }`}>
-        <div className="absolute left-3 top-3 z-20 inline-flex max-w-[calc(100%-1.5rem)] items-center gap-2 rounded-lg border border-[var(--school-accent-border)] bg-[var(--school-paper)] px-2.5 py-1.5 text-[var(--school-accent-deep)]">
-          <span className="h-1.5 w-1.5 flex-none rounded-full bg-[var(--school-accent)]" />
-          <span className="truncate font-mono text-[9px] font-semibold uppercase">{status}</span>
+      <div className={`${styles.portrait} ${variant === 'immersive' ? styles.immersivePortrait : ''}`}>
+        <div className={styles.status}>
+          <span className={styles.statusDot} aria-hidden="true" />
+          <span>{status}</span>
         </div>
+        <span className={styles.coachGhost} aria-hidden="true">COACH</span>
         <Image
           src={avatar.url}
-          alt="Zidd school coach"
+          alt="Your Zidd School coach"
           fill
-          sizes="(max-width: 820px) 0px, 244px"
-          className={`object-contain object-bottom drop-shadow-[0_18px_22px_rgba(18,26,45,0.16)] ${getAvatarScaleClass(avatar.url)}`}
+          sizes="(max-width: 820px) 132px, 320px"
+          className={styles.avatar}
+          style={avatarStyle}
           priority
         />
       </div>
 
-      <div className={variant === 'immersive' ? 'pt-6' : 'pt-4'}>
-        <p className="font-mono text-[10px] font-semibold uppercase text-[var(--school-accent-deep)]">Your coach</p>
-        <p className="mt-3 break-words text-sm font-medium leading-6 text-[var(--school-muted)]">{note}</p>
+      <div className={styles.dialogue} data-testid="school-coach-dialogue">
+        <p className={styles.coachLabel}>Your coach</p>
+
+        <div className={styles.noteRow} role="status" aria-live={tone === 'neutral' ? 'off' : 'polite'}>
+          <p className={styles.note}>{note}</p>
+          {hint && hintState === 'dismissed' ? (
+            <button
+              type="button"
+              className={styles.hintReopen}
+              onClick={() => setHintState('open')}
+              aria-label="Open hint"
+              title="Open hint"
+            >
+              <Lightbulb size={17} aria-hidden="true" />
+            </button>
+          ) : null}
+        </div>
+
+        {showHintPrompt ? (
+          <button
+            type="button"
+            className={`${styles.hintPrompt} ${reduceMotion ? '' : styles.hintPulse}`}
+            onClick={() => setHintState('open')}
+            aria-expanded="false"
+            aria-controls="school-coach-hint"
+          >
+            <Lightbulb size={18} aria-hidden="true" />
+            <span>I&apos;ve got a hint for you</span>
+          </button>
+        ) : null}
+
+        {showHint && hint ? (
+          <div id="school-coach-hint" className={styles.hintBody} role="status" aria-live="polite">
+            <button
+              type="button"
+              className={styles.hintClose}
+              onClick={() => setHintState('dismissed')}
+              aria-label="Close hint"
+              title="Close hint"
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
+            <Lightbulb className={styles.hintIcon} size={18} aria-hidden="true" />
+            <p>{hint.text}</p>
+          </div>
+        ) : null}
       </div>
     </motion.div>
   );

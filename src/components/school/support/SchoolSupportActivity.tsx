@@ -4,20 +4,9 @@ import type { ReactNode, RefObject } from 'react';
 import { PaperPlaneIcon } from '@radix-ui/react-icons';
 import { schoolPrimaryActionClass } from '@/components/school/SchoolPrimitives';
 
-type SupportTone = 'readiness' | 'masterclass';
-
-interface SupportFeedback {
-  correct: boolean;
-  message: string;
-}
-
 interface SchoolSupportActivityProps {
   testIdPrefix: 'school-recap' | 'school-masterclass';
-  tone: SupportTone;
-  kindLabel: string;
-  sourceLabel?: string;
   title: string;
-  teachingBlock: string;
   passage: string;
   prompt: string;
   options: string[] | null;
@@ -26,8 +15,6 @@ interface SchoolSupportActivityProps {
   inputLabel: string;
   submitting: boolean;
   canAnswer: boolean;
-  feedback?: SupportFeedback | null;
-  error?: string;
   questionRef?: RefObject<HTMLHeadingElement>;
   footer?: ReactNode;
   onAnswerChange: (value: string) => void;
@@ -36,11 +23,7 @@ interface SchoolSupportActivityProps {
 
 export function SchoolSupportActivity({
   testIdPrefix,
-  tone,
-  kindLabel,
-  sourceLabel,
   title,
-  teachingBlock,
   passage,
   prompt,
   options,
@@ -49,15 +32,11 @@ export function SchoolSupportActivity({
   inputLabel,
   submitting,
   canAnswer,
-  feedback,
-  error,
   questionRef,
   footer,
   onAnswerChange,
   onSubmit,
 }: SchoolSupportActivityProps) {
-  const isFocusedSupport = tone === 'masterclass';
-
   return (
     <section
       data-testid={`${testIdPrefix}-card`}
@@ -65,37 +44,21 @@ export function SchoolSupportActivity({
       aria-label={title}
       className="px-5 py-7 sm:px-9 sm:py-9"
     >
-      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] font-semibold uppercase text-[var(--school-accent-deep)]">
-        <span data-testid={`${testIdPrefix}-kind`}>{kindLabel}</span>
-        {sourceLabel ? (
-          <>
-            <span aria-hidden="true" className="text-slate-300">/</span>
-            <span className="text-slate-500">{sourceLabel}</span>
-          </>
-        ) : null}
-      </p>
+      {passage ? (
+        <section className="border-l-2 border-[var(--school-accent-border)] py-1 pl-5 sm:pl-6">
+          <p className="font-mono text-[10px] font-semibold uppercase text-[var(--school-faint)]">Read this</p>
+          <p
+            data-testid={`${testIdPrefix}-passage`}
+            className="mt-3 max-w-[68ch] font-display text-[1.4rem] font-normal leading-[1.45] text-[var(--school-ink)] sm:text-[1.6rem]"
+          >
+            {passage}
+          </p>
+        </section>
+      ) : null}
 
-      <section
-        data-testid={`${testIdPrefix}-teaching`}
-        className="mt-6 border-l-2 border-[var(--school-accent-border)] bg-[var(--school-accent-soft)] px-5 py-4 text-sm font-medium leading-6 text-[var(--school-muted)]"
-      >
-        <p className="font-mono text-[10px] font-semibold uppercase text-[var(--school-accent-deep)]">Coach clue</p>
-        <p className="mt-2">{teachingBlock}</p>
-      </section>
-
-      <section className="mt-7 border-l-2 border-[var(--school-accent-border)] py-1 pl-5 sm:pl-6">
-        <p className="font-mono text-[10px] font-semibold uppercase text-[var(--school-faint)]">Read this</p>
-        <p
-          data-testid={`${testIdPrefix}-passage`}
-          className="mt-3 max-w-[68ch] font-display text-[1.4rem] font-normal leading-[1.45] text-[var(--school-ink)] sm:text-[1.6rem]"
-        >
-          {passage}
-        </p>
-      </section>
-
-      <div className="pt-8">
+      <div className={passage ? 'pt-8' : 'pt-1'}>
         <p className="font-mono text-[10px] font-semibold uppercase text-[var(--school-accent-deep)]">Your turn</p>
-        <h2
+        <h1
           ref={questionRef}
           data-testid={`${testIdPrefix}-question`}
           tabIndex={-1}
@@ -103,11 +66,12 @@ export function SchoolSupportActivity({
           className="mt-2 max-w-[31ch] font-sans text-[1.85rem] font-bold leading-[1.08] text-[var(--school-ink)] outline-none sm:text-[2.35rem]"
         >
           {prompt}
-        </h2>
+        </h1>
 
         {!canAnswer ? (
-          <div role="status" className="mt-5 border-y border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
-            Your coach is getting the next step ready.
+          <div aria-hidden="true" className="mt-6 max-w-xl space-y-3">
+            <div className="h-4 w-full animate-pulse rounded-full bg-slate-200 motion-reduce:animate-none" />
+            <div className="h-4 w-4/5 animate-pulse rounded-full bg-slate-200 motion-reduce:animate-none" />
           </div>
         ) : options?.length ? (
           <div className="mt-5">
@@ -178,33 +142,6 @@ export function SchoolSupportActivity({
           </div>
         )}
       </div>
-
-      {feedback ? (
-        <p
-          data-testid={`${testIdPrefix}-feedback`}
-          role="status"
-          aria-live="polite"
-          className={`mt-6 border-y px-4 py-3 text-sm font-semibold ${
-            feedback.correct
-              ? 'border-teal-200 bg-teal-50 text-teal-900'
-              : 'border-orange-200 bg-orange-50 text-orange-950'
-          }`}
-        >
-          {feedback.message}
-        </p>
-      ) : null}
-
-      {error ? (
-        <p role="alert" className="mt-6 border-y border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-900">
-          {error}
-        </p>
-      ) : null}
-
-      {isFocusedSupport ? (
-        <p className="mt-5 text-xs leading-5 text-[var(--school-accent-deep)]">
-          Your chapter position stays saved until you finish or explicitly return.
-        </p>
-      ) : null}
 
       {footer ? <div className="mt-7 border-t border-slate-200 pt-5">{footer}</div> : null}
     </section>

@@ -12,6 +12,10 @@ import { SchoolProgressRail } from '@/components/school/tutor/SchoolProgressRail
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
 import {
+  resolveSchoolCoachPresentation,
+  selectVisibleSchoolCoachFeedback,
+} from '@/lib/schoolTeachingPresentation';
+import {
   CURRICULUM_REVALIDATE_MS,
   curriculumActivityView,
   resolveSchoolPassiveStateDestination,
@@ -264,9 +268,19 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
   }
 
   const currentLevel = session.levels[session.progress.current_level_index] ?? null;
-  const learnerStage = currentLevel?.title
-    || (activity ? schoolActivityLabel(activity.kind) : 'Chapter learning');
-  const coachStatus = session.phase === 'paused_for_masterclass'
+  const visibleFeedback = selectVisibleSchoolCoachFeedback(activity?.activity_id, session.last_feedback);
+  const feedbackTone = visibleFeedback?.correct === true
+    ? 'success'
+    : visibleFeedback?.correct === false
+      ? 'warning'
+      : 'neutral';
+  const coachStatus = visibleFeedback?.message
+    ? visibleFeedback.correct === true
+      ? 'What worked'
+      : visibleFeedback.correct === false
+        ? 'Try this next'
+        : 'Coach feedback'
+    : session.phase === 'paused_for_masterclass'
     ? 'Focused practice'
     : activityView.kind === 'pending'
       ? 'Reviewing your answer'
@@ -277,24 +291,45 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
           : activity
             ? schoolActivityLabel(activity.kind)
             : 'Your lesson';
-  const coachNote = activity?.focus
-    || currentLevel?.teaching_goal
-    || session.chapter.unit_title;
-  const headerMeta = session.phase === 'chapter_check' && session.chapter_assessment
-    ? `Question ${session.chapter_assessment.item_number} of ${session.chapter_assessment.total_items}`
-    : `${session.progress.completed_levels} of ${session.progress.total_levels} stages`;
+  const transitionMessage = session.phase === 'paused_for_masterclass' && session.active_interrupt
+    ? `Your place in ${session.chapter.title} is saved. This short practice will strengthen ${session.active_interrupt.focus}, then bring you back here.`
+    : activityView.kind === 'support'
+      ? 'Your answers and chapter place are saved. Continue from the chapter map with the support selected for you.'
+      : activityView.kind === 'complete'
+        ? 'This chapter is complete and your progress is saved. Return to the map to choose what comes next.'
+        : null;
+  const coachPresentation = resolveSchoolCoachPresentation({
+    status: coachStatus,
+    fallbackMessage: activity?.focus || currentLevel?.teaching_goal || session.chapter.unit_title,
+    activityKey: activity?.activity_id || session.phase,
+    teachingBlock: activity?.teaching_block,
+    feedback: visibleFeedback?.message,
+    pendingMessage: activityView.kind === 'pending'
+      ? 'I am reviewing your answer. Keep this page open while I prepare the next step.'
+      : null,
+    transitionMessage,
+    error,
+    tone: feedbackTone,
+  });
   const theme = getSchoolAvatarTheme(session.coach_avatar_id, session.coach_palette_id);
   const canStartMasterclass = schoolNextAction === 'start_masterclass';
 
   return (
     <SchoolLearningWorkspace
       title={activity?.title || session.chapter.title}
-      eyebrow={`${session.chapter.title} · ${learnerStage}`}
       onBack={() => router.push(chapterMapHref)}
-      coach={<SchoolCoachPanel avatarId={session.coach_avatar_id} paletteId={session.coach_palette_id} status={coachStatus} note={coachNote} variant="immersive" />}
-      mobileCoach={<SchoolCoachPanel avatarId={session.coach_avatar_id} paletteId={session.coach_palette_id} status={coachStatus} note={coachNote} variant="inline" />}
+      coach={(
+        <SchoolCoachPanel
+          avatarId={session.coach_avatar_id}
+          paletteId={session.coach_palette_id}
+          status={coachPresentation.status}
+          note={coachPresentation.message}
+          hint={coachPresentation.hint}
+          tone={coachPresentation.tone}
+          variant="immersive"
+        />
+      )}
       progress={<SchoolProgressRail session={session} />}
-      headerMeta={<span>{headerMeta}</span>}
       backLabel="Return to chapter map"
       coachLabel="School learning coach"
       progressLabel="Chapter progress"
@@ -309,7 +344,6 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
         answer={answer}
         submitting={submitting}
         openingMasterclass={openingMasterclass}
-        error={error}
         onAnswerChange={setAnswer}
         onSubmit={(value) => void submit(value)}
         onOpenMasterclass={canStartMasterclass ? () => void openMasterclass() : undefined}

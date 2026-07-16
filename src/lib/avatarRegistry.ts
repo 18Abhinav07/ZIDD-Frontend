@@ -151,8 +151,12 @@ export function needsPaddingCompensation(avatarUrl: string): boolean {
   return PADDED_ASSETS.has(avatarUrl);
 }
 
+export function getAvatarScaleFactor(avatarUrl: string): number {
+  return needsPaddingCompensation(avatarUrl) ? 1.35 : 1;
+}
+
 export function getAvatarScaleClass(avatarUrl: string, baseScale = 'scale-100'): string {
-  return needsPaddingCompensation(avatarUrl)
+  return getAvatarScaleFactor(avatarUrl) > 1
     ? 'scale-[1.35] origin-bottom'
     : `${baseScale} origin-bottom`;
 }

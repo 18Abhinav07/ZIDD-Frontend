@@ -1,6 +1,5 @@
 import { Suspense } from 'react';
 import { SchoolOnboardingWizard } from '@/components/school/onboarding/SchoolOnboardingWizard';
-import { SchoolCoachPanel } from '@/components/school/SchoolCoachPanel';
 import { SchoolPageHeading } from '@/components/school/SchoolPrimitives';
 import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
 
@@ -19,22 +18,8 @@ export default function SchoolOnboardingPage() {
               id="school-setup-title"
               eyebrow="School, shaped around you"
               title="Set up learning around school, language, and goals."
-              description="Five short steps give the teacher enough context to begin well."
+              description="Five short steps save the class, language, and learning preferences."
             />
-
-            <div className="mt-9 hidden max-w-[400px] items-center gap-3 border-t border-[var(--school-line)] pt-5 lg:flex">
-              <SchoolCoachPanel
-                avatarId={null}
-                paletteId={null}
-                status="Setup"
-                note="Teaching adjusts as the learner's evidence grows."
-                compact
-              />
-              <p className="min-w-0 text-xs leading-5 text-[var(--school-muted)]">
-                <strong className="block font-semibold text-slate-700">Your School coach</strong>
-                <span className="mt-0.5 block">Teaching adjusts as the learner&apos;s evidence grows.</span>
-              </p>
-            </div>
           </section>
 
           <section className="min-w-0" aria-label="School setup form">

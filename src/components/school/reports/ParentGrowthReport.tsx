@@ -6,7 +6,6 @@ import {
   ExclamationTriangleIcon,
   PersonIcon,
 } from '@radix-ui/react-icons';
-import { SchoolCoachPanel } from '@/components/school/SchoolCoachPanel';
 import {
   SchoolDisclosure,
   SchoolPageHeading,
@@ -166,25 +165,18 @@ export function ParentGrowthReport({
 
   return (
     <main
-      className="mx-auto w-full max-w-[1180px] overflow-x-hidden px-5 pb-24 pt-14 sm:px-8 sm:pt-16 lg:px-12"
+      className="mx-auto w-full max-w-[1180px] overflow-x-hidden px-4 pb-24 pt-12 sm:px-8 sm:pt-16 lg:px-12"
       style={theme.style}
     >
       <header className="flex flex-col gap-6 border-b border-slate-200 pb-9 md:flex-row md:items-end md:justify-between">
-        <div className="flex min-w-0 items-start gap-4">
-          <SchoolCoachPanel
-            avatarId={identity.coach_avatar_id}
-            paletteId={identity.coach_palette_id}
-            status="Parent report"
-            note={state.parent_message || "The learner's saved path decides the next action."}
-            compact
-          />
+        <div className="min-w-0">
           <SchoolPageHeading
             eyebrow={currentClassNo ? `Parent view · Class ${currentClassNo} English` : 'Parent view'}
             title={learnerName ? `${learnerName}'s learning, at a glance.` : 'Learning evidence, at a glance.'}
             description="A concise view of the learner's current position, saved change, attention needs, and next step."
           />
         </div>
-        <button type="button" onClick={onOpenLearnerView} className={schoolSecondaryActionClass}>
+        <button type="button" onClick={onOpenLearnerView} className={`${schoolSecondaryActionClass} w-full sm:w-auto`}>
           <PersonIcon className="h-4 w-4" aria-hidden="true" />
           Back to learner view
         </button>
@@ -195,7 +187,7 @@ export function ParentGrowthReport({
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.55fr)]">
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase text-[var(--school-accent-deep)]">Current position</p>
-              <h2 id="parent-position-heading" className="mt-2 font-display text-[2.2rem] font-normal leading-[1.05] text-slate-950">
+              <h2 id="parent-position-heading" className="mt-2 break-words font-display text-[1.85rem] font-normal leading-[1.08] text-slate-950 sm:text-[2.2rem]">
                 {currentLearningTitle
                   ? `Working in ${currentLearningTitle}`
                   : nextChapterTitle
@@ -204,7 +196,7 @@ export function ParentGrowthReport({
                     ? `Current learning is in Class ${currentClassNo}`
                     : 'The current learning position is not confirmed'}
               </h2>
-              <p className="mt-3 max-w-[64ch] text-sm leading-6 text-slate-600">
+              <p className="mt-3 max-w-[70ch] break-words text-sm leading-6 text-slate-600">
                 {currentLearningTitle && currentClassNo
                   ? recapModule
                     ? `The saved School state places the learner in a Class ${currentClassNo} readiness module, with ${recapModule.focus} as the current focus.`
@@ -216,23 +208,22 @@ export function ParentGrowthReport({
                     : 'This report will not treat the target class as active until the saved School state unlocks it.'}
               </p>
             </div>
-            <dl className="grid grid-cols-2 border-y border-slate-200 text-sm">
-              <div className="border-b border-r border-slate-200 py-4 pr-4">
+            <dl className="grid grid-cols-1 border-y border-slate-200 text-sm sm:grid-cols-2">
+              <div className="border-b border-slate-200 py-4 sm:border-r sm:pr-5">
                 <dt className="text-xs text-slate-500">Current class</dt>
-                <dd className="mt-1 font-display text-2xl font-normal text-slate-950">{currentClassNo ? `Class ${currentClassNo}` : 'Not available'}</dd>
+                <dd className="mt-1 break-words font-display text-2xl font-normal tabular-nums text-slate-950">{currentClassNo ? `Class ${currentClassNo}` : 'Not available'}</dd>
               </div>
-              <div className="border-b border-slate-200 py-4 pl-4">
+              <div className="border-b border-slate-200 py-4 sm:pl-5">
                 <dt className="text-xs text-slate-500">{recapModule ? 'Readiness module' : nextChapterTitle ? 'Next chapter' : 'Current chapter'}</dt>
-                <dd className="mt-1 break-words font-semibold text-slate-950">{currentLearningTitle ?? nextChapterTitle ?? 'Not available'}</dd>
+                <dd className="mt-1 break-words font-medium leading-6 text-slate-950">{currentLearningTitle ?? nextChapterTitle ?? 'Not available'}</dd>
               </div>
-              <div className="border-r border-slate-200 py-4 pr-4">
+              <div className="border-b border-slate-200 py-4 sm:border-b-0 sm:border-r sm:pr-5">
                 <dt className="text-xs text-slate-500">Chapters complete</dt>
-                <dd className="mt-1 font-display text-2xl font-normal text-slate-950">{classMap ? completedChapters.length : '-'}</dd>
+                <dd className="mt-1 font-display text-2xl font-normal tabular-nums text-slate-950">{classMap ? completedChapters.length : '-'}</dd>
               </div>
-              <div className="py-4 pl-4">
+              <div className="py-4 sm:pl-5">
                 <dt className="text-xs text-slate-500">Confirmed skills</dt>
-                <dd className="mt-1 font-display text-2xl font-normal text-slate-950">{classMap || curriculumSession ? confirmedSkillCount : '-'}</dd>
-                <span className="mt-1 block text-xs text-slate-500">Current focus: {classMap || curriculumSession || supportPlan ? currentFocusCount : 'not available'}</span>
+                <dd className="mt-1 font-display text-2xl font-normal tabular-nums text-slate-950">{classMap || curriculumSession ? confirmedSkillCount : '-'}</dd>
               </div>
             </dl>
           </div>
@@ -241,15 +232,15 @@ export function ParentGrowthReport({
         <section className="grid border-b border-slate-200 md:grid-cols-2 md:divide-x md:divide-slate-200" aria-label="Change and attention">
           <article className="border-b border-slate-200 py-7 md:border-b-0 md:pr-8" aria-labelledby="parent-change-heading">
             <p className="text-[11px] font-semibold uppercase text-teal-700">What changed</p>
-            <h2 id="parent-change-heading" className="mt-2 font-display text-[1.8rem] font-normal leading-[1.08] text-slate-950">{changeTitle}</h2>
-            <p className="mt-3 text-sm leading-6 text-slate-600">{changeDetail}</p>
+            <h2 id="parent-change-heading" className="mt-2 break-words font-display text-[1.65rem] font-normal leading-[1.1] text-slate-950 sm:text-[1.8rem]">{changeTitle}</h2>
+            <p className="mt-3 break-words text-sm leading-6 text-slate-600">{changeDetail}</p>
           </article>
           <article className="py-7 md:pl-8" aria-labelledby="parent-attention-heading">
             <p className={`text-[11px] font-semibold uppercase ${cappedEvents.length > 0 ? 'text-red-700' : 'text-orange-800'}`}>Needs attention</p>
             <div className="mt-2 flex items-start gap-3">
               {cappedEvents.length > 0 ? <ExclamationTriangleIcon className="mt-1 h-5 w-5 flex-none text-red-700" aria-hidden="true" /> : null}
               <div className="min-w-0">
-                <h2 id="parent-attention-heading" className="break-words font-display text-[1.8rem] font-normal leading-[1.08] text-slate-950">{attentionTitle}</h2>
+                <h2 id="parent-attention-heading" className="break-words font-display text-[1.65rem] font-normal leading-[1.1] text-slate-950 sm:text-[1.8rem]">{attentionTitle}</h2>
                 <p className="mt-3 break-words text-sm leading-6 text-slate-600">{attentionDetail}</p>
               </div>
             </div>
@@ -260,14 +251,14 @@ export function ParentGrowthReport({
           <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase text-[var(--school-accent-deep)]">This week</p>
-              <h2 id="parent-week-heading" className="mt-2 font-display text-[2rem] font-normal leading-[1.05] text-slate-950">
+              <h2 id="parent-week-heading" className="mt-2 break-words font-display text-[1.8rem] font-normal leading-[1.08] text-slate-950 sm:text-[2rem]">
                 {nextStepOverride?.heading ?? 'Recommended next action'}
               </h2>
               <p className="mt-3 max-w-[64ch] break-words text-sm leading-6 text-slate-600">
                 {nextStepOverride?.message || state.parent_message || "Continue from the next step saved in the learner's path."}
               </p>
             </div>
-            <button type="button" onClick={onNextAction} className={schoolPrimaryActionClass}>
+            <button type="button" onClick={onNextAction} className={`${schoolPrimaryActionClass} w-full sm:w-auto`}>
               {nextStepOverride?.actionLabel ?? 'Open next step'}
               <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
             </button>
@@ -286,7 +277,10 @@ export function ParentGrowthReport({
         />
 
         <div className="mt-6">
-          <SchoolDisclosure title="How the starting point was chosen" summary="Placement method and conclusion">
+          <SchoolDisclosure
+            title="Starting-point evidence"
+            summary={placementEvidence ? `${placementEvidence.total_attempts} saved readiness checks` : 'Placement evidence unavailable'}
+          >
             {placementReport ? (
               <div className="space-y-3">
                 <p>
@@ -295,8 +289,15 @@ export function ParentGrowthReport({
                     : 'The starting point uses the completed readiness check recorded in the placement report.'}
                 </p>
                 <dl className="divide-y divide-slate-200 border-y border-slate-200">
-                  <div className="flex flex-wrap justify-between gap-3 py-3"><dt>Target class selected for placement</dt><dd className="font-semibold text-slate-950">Class {placementReport.target_class_no}</dd></div>
-                  <div className="flex flex-wrap justify-between gap-3 py-3"><dt>Starting point</dt><dd className="font-semibold text-slate-950">{placementEvaluatedClassLabel(placementReport)}</dd></div>
+                  <div className="flex flex-wrap justify-between gap-3 py-3"><dt>Target class selected for placement</dt><dd className="font-medium tabular-nums text-slate-950">Class {placementReport.target_class_no}</dd></div>
+                  <div className="flex flex-wrap justify-between gap-3 py-3"><dt>Starting point</dt><dd className="font-medium text-slate-950">{placementEvaluatedClassLabel(placementReport)}</dd></div>
+                  {placementEvidence ? (
+                    <>
+                      <div className="flex flex-wrap justify-between gap-3 py-3"><dt>Saved checks used</dt><dd className="font-medium tabular-nums text-slate-950">{placementEvidence.total_attempts}</dd></div>
+                      <div className="flex flex-wrap justify-between gap-3 py-3"><dt>Strong checks</dt><dd className="font-medium tabular-nums text-slate-950">{placementEvidence.correct_attempts}</dd></div>
+                      <div className="flex flex-wrap justify-between gap-3 py-3"><dt>Checks needing another look</dt><dd className="font-medium tabular-nums text-slate-950">{placementEvidence.incorrect_attempts}</dd></div>
+                    </>
+                  ) : null}
                 </dl>
                 {!placementIsConclusive ? (
                   <p className="font-medium text-orange-900">Preliminary misses are not presented as lasting weaknesses until enough evidence is saved.</p>
@@ -311,7 +312,7 @@ export function ParentGrowthReport({
                 {classMap.chapters.map((chapter) => (
                   <div key={chapter.chapter_id} className="flex flex-wrap items-start justify-between gap-3 py-3">
                     <div className="min-w-0">
-                      <p className="break-words font-semibold text-slate-950">{chapter.chapter_no}. {chapter.title}</p>
+                      <p className="break-words font-medium text-slate-950">{chapter.chapter_no}. {chapter.title}</p>
                       <p className="mt-1 text-xs text-slate-500">{chapter.completed_levels} of {chapter.total_levels} levels complete</p>
                     </div>
                     <SchoolStatusChip tone={chapter.status === 'needs_support' ? 'support' : chapter.status === 'complete' ? 'success' : 'neutral'}>
@@ -321,16 +322,6 @@ export function ParentGrowthReport({
                 ))}
               </div>
             ) : <p>Chapter progress is unavailable until the target class map is unlocked and loaded.</p>}
-          </SchoolDisclosure>
-
-          <SchoolDisclosure title="Placement evidence detail" summary={placementEvidence ? `${placementEvidence.total_attempts} saved readiness checks` : 'Placement evidence unavailable'}>
-            {placementEvidence ? (
-              <dl className="divide-y divide-slate-200 border-y border-slate-200">
-                <div className="flex justify-between gap-4 py-3"><dt>Saved checks used</dt><dd className="font-semibold text-slate-950">{placementEvidence.total_attempts}</dd></div>
-                <div className="flex justify-between gap-4 py-3"><dt>Strong checks</dt><dd className="font-semibold text-slate-950">{placementEvidence.correct_attempts}</dd></div>
-                <div className="flex justify-between gap-4 py-3"><dt>Checks needing another look</dt><dd className="font-semibold text-slate-950">{placementEvidence.incorrect_attempts}</dd></div>
-              </dl>
-            ) : <p>No placement evidence detail is available.</p>}
           </SchoolDisclosure>
 
           <SchoolDisclosure title="Skill evidence history" summary="Placement history and current curriculum memory">
@@ -346,7 +337,7 @@ export function ParentGrowthReport({
                   <ul className="mt-3 space-y-3">
                     {placementReport.blocking_skills.map((skill) => (
                       <li key={`${skill.label}-${skill.source_class_no}`}>
-                        <strong className="font-semibold text-slate-950">{skill.label}</strong>
+                        <strong className="font-medium text-slate-950">{skill.label}</strong>
                         <span className="block">{skill.learner_reason} {skill.correct_attempts} of {skill.attempts} checks were strong.</span>
                       </li>
                     ))}
@@ -360,7 +351,7 @@ export function ParentGrowthReport({
                   <ul className="mt-3 space-y-3">
                     {activeGaps.map((gap) => (
                       <li key={`${gap.skill_id}-${gap.gap}`}>
-                        <strong className="font-semibold text-slate-950">{labelSkill(gap.skill_id)}</strong>
+                        <strong className="font-medium text-slate-950">{labelSkill(gap.skill_id)}</strong>
                         <span className="block">{gap.gap}</span>
                         <span className="block text-xs text-[var(--school-accent-deep)]">Next support: {gap.recommended_next_action}</span>
                       </li>
@@ -368,9 +359,9 @@ export function ParentGrowthReport({
                   </ul>
                 ) : <p className="mt-2">No current chapter gap is confirmed.</p>}
                 {(strongSkillIds.length > 0 || improvingSkillIds.length > 0) ? (
-                  <dl className="mt-4 grid grid-cols-2 border-y border-slate-200">
-                    <div className="border-r border-slate-200 py-3 pr-4"><dt>Strong skill records</dt><dd className="mt-1 font-semibold text-slate-950">{strongSkillIds.length}</dd></div>
-                    <div className="py-3 pl-4"><dt>Improving skill records</dt><dd className="mt-1 font-semibold text-slate-950">{improvingSkillIds.length}</dd></div>
+                  <dl className="mt-4 grid grid-cols-1 border-y border-slate-200 sm:grid-cols-2">
+                    <div className="border-b border-slate-200 py-3 sm:border-b-0 sm:border-r sm:pr-4"><dt>Strong skill records</dt><dd className="mt-1 font-medium tabular-nums text-slate-950">{strongSkillIds.length}</dd></div>
+                    <div className="py-3 sm:pl-4"><dt>Improving skill records</dt><dd className="mt-1 font-medium tabular-nums text-slate-950">{improvingSkillIds.length}</dd></div>
                   </dl>
                 ) : null}
               </div>
@@ -416,9 +407,9 @@ export function ParentGrowthReport({
           <SchoolDisclosure title="Report limitations" summary={limitations.length > 0 ? `${limitations.length} unavailable evidence ${limitations.length === 1 ? 'source' : 'sources'}` : 'No loading limitations recorded'}>
             {limitations.length > 0 ? (
               <div>
-                <p className="font-semibold text-slate-950">Some evidence is unavailable right now.</p>
-                <ul className="mt-3 list-disc space-y-2 pl-5">
-                  {limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}
+                <p className="font-medium text-slate-950">Some evidence is unavailable right now.</p>
+                <ul className="mt-3 list-disc space-y-2 break-words pl-5 text-sm leading-6 text-slate-700">
+                  {limitations.map((limitation) => <li key={limitation} className="pl-1">{limitation}</li>)}
                 </ul>
               </div>
             ) : (

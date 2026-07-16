@@ -67,8 +67,14 @@ function formatSkillLabel(value?: string): string {
   if (!text) return 'Career skill';
   return text
     .replace(/^(gd|int)_\d+_/, '')
-    .replace(/_/g, ' ')
+    .replace(/[._-]+/g, ' ')
     .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function learnerFacingRecommendation(value: string): string {
+  return value.replace(/\b[a-z][a-z0-9]*(?:[._][a-z][a-z0-9]*)+\b/gi, (token) => (
+    token.replace(/[._]+/g, ' ')
+  ));
 }
 
 function learnerFacingDetail(value?: string, fallback = 'Keep collecting evidence in a fresh scenario.'): string {
@@ -253,7 +259,7 @@ export default function ProfilePage() {
   };
 
   const credits = me?.demo_unlimited ? '∞' : (me?.credits ?? '—');
-  const displayName = me?.name?.trim() || me?.user_id || 'there';
+  const displayName = me?.name?.trim() || me?.email?.split('@')[0] || 'Your profile';
   const primaryMotive = me?.onboarding?.primary_motive;
   const schoolProfile = me?.school_profile ?? {};
   const careerProfile = me?.career_profile ?? {};
@@ -268,6 +274,29 @@ export default function ProfilePage() {
     gdTopicChips,
     customGdTopicChips,
   ].some((items) => items.length > 0);
+  const showCareerProfile = primaryMotive !== 'school' || hasCareerProfileDetails;
+  const showCareerGrowth = primaryMotive !== 'school';
+  const fallbackRecommendation = {
+    title: activityError
+      ? 'Activity unavailable'
+      : primaryMotive === 'school'
+        ? 'Continue School Prep'
+        : 'Continue Career Prep',
+    body: activityError
+      ? 'Retry activity loading for personalized recommendations.'
+      : 'Open your primary path and continue from your saved step.',
+    href: activityError ? '/profile' : primaryMotive === 'school' ? '/school' : '/career',
+    kind: 'default',
+  };
+  const allRecommendations = activity?.recommendations.length
+    ? activity.recommendations
+    : [fallbackRecommendation];
+  const relevantRecommendations = allRecommendations.filter((item) => (
+    primaryMotive === 'school' ? item.href.startsWith('/school') : !item.href.startsWith('/school')
+  ));
+  const profileRecommendations = relevantRecommendations.length
+    ? relevantRecommendations
+    : [fallbackRecommendation];
 
   if (!me) {
     return (
@@ -282,7 +311,6 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-[100dvh] bg-[#FCFCFC] text-slate-900 font-body relative overflow-hidden flex flex-col">
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[600px] bg-indigo-500/[0.04] rounded-full blur-[120px] pointer-events-none" />
       <AppHeader title="Profile" />
 
       <main className="relative z-10 max-w-[1120px] mx-auto px-6 lg:px-12 pt-28 pb-24 flex-1 w-full">
@@ -296,7 +324,7 @@ export default function ProfilePage() {
             {displayName}
           </h1>
           <p className="mt-4 text-slate-600 text-[15px] max-w-xl">
-            Account identity, learning profile, credits, activity, and module switching.
+            Your learning settings, progress, and next steps in one place.
           </p>
         </motion.div>
 
@@ -310,7 +338,6 @@ export default function ProfilePage() {
               <InfoRow icon={<UserRound className="w-4 h-4" />} label="Username" value={me.name || 'Not set'} />
               <InfoRow icon={<Mail className="w-4 h-4" />} label="Email" value={me.email || 'Not available'} />
               <InfoRow icon={<Target className="w-4 h-4" />} label="Primary motive" value={motiveLabel(primaryMotive)} />
-              <InfoRow icon={<IdCard className="w-4 h-4" />} label="User ID" value={me.user_id} mono />
             </div>
           </section>
 
@@ -356,7 +383,7 @@ export default function ProfilePage() {
           </div>
         )}
 
-        {learningGraphError && (
+        {learningGraphError && primaryMotive !== 'school' && (
           <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="font-semibold">{learningGraphError}</p>
@@ -373,7 +400,7 @@ export default function ProfilePage() {
           </div>
         )}
 
-        <div className={`mt-5 grid grid-cols-1 gap-5 ${primaryMotive === 'school' ? 'lg:grid-cols-2' : ''}`}>
+        <div className={`mt-5 grid grid-cols-1 gap-5 ${primaryMotive === 'school' && showCareerProfile ? 'lg:grid-cols-2' : ''}`}>
           {primaryMotive === 'school' && (
           <section className="rounded-[1.75rem] border border-slate-200/70 bg-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
             <div className="flex items-center gap-2 text-indigo-700">
@@ -384,16 +411,22 @@ export default function ProfilePage() {
               {schoolProfile.school_name || 'No school profile added yet'}
             </p>
             <p className="mt-2 text-sm leading-relaxed text-slate-500">
-              {schoolProfile.learning_goal || 'Set up your class and start with a readiness check.'}
+              {schoolProfile.learning_goal || 'Your School Prep setup is complete. Continue from your saved learning path.'}
             </p>
-            <div className="mt-5 flex items-center gap-3 text-sm">
-              <span className="rounded-full bg-slate-100 px-3 py-1 font-bold text-slate-600">
-                {activity ? `${activity.school.results_count} tests` : activityError ? 'Tests unavailable' : '0 tests'}
-              </span>
-              <span className="rounded-full bg-slate-100 px-3 py-1 font-bold text-slate-600">
-                {activity ? `${percent(activity.school.average_score)} average` : activityError ? 'Average unavailable' : '0% average'}
-              </span>
-            </div>
+            {activity?.school.results_count ? (
+              <div className="mt-5 flex flex-wrap items-center gap-3 text-sm">
+                <span className="rounded-full bg-slate-100 px-3 py-1 font-bold text-slate-600">
+                  {activity.school.results_count} completed {activity.school.results_count === 1 ? 'check' : 'checks'}
+                </span>
+                <span className="rounded-full bg-slate-100 px-3 py-1 font-bold text-slate-600">
+                  {percent(activity.school.average_score)} recent readiness
+                </span>
+              </div>
+            ) : (
+              <p className="mt-5 text-sm font-medium text-slate-500">
+                {activityError ? 'Recent School progress is temporarily unavailable.' : 'No completed checks yet. Your next saved step is ready in School Prep.'}
+              </p>
+            )}
             <button
               onClick={openSchool}
               disabled={switching !== null}
@@ -404,7 +437,7 @@ export default function ProfilePage() {
           </section>
           )}
 
-          <section className="rounded-[1.75rem] border border-slate-200/70 bg-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
+          {showCareerProfile ? <section className="rounded-[1.75rem] border border-slate-200/70 bg-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
             <div className="flex items-center gap-2 text-emerald-700">
               <BriefcaseBusiness className="w-4 h-4" />
               <span className="text-[11px] font-bold uppercase tracking-[0.2em]">Career profile</span>
@@ -438,10 +471,10 @@ export default function ProfilePage() {
                 </button>
               ))}
             </div>
-          </section>
+          </section> : null}
         </div>
 
-        <section className="mt-5 rounded-[1.75rem] border border-slate-200/70 bg-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
+        {showCareerGrowth ? <section className="mt-5 rounded-[1.75rem] border border-slate-200/70 bg-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <div className="flex items-center gap-2 text-slate-500">
@@ -505,28 +538,21 @@ export default function ProfilePage() {
               Complete prep turns or scored tests to build the career growth graph.
             </div>
           )}
-        </section>
+        </section> : null}
 
-        <CareerContinuityPanel graph={learningGraph} compact />
+        {showCareerGrowth ? <CareerContinuityPanel graph={learningGraph} compact /> : null}
 
         <section className="mt-5 rounded-[1.75rem] border border-slate-200/70 bg-slate-900 text-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.08)]">
-          <span className="text-[11px] font-bold uppercase tracking-[0.25em] text-white/70">Recommendations</span>
+          <span className="text-[11px] font-bold uppercase tracking-[0.25em] text-white/70">Next steps</span>
           <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-            {(activity?.recommendations.length
-              ? activity.recommendations
-              : [{
-                title: activityError ? 'Activity unavailable' : 'Continue learning',
-                body: activityError ? 'Retry activity loading for personalized recommendations.' : 'Open your primary path and keep going.',
-                href: activityError ? '/profile' : primaryMotive === 'school' ? '/school' : '/career',
-                kind: 'default',
-              }]).map((item) => (
+            {profileRecommendations.map((item) => (
               <button
                 key={`${item.kind}-${item.title}`}
                 onClick={() => router.push(item.href)}
                 className="rounded-2xl bg-white/10 border border-white/10 px-5 py-4 text-left hover:bg-white/15 transition-colors"
               >
-                <p className="font-bold">{item.title}</p>
-                <p className="mt-1 text-sm leading-relaxed text-white/60">{item.body}</p>
+                <p className="font-bold">{learnerFacingRecommendation(item.title)}</p>
+                <p className="mt-1 text-sm leading-relaxed text-white/60">{learnerFacingRecommendation(item.body)}</p>
               </button>
             ))}
           </div>
@@ -548,7 +574,7 @@ function InfoRow({
   mono?: boolean;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+    <div className="min-w-0 border-b border-slate-100 px-1 pb-4">
       <div className="flex items-center gap-2 text-slate-500">
         {icon}
         <span className="text-[11px] font-bold uppercase tracking-[0.18em]">{label}</span>

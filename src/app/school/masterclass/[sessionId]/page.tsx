@@ -5,9 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeftIcon,
   CheckCircledIcon,
-  ReaderIcon,
   ReloadIcon,
-  TargetIcon,
 } from '@radix-ui/react-icons';
 import { SchoolTutorSkeleton } from '@/components/learning/LearningSkeletons';
 import { SchoolLearningShell } from '@/components/school/SchoolLearningShell';
@@ -17,6 +15,10 @@ import {
 } from '@/components/school/SchoolPrimitives';
 import { SchoolSupportActivity } from '@/components/school/support/SchoolSupportActivity';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
+import {
+  resolveSchoolCoachPresentation,
+  selectVisibleSchoolCoachFeedback,
+} from '@/lib/schoolTeachingPresentation';
 import {
   CURRICULUM_REVALIDATE_MS,
   completedMasterclassReturnAction,
@@ -78,42 +80,16 @@ function MasterclassProgress({
   session: SchoolMasterclassSession;
   curriculum: SchoolCurriculumSession;
 }) {
-  const interruptedLevel = curriculum.levels.find((level) => level.level_id === session.level_id) ?? null;
-
   return (
-    <div data-testid="school-masterclass-context" className="min-w-0">
-      <section className="grid min-w-0 gap-3 sm:grid-cols-[minmax(150px,1fr)_minmax(160px,auto)] sm:items-center sm:gap-5" aria-labelledby="masterclass-return-target">
-        <div className="min-w-0">
-          <p className="flex items-center gap-2 font-mono text-[9px] font-semibold uppercase text-[var(--school-accent-deep)]">
-            <TargetIcon className="h-3.5 w-3.5" aria-hidden="true" /> Focused practice
-          </p>
-          <h2 id="masterclass-return-target" className="mt-1 truncate text-sm font-semibold text-[var(--school-ink)]">{session.focus}</h2>
-        </div>
-        <p className="truncate text-xs font-medium text-[var(--school-muted)]">Return to {curriculum.chapter.title}</p>
-      </section>
-
-      <details className="group mt-3 border-t border-[var(--school-line)] pt-3">
-        <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-4 text-xs font-semibold text-[var(--school-muted)]">
-          <span className="flex items-center gap-2"><ReaderIcon className="h-3.5 w-3.5" aria-hidden="true" /> Your exact chapter place is saved</span>
-          <span className="font-mono text-[9px] uppercase text-[var(--school-accent-deep)] group-open:hidden">View context</span>
-          <span className="hidden font-mono text-[9px] uppercase text-[var(--school-accent-deep)] group-open:inline">Hide context</span>
-        </summary>
-        <dl className="mt-3 grid gap-4 border-t border-[var(--school-line)] pt-4 text-xs sm:grid-cols-3">
-          <div>
-            <dt className="font-mono text-[9px] font-semibold uppercase text-[var(--school-faint)]">Lesson step</dt>
-            <dd className="mt-1 font-semibold text-[var(--school-ink)]">{interruptedLevel?.title || session.focus}</dd>
-          </div>
-          <div>
-            <dt className="font-mono text-[9px] font-semibold uppercase text-[var(--school-faint)]">Skill focus</dt>
-            <dd className="mt-1 font-semibold text-[var(--school-ink)]">{session.focus}</dd>
-          </div>
-          <div>
-            <dt className="font-mono text-[9px] font-semibold uppercase text-[var(--school-faint)]">Support visit</dt>
-            <dd className="mt-1 text-[var(--school-muted)]">{session.trigger_count} of 2</dd>
-          </div>
-        </dl>
-      </details>
-    </div>
+    <section
+      data-testid="school-masterclass-context"
+      className="grid min-w-0 grid-cols-[auto_minmax(36px,1fr)_auto] items-center gap-2 sm:gap-5"
+      aria-label={`Focused practice linked to ${curriculum.chapter.title}`}
+    >
+      <p className="whitespace-nowrap font-mono text-[10px] font-semibold uppercase text-[var(--school-muted)]">Focused practice</p>
+      <span className="h-1.5 rounded-full bg-[var(--school-accent-soft)]" aria-hidden="true" />
+      <p className="whitespace-nowrap font-mono text-[10px] font-semibold text-[var(--school-faint)]">Visit {session.trigger_count} / 2</p>
+    </section>
   );
 }
 
@@ -319,8 +295,37 @@ export default function SchoolMasterclassPage() {
     }
   };
 
-  const interruptedLevel = curriculum?.levels.find((level) => level.level_id === session?.level_id) ?? null;
   const lineage = session && curriculum ? lineageForSessions(session, curriculum) : null;
+  const visibleFeedback = selectVisibleSchoolCoachFeedback(activity?.activity_id, session?.last_feedback);
+  const coachPresentation = resolveSchoolCoachPresentation({
+    status: visibleFeedback
+      ? visibleFeedback.correct ? 'What worked' : 'Try this next'
+      : session?.status === 'complete'
+        ? 'Ready to return'
+        : activityView.kind === 'pending'
+          ? 'Reviewing your answer'
+          : 'One skill at a time',
+    fallbackMessage: activity?.focus || session?.focus || 'Your chapter place is saved while we strengthen this skill.',
+    activityKey: activity?.activity_id || session?.status || sessionId,
+    teachingBlock: activity?.teaching_block,
+    feedback: visibleFeedback?.message,
+    pendingMessage: activityView.kind === 'pending' || submitting
+      ? 'I am reviewing your answer. Your chapter place stays saved while the next step is prepared.'
+      : null,
+    transitionMessage: session?.status === 'complete'
+      ? `This focused practice is complete. Return to ${curriculum?.chapter.title || 'your chapter'} at the saved lesson step.`
+      : session?.status === 'abandoned'
+        ? `This support visit is closed. Return to ${curriculum?.chapter.title || 'your chapter'} at the saved position.`
+        : null,
+    error,
+    tone: visibleFeedback?.correct === true
+      ? 'success'
+      : visibleFeedback?.correct === false
+        ? 'warning'
+        : session?.status === 'complete'
+          ? 'success'
+          : 'neutral',
+  });
   const returnFromComplete = () => {
     if (completedMasterclassReturnAction(lineage) === 'resume') {
       void resume();
@@ -365,18 +370,14 @@ export default function SchoolMasterclassPage() {
   return (
     <SchoolLearningShell
       title={activity?.title || session?.focus || 'Focused practice'}
-      eyebrow="Focused practice"
-      coachStatus={session?.status === 'complete'
-        ? 'Ready to return'
-        : activityView.kind === 'pending'
-          ? 'Reviewing your answer'
-          : 'One skill at a time'}
-      coachNote={activity?.focus || session?.focus || 'Your chapter place is saved while we strengthen this skill.'}
+      coachStatus={coachPresentation.status}
+      coachNote={coachPresentation.message}
+      coachHint={coachPresentation.hint}
+      coachTone={coachPresentation.tone}
       coachAvatarId={session?.coach_avatar_id}
       coachPaletteId={session?.coach_palette_id}
       onBack={handleShellBack}
       backLabel={session?.status === 'active' ? 'Leave focused practice' : 'Return to chapter'}
-      headerMeta={curriculum?.chapter.title || interruptedLevel?.title || undefined}
       progress={session && curriculum ? <MasterclassProgress session={session} curriculum={curriculum} /> : undefined}
     >
       {!session ? (
@@ -425,11 +426,7 @@ export default function SchoolMasterclassPage() {
       ) : activity ? (
         <SchoolSupportActivity
           testIdPrefix="school-masterclass"
-          tone="masterclass"
-          kindLabel="Focused practice"
-          sourceLabel={interruptedLevel?.title || 'Saved lesson step'}
           title={activity.title}
-          teachingBlock={activity.teaching_block}
           passage={activity.passage}
           prompt={activity.prompt}
           options={activity.options}
@@ -438,13 +435,11 @@ export default function SchoolMasterclassPage() {
           inputLabel="Your focused practice answer"
           submitting={submitting}
           canAnswer={activityView.canSubmit}
-          feedback={session.last_feedback}
-          error={error}
           questionRef={questionHeadingRef}
           onAnswerChange={setAnswer}
           onSubmit={(value) => void submit(value)}
           footer={(
-            <div className="flex flex-col items-start gap-2">
+            <div>
               <button
                 type="button"
                 onClick={() => setConfirmingAbandon(true)}
@@ -453,9 +448,6 @@ export default function SchoolMasterclassPage() {
               >
                 <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" /> Return without finishing
               </button>
-              <p className="text-xs leading-5 text-slate-500">
-                This returns you to {curriculum?.chapter.title || 'the linked chapter'}. This support visit will still count, even though it was not finished.
-              </p>
             </div>
           )}
         />

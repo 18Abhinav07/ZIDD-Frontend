@@ -5,17 +5,13 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowRightIcon,
   ExclamationTriangleIcon,
-  PersonIcon,
   ReloadIcon,
 } from '@radix-ui/react-icons';
 import { SchoolReportSkeleton } from '@/components/learning/LearningSkeletons';
-import { SchoolCoachPanel } from '@/components/school/SchoolCoachPanel';
 import {
-  SchoolDisclosure,
   SchoolPageHeading,
   SchoolStatusChip,
   schoolPrimaryActionClass,
-  schoolSecondaryActionClass,
 } from '@/components/school/SchoolPrimitives';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 import { resolveSchoolStateDestination } from '@/lib/schoolActivityPolicy';
@@ -132,9 +128,6 @@ export default function SchoolSupportPage() {
     supportPlan?.coach_avatar_id,
     supportPlan?.coach_palette_id,
   );
-  const supportVisitCount = supportPlan?.history.length ?? 0;
-  const capUsed = supportPlan?.cap.used;
-  const capLimit = supportPlan?.cap.limit;
   const subjectLabel = supportPlan?.subject_id
     ? supportPlan.subject_id.charAt(0).toUpperCase() + supportPlan.subject_id.slice(1)
     : 'School';
@@ -143,48 +136,35 @@ export default function SchoolSupportPage() {
     <div className="mode-school min-h-[100dvh] bg-background font-body text-slate-950" style={theme.style}>
       {snapshot && supportPlan ? (
         <main className="mx-auto w-full max-w-[1180px] overflow-x-hidden px-5 pb-24 pt-14 sm:px-8 sm:pt-16 lg:px-12">
-          <header className="grid gap-7 border-b border-slate-200 pb-9 md:grid-cols-[minmax(0,1fr)_280px] md:items-end">
+          <header className="max-w-[820px] border-b border-slate-200 pb-9">
             <SchoolPageHeading
               eyebrow="Support plan"
-              title="A different route will help here."
-              description={`Your Class ${supportPlan.target_class_no} ${subjectLabel} work is saved. Repeating the same support loop would not be useful, so this plan records the skill that still needs attention.`}
-            />
-            <SchoolCoachPanel
-              avatarId={supportPlan.coach_avatar_id}
-              paletteId={supportPlan.coach_palette_id}
-              status="Pause and plan"
-              note="Nothing is lost. This pause prevents repeated practice from pretending the skill is ready."
-              compact
+              title="Let’s try this a different way."
+              description="Your current goal and progress are saved. We’ll change the explanation and take the next step more slowly."
             />
           </header>
 
           <section className="grid gap-6 border-b border-slate-200 py-8 md:grid-cols-[220px_minmax(0,1fr)]" aria-labelledby="support-now-heading">
             <div>
               <SchoolStatusChip tone="support">Extra support needed</SchoolStatusChip>
-              <h2 id="support-now-heading" className="mt-3 font-display text-[2rem] font-normal leading-tight">What is saved</h2>
+              <h2 id="support-now-heading" className="mt-3 font-display text-[2rem] font-normal leading-tight">{supportPlan.focus || 'One skill needs a different explanation'}</h2>
             </div>
             <dl className="divide-y divide-slate-200 border-y border-slate-200 text-sm">
               <div className="grid gap-1 py-4 sm:grid-cols-[150px_minmax(0,1fr)]">
-                <dt className="text-slate-500">Learning area</dt>
-                <dd className="font-semibold text-slate-950">Class {supportPlan.target_class_no} {subjectLabel}</dd>
-              </div>
-              <div className="grid gap-1 py-4 sm:grid-cols-[150px_minmax(0,1fr)]">
-                <dt className="text-slate-500">Current focus</dt>
-                <dd className="font-semibold text-slate-950">{supportPlan.focus || 'A saved skill needs a revised support plan.'}</dd>
-              </div>
-              <div className="grid gap-1 py-4 sm:grid-cols-[150px_minmax(0,1fr)]">
-                <dt className="text-slate-500">Why learning paused</dt>
+                <dt className="font-mono text-[10px] font-semibold uppercase text-slate-500">Saved goal</dt>
                 <dd className="leading-6 text-slate-700">
-                  {supportPlan.reason === 'masterclass_cap_exceeded' && capUsed !== undefined && capLimit !== undefined
-                    ? `The focused-practice limit was reached after ${capUsed} of ${capLimit} saved support visits.`
-                    : 'The saved checks did not provide enough independent evidence to continue safely.'}
+                  Build confidence with {supportPlan.focus || `this Class ${supportPlan.target_class_no} ${subjectLabel} skill`}.
                 </dd>
               </div>
               <div className="grid gap-1 py-4 sm:grid-cols-[150px_minmax(0,1fr)]">
-                <dt className="text-slate-500">Saved history</dt>
+                <dt className="font-mono text-[10px] font-semibold uppercase text-slate-500">What we noticed</dt>
                 <dd className="leading-6 text-slate-700">
-                  {supportVisitCount === 1 ? '1 support event is recorded.' : `${supportVisitCount} support events are recorded.`}
+                  The last few tries still needed help, so repeating the same explanation would not be useful.
                 </dd>
+              </div>
+              <div className="grid gap-1 py-4 sm:grid-cols-[150px_minmax(0,1fr)]">
+                <dt className="font-mono text-[10px] font-semibold uppercase text-slate-500">What changes next</dt>
+                <dd className="leading-6 text-slate-700">A new example, one smaller step at a time, and a fresh check when you are ready.</dd>
               </div>
             </dl>
           </section>
@@ -192,8 +172,10 @@ export default function SchoolSupportPage() {
           <section className="py-8" aria-labelledby="support-next-heading">
             <SchoolPageHeading
               eyebrow="Next step"
-              title="Review the evidence before choosing more practice."
-              description="The learner report keeps this supportive. The parent view includes the detailed attention signal and support history."
+              title={supportPlan.reason === 'masterclass_cap_exceeded' && supportPlan.parent_flow_type === 'curriculum'
+                ? 'Continue when you are ready.'
+                : 'See what to practise next.'}
+              description="There is no lost work and no penalty for taking a different route."
               level="h2"
               size="section"
               id="support-next-heading"
@@ -209,22 +191,14 @@ export default function SchoolSupportPage() {
                   {continuing ? 'Continuing lesson' : 'Continue this lesson'}
                   {!continuing ? <ArrowRightIcon className="h-4 w-4" aria-hidden="true" /> : null}
                 </button>
-              ) : null}
-              <button type="button" onClick={() => router.push('/school/reports')} className={schoolSecondaryActionClass}>
-                See learner report <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
-              </button>
-              <button type="button" onClick={() => router.push('/school/parent')} className={schoolSecondaryActionClass}>
-                <PersonIcon className="h-4 w-4" aria-hidden="true" /> Open parent view
-              </button>
+              ) : (
+                <button type="button" onClick={() => router.push('/school/reports')} className={schoolPrimaryActionClass}>
+                  See my learning plan <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
+                </button>
+              )}
             </div>
             {error ? <p role="alert" className="mt-4 text-sm font-medium text-red-800">{error}</p> : null}
           </section>
-
-          <SchoolDisclosure title="Why Zidd stopped the automatic loop" summary="The rule behind this support plan">
-            <p>
-              Focused practice is deliberately limited. When the same skill still needs help after the saved support visits, Zidd records the gap instead of repeatedly branching or inflating progress.
-            </p>
-          </SchoolDisclosure>
         </main>
       ) : (
         <main className="mx-auto flex min-h-[100dvh] w-full max-w-2xl items-center px-5 py-28 sm:px-8">

@@ -7,6 +7,7 @@ const read = (path) => fs.readFileSync(path, 'utf8');
 const schoolHome = read('src/app/school/page.tsx');
 const classPage = read('src/app/school/classes/[classNo]/page.tsx');
 const chapterPage = read('src/app/school/classes/[classNo]/chapters/[chapterId]/page.tsx');
+const profilePage = read('src/app/profile/page.tsx');
 
 test('school home resolves into real learning instead of replaying setup history', () => {
   for (const lifecycleCopy of [
@@ -58,4 +59,11 @@ test('school catalog routes use shared error actions and Radix icons', () => {
     assert.match(source, /@radix-ui\/react-icons/, `${route} misses Radix icons`);
     assert.doesNotMatch(source, /lucide-react|font-black|gradient|(?:rose|sky|cyan)-/i);
   }
+});
+
+test('School profile recommendations cannot fall back to Career actions', () => {
+  assert.match(profilePage, /const fallbackRecommendation/);
+  assert.match(profilePage, /primaryMotive === 'school'[\s\S]*?'Continue School Prep'/);
+  assert.match(profilePage, /primaryMotive === 'school' \? '\/school' : '\/career'/);
+  assert.doesNotMatch(profilePage, /allRecommendations\.slice\(0, 1\)/);
 });

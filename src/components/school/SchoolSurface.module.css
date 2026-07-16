@@ -38,6 +38,10 @@
   outline-offset: 3px;
 }
 
+.surface [tabindex="-1"]:focus {
+  outline: none;
+}
+
 .header {
   position: sticky;
   top: 0;
@@ -107,9 +111,9 @@
   min-width: 0;
   gap: 8px;
   color: var(--school-muted);
-  font-family: var(--font-geist-mono), var(--font-mono), monospace;
-  font-size: 9px;
-  font-weight: 680;
+  font-family: var(--font-geist-sans), var(--font-body), system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
@@ -145,9 +149,9 @@
   align-items: center;
   padding: 0 2px;
   color: #59667a;
-  font-family: var(--font-geist-mono), var(--font-mono), monospace;
+  font-family: var(--font-geist-sans), var(--font-body), system-ui, sans-serif;
   font-size: 10px;
-  font-weight: 720;
+  font-weight: 750;
   text-transform: uppercase;
   transition: color 180ms ease;
 }
@@ -170,14 +174,16 @@
 
 .profileButton,
 .menuButton {
-  width: 44px;
-  height: 44px;
+  position: relative;
+  width: 38px;
+  height: 38px;
   flex: 0 0 auto;
   justify-content: center;
   overflow: hidden;
   border: 1px solid #dcdfdf;
-  border-radius: 12px;
-  background: var(--school-paper);
+  border-color: #e0e2fb;
+  border-radius: 50%;
+  background: #f2f2ff;
   color: var(--school-muted);
   transition: border-color 180ms ease, color 180ms ease, transform 180ms ease;
 }
@@ -194,14 +200,14 @@
 }
 
 .signOutButton {
-  width: 44px;
-  height: 44px;
+  width: 38px;
+  height: 38px;
   flex: 0 0 auto;
   justify-content: center;
   padding: 0;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
+  border: 1px solid var(--school-line);
+  border-radius: 50%;
+  background: var(--school-surface-soft);
   color: var(--school-muted);
   transition: background-color 180ms ease, color 180ms ease, transform 180ms ease;
 }
@@ -218,9 +224,9 @@
 .profileImage {
   width: 100%;
   height: 100%;
-  object-fit: contain;
-  object-position: center bottom;
-  transform: scale(1.18) translateY(2px);
+  object-fit: cover;
+  object-position: center top;
+  transform: scale(1.16) translateY(2px);
 }
 
 .menuButton {

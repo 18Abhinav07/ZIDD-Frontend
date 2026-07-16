@@ -15,7 +15,6 @@ import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
 import {
   SchoolPageHeading,
   SchoolStatusChip,
-  schoolPrimaryActionClass,
   schoolSecondaryActionClass,
 } from '@/components/school/SchoolPrimitives';
 import { buildSchoolLevelStages } from './schoolLevelStages.mjs';
@@ -139,32 +138,43 @@ function LevelPathNode({
         ) : null}
       </div>
 
-      <div className={styles.nodeCallout}>
-        <div className={styles.levelMeta}>
-          <span>{label}</span>
-          <span aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
-        </div>
-        <h2 className={styles.nodeHeading}>{stage.label}</h2>
-        {isCurrent ? (
-          <>
-            <p className={styles.nodeDescription}>{stage.title}</p>
-            <p className={styles.nodeDescription}>{STAGE_DESCRIPTION[stage.label]}</p>
-          </>
-        ) : stage.title !== stage.label ? (
-          <p className={styles.nodeDescription}>{stage.title}</p>
-        ) : null}
-        {action ? (
-          <button
-            type="button"
-            onClick={action.onSelect}
-            disabled={busy}
-            className={`${schoolPrimaryActionClass} ${styles.nodeAction}`}
-          >
+      {action ? (
+        <button
+          type="button"
+          onClick={action.onSelect}
+          disabled={busy}
+          className={`${styles.nodeCallout} ${styles.nodeCalloutButton}`}
+          aria-label={`${busy ? 'Starting chapter' : action.label}: ${stage.label}`}
+        >
+          <span className={styles.levelMeta}>
+            <span>{label}</span>
+            <span aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
+          </span>
+          <span className={styles.nodeHeading}>{stage.label}</span>
+          <span className={styles.nodeDescription}>{stage.title}</span>
+          <span className={styles.nodeDescription}>{STAGE_DESCRIPTION[stage.label]}</span>
+          <span className={styles.nodeAction}>
             {busy ? 'Starting chapter' : action.label}
             <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
-          </button>
-        ) : null}
-      </div>
+          </span>
+        </button>
+      ) : (
+        <div className={styles.nodeCallout}>
+          <span className={styles.levelMeta}>
+            <span>{label}</span>
+            <span aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
+          </span>
+          <span className={styles.nodeHeading}>{stage.label}</span>
+          {isCurrent ? (
+            <>
+              <span className={styles.nodeDescription}>{stage.title}</span>
+              <span className={styles.nodeDescription}>{STAGE_DESCRIPTION[stage.label]}</span>
+            </>
+          ) : stage.title !== stage.label ? (
+            <span className={styles.nodeDescription}>{stage.title}</span>
+          ) : null}
+        </div>
+      )}
     </li>
   );
 }

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import test from 'node:test';
 
 import { resolveSchoolStateDestination } from '../src/lib/schoolActivityPolicy.ts';
+import { getAvatarScaleFactor } from '../src/lib/avatarRegistry.ts';
 import { isSchoolCatalogSelectionSupported } from '../src/lib/schoolOnboardingPolicy.ts';
 import {
   getSchoolAvatarTheme,
@@ -84,6 +85,16 @@ test('invalid or mismatched persisted identity fails closed to one neutral coach
   }
 });
 
+test('School coach sizing uses the shared avatar padding registry', () => {
+  assert.equal(getAvatarScaleFactor('/avatars/trans_new_casual_female_1781021494716.png'), 1.35);
+  assert.equal(getAvatarScaleFactor('/avatars/coach_pink.png'), 1);
+
+  const coachPanel = fs.readFileSync('src/components/school/SchoolCoachPanel.tsx', 'utf8');
+  assert.match(coachPanel, /const avatarScale = getAvatarScaleFactor\(avatar\.url\)/);
+  assert.match(coachPanel, /variant === 'immersive' \? avatarScale \* 1\.26 : avatarScale/);
+  assert.match(coachPanel, /Math\.min\(avatarScale, 1\.12\)/);
+});
+
 test('only a fully supported backend catalog combination can be submitted', () => {
   assert.equal(isSchoolCatalogSelectionSupported(catalog, 'cbse', 'english', 2), true);
   assert.equal(isSchoolCatalogSelectionSupported(catalog, 'cbse', 'english', 5), true);
@@ -129,12 +140,11 @@ test('canonical School sources do not use local storage or seed-derived coach id
   const setup = fs.readFileSync('src/components/school/setup/ClassSubjectStep.tsx', 'utf8');
   const service = fs.readFileSync('src/services/schoolRebuild.ts', 'utf8');
   assert.doesNotMatch(setup, /BOARD_OPTIONS/);
-  assert.match(setup, /catalog\.boards\.map/);
-  assert.match(setup, /disabled=/);
-  assert.match(setup, /Unavailable/);
-  assert.match(setup, /UnavailableCatalogScope/);
-  assert.match(setup, /unavailableBoard\.subjects\.map/);
-  assert.match(setup, /subject\.classes\.map/);
+  assert.match(setup, /availableBoards = catalog\?\.boards\.filter/);
+  assert.match(setup, /availableBoards\.map/);
+  assert.match(setup, /isSchoolCatalogSupportAvailable\(board\.support_status\)/);
+  assert.doesNotMatch(setup, /unavailableBoard|UnavailableCatalogScope/);
+  assert.doesNotMatch(setup, /disabled=/);
   assert.match(service, /SchoolCatalogSupportStatus = 'available' \| 'unavailable'/);
   assert.doesNotMatch(service, /SchoolCatalogSupportStatus = [^;]*(?:supported|unsupported)/);
   assert.match(service, /\| 'start_masterclass'/);
@@ -156,10 +166,13 @@ test('canonical School presentation is scoped to its own shell and design tokens
     assert.match(css.toLowerCase(), new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
   assert.doesNotMatch(css, /letter-spacing:\s*-/);
+  assert.match(css, /\[tabindex="-1"\]:focus\s*\{\s*outline:\s*none/);
   assert.match(shell, /Home/);
   assert.match(shell, /Starting point/);
   assert.match(shell, /My path/);
   assert.match(shell, /Reports/);
+  assert.match(shell, /authSession\?\.user\?\.image \?\? null/);
+  assert.doesNotMatch(shell, /AVATAR_PATHS/);
   assert.match(shell, /aria-label=.*menu/i);
   assert.match(layout, /SchoolShell/);
   assert.doesNotMatch(layout, /AppHeader/);
@@ -176,4 +189,7 @@ test('School-owned presentation does not bypass image optimization or reintroduc
     assert.doesNotMatch(source, /\bunoptimized\b/, `${file} bypasses Next image optimization`);
     assert.doesNotMatch(source, /Surface Review|data-review-|\?state=/, `${file} includes prototype-only controls`);
   }
+
+  const nextConfig = fs.readFileSync('next.config.mjs', 'utf8');
+  assert.match(nextConfig, /hostname: 'lh3\.googleusercontent\.com'/);
 });

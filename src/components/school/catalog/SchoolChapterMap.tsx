@@ -14,7 +14,6 @@ import { getAvatarScaleClass } from '@/lib/avatarRegistry';
 import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
 import {
   SchoolPageHeading,
-  schoolPrimaryActionClass,
   schoolSecondaryActionClass,
 } from '@/components/school/SchoolPrimitives';
 import type { SchoolClassMap, SchoolMapStatus } from '@/services/schoolRebuild';
@@ -126,28 +125,39 @@ function ChapterPathNode({
         ) : null}
       </div>
 
-      <div className={styles.nodeCallout}>
-        <span className={styles.nodeState}>{label}</span>
-        <h2 className={styles.nodeHeading}>
-          <span className={styles.nodeNumber} aria-hidden="true">
-            {String(chapter.chapter_no).padStart(2, '0')}
+      {action ? (
+        <button
+          type="button"
+          disabled={action.busy}
+          onClick={action.onSelect}
+          aria-label={`${action.busy ? 'Starting chapter' : action.label}: ${chapter.title}`}
+          className={`${styles.nodeCallout} ${styles.nodeCalloutButton}`}
+        >
+          <span className={styles.nodeState}>{label}</span>
+          <span className={styles.nodeHeading}>
+            <span className={styles.nodeNumber} aria-hidden="true">
+              {String(chapter.chapter_no).padStart(2, '0')}
+            </span>
+            <span>{chapter.title}</span>
           </span>
-          <span>{chapter.title}</span>
-        </h2>
-        {isCurrent ? <p className={styles.nodeDescription}>{description}</p> : null}
-        {action ? (
-          <button
-            type="button"
-            disabled={action.busy}
-            onClick={action.onSelect}
-            aria-label={`${action.label}: ${chapter.title}`}
-            className={`${schoolPrimaryActionClass} ${styles.nodeAction}`}
-          >
+          {isCurrent ? <span className={styles.nodeDescription}>{description}</span> : null}
+          <span className={styles.nodeAction}>
             {action.busy ? 'Starting chapter' : action.label}
             <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
-          </button>
-        ) : null}
-      </div>
+          </span>
+        </button>
+      ) : (
+        <div className={styles.nodeCallout}>
+          <span className={styles.nodeState}>{label}</span>
+          <span className={styles.nodeHeading}>
+            <span className={styles.nodeNumber} aria-hidden="true">
+              {String(chapter.chapter_no).padStart(2, '0')}
+            </span>
+            <span>{chapter.title}</span>
+          </span>
+          {isCurrent ? <span className={styles.nodeDescription}>{description}</span> : null}
+        </div>
+      )}
     </li>
   );
 }

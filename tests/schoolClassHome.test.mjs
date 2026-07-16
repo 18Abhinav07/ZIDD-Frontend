@@ -42,21 +42,23 @@ test('active class home uses the shared editorial system and real class context'
   assert.match(home, /<SchoolPageHeading/);
   assert.match(home, /SchoolPathMap\.module\.css/);
   assert.match(home, /styles\.homeHero/);
-  assert.match(home, /styles\.homeCoach/);
+  assert.doesNotMatch(home, /styles\.homeCoach/);
+  assert.doesNotMatch(home, /Your coach|Ready when you are/);
   assert.match(home, /styles\.homeThread/);
   assert.match(home, /schoolPrimaryActionClass/);
-  assert.match(home, /schoolSecondaryActionClass/);
+  assert.match(home, /styles\.homeLinkAction/);
+  assert.match(home, /styles\.homeSetup/);
   assert.doesNotMatch(home, /rounded-lg|sm:grid-cols-3/);
   for (const stale of ['Meet your coach', 'Readiness adventure', 'Build your bridge']) {
     assert.equal(home.includes(stale), false);
   }
 });
 
-test('class feature uses one persisted themed coach without dominating the page', () => {
-  assert.match(home, /getSchoolAvatarTheme\(schoolClass\.coach_avatar_id, schoolClass\.coach_palette_id\)/);
+test('class home reserves coach identity for teaching and journey maps', () => {
+  assert.doesNotMatch(home, /getSchoolAvatarTheme\(schoolClass\.coach_avatar_id, schoolClass\.coach_palette_id\)/);
   assert.doesNotMatch(home, /coach_seed|getAvatarForSeed/);
-  assert.match(home, /style={theme\.style}/);
-  assert.equal((home.match(/<Image\b/g) ?? []).length, 1);
+  assert.doesNotMatch(home, /style={theme\.style}/);
+  assert.equal((home.match(/<Image\b/g) ?? []).length, 0);
   assert.doesNotMatch(home, /SchoolCoachPanel/);
   assert.doesNotMatch(home, /lucide-react|font-black|gradient/i);
 });

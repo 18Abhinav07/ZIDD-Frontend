@@ -4,9 +4,8 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { signOut } from 'next-auth/react';
+import { signOut, useSession } from 'next-auth/react';
 import { ChevronRight, LogOut, Menu, UserRound, X } from 'lucide-react';
-import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
 import type { SchoolCoachIdentity } from '@/services/schoolRebuild';
 import styles from '../SchoolSurface.module.css';
 import { SchoolShellCoachIdentityContext } from './SchoolCoachIdentityContext';
@@ -54,19 +53,14 @@ function surfaceLabel(pathname: string) {
 export function SchoolShell({ children, coach_avatar_id, coach_palette_id }: SchoolShellProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { data: authSession } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
   const section = currentSection(pathname);
   const coachIdentity = useMemo(() => ({
     coach_avatar_id: coach_avatar_id ?? null,
     coach_palette_id: coach_palette_id ?? null,
   }), [coach_avatar_id, coach_palette_id]);
-  const coach = useMemo(
-    () => getSchoolAvatarTheme(
-      coachIdentity.coach_avatar_id,
-      coachIdentity.coach_palette_id,
-    ).avatar,
-    [coachIdentity],
-  );
+  const profileImage = authSession?.user?.image ?? null;
 
   useEffect(() => setMenuOpen(false), [pathname]);
 
@@ -116,14 +110,17 @@ export function SchoolShell({ children, coach_avatar_id, coach_palette_id }: Sch
             aria-label="Open profile"
             title="Profile"
           >
-            <Image
-              src={coach.url}
-              alt="Your School Prep coach"
-              width={44}
-              height={44}
-              sizes="44px"
-              className={styles.profileImage}
-            />
+            {profileImage ? (
+              <Image
+                src={profileImage}
+                alt="Profile"
+                fill
+                sizes="38px"
+                className={styles.profileImage}
+              />
+            ) : (
+              <UserRound size={18} aria-hidden="true" />
+            )}
           </button>
           <button
             type="button"

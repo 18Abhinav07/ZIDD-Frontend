@@ -15,6 +15,10 @@ export type SchoolDifficultySignal =
 export type SchoolOnboardingStep = 0 | 1 | 2 | 3 | 4;
 export type SchoolOnboardingEditableStep = Exclude<SchoolOnboardingStep, 4>;
 
+export function schoolProfileEditHref(step: SchoolOnboardingEditableStep = 2): string {
+  return `/school/onboarding?intent=edit_profile&step=${step}`;
+}
+
 export interface SchoolOnboardingForm {
   display_name: string;
   school_name: string;

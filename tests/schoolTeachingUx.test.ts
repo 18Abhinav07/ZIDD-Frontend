@@ -59,25 +59,18 @@ test('shared support preserves title data without repeating the workspace activi
   assert.match(supportActivity, /title: string/);
   assert.match(supportActivity, /aria-label=\{title\}/);
   assert.doesNotMatch(supportActivity, /<h2[^>]*>\{title\}<\/h2>/);
-  assert.match(supportActivity, /<h2[\s\S]*?data-testid=\{`\$\{testIdPrefix\}-question`\}[\s\S]*?>[\s\S]*?\{prompt\}[\s\S]*?<\/h2>/);
+  assert.match(supportActivity, /<h1[\s\S]*?data-testid=\{`\$\{testIdPrefix\}-question`\}[\s\S]*?>[\s\S]*?\{prompt\}[\s\S]*?<\/h1>/);
   assert.match(recap, /title=\{activity\.title\}/);
   assert.match(masterclass, /title=\{activity\.title\}/);
+  assert.doesNotMatch(supportActivity, /teachingBlock|feedback\.message|Coach clue/);
 });
 
-test('Learning Back and progress disclosures expose 44px targets without adding layout density', () => {
+test('Learning Back and progress strips stay compact without repeating stage content', () => {
   const backButtonRule = workspaceStyles.match(/\.backButton \{[\s\S]*?\n\}/)?.[0] ?? '';
 
   assert.match(backButtonRule, /width: 44px;/);
   assert.match(backButtonRule, /height: 44px;/);
-  assert.match(backButtonRule, /margin: -1px;/);
-
-  for (const [name, progress] of [
-    ['tutor', progressRail],
-    ['recap', recap],
-  ] as const) {
-    const summary = progress.match(/<summary className="[^"]+"/)?.[0] ?? '';
-    assert.match(summary, /min-h-11/, `${name} progress disclosure needs a 44px minimum target`);
-    assert.match(summary, /-my-1\.5/, `${name} progress disclosure must preserve its occupied height`);
-    assert.match(summary, /py-1\.5/, `${name} progress disclosure must preserve its visual density`);
-  }
+  assert.match(progressRail, /role="progressbar"/);
+  assert.match(recap, /data-testid="school-recap-progress"/);
+  assert.doesNotMatch(progressRail + recap, /<details|View stages|View skills|session\.levels\.map|path\.modules\.map/);
 });

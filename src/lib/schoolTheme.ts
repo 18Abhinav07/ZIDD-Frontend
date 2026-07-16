@@ -26,7 +26,8 @@ export const SCHOOL_FALLBACK_PALETTE = SCHOOL_CANONICAL_PALETTE;
 
 export const SCHOOL_NEUTRAL_AVATAR_ID: CoachAvatarId = 'tech_black';
 
-// Avatar asset colors are intentionally translated into calmer, readable UI roles.
+// Teaching controls retain one canonical palette. Only the coach card surface
+// uses the selected avatar's existing registry background.
 export const SCHOOL_AVATAR_PALETTES = {
   stuttering_sam: SCHOOL_CANONICAL_PALETTE,
   fluent_finn: SCHOOL_CANONICAL_PALETTE,
@@ -44,7 +45,8 @@ export type SchoolThemeVariable =
   | '--school-accent-deep'
   | '--school-accent-soft'
   | '--school-accent-border'
-  | '--school-on-accent';
+  | '--school-on-accent'
+  | '--school-coach-surface';
 
 export type SchoolThemeStyle = CSSProperties & Record<SchoolThemeVariable, string>;
 
@@ -61,13 +63,14 @@ export function getSchoolAvatarPalette(avatarId: string): Readonly<SchoolAccentR
   return SCHOOL_FALLBACK_PALETTE;
 }
 
-function schoolThemeStyle(roles: Readonly<SchoolAccentRoles>): SchoolThemeStyle {
+function schoolThemeStyle(roles: Readonly<SchoolAccentRoles>, coachSurface: string): SchoolThemeStyle {
   return {
     '--school-accent': roles.accent,
     '--school-accent-deep': roles.deep,
     '--school-accent-soft': roles.soft,
     '--school-accent-border': roles.border,
     '--school-on-accent': roles.onAccent,
+    '--school-coach-surface': coachSurface,
   };
 }
 
@@ -83,7 +86,7 @@ export function getSchoolAvatarThemeForAvatar(
   return {
     avatar,
     roles,
-    style: schoolThemeStyle(roles),
+    style: schoolThemeStyle(roles, avatar.bg),
   };
 }
 
@@ -102,6 +105,6 @@ export function getSchoolAvatarTheme(
   return {
     avatar: neutralAvatar,
     roles: SCHOOL_FALLBACK_PALETTE,
-    style: schoolThemeStyle(SCHOOL_FALLBACK_PALETTE),
+    style: schoolThemeStyle(SCHOOL_FALLBACK_PALETTE, neutralAvatar.bg),
   };
 }

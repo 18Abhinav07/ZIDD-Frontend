@@ -72,9 +72,9 @@ const DIFFICULTY_OPTIONS = [
 ] as const;
 
 const STEP_HEADINGS = [
-  'What should your coach know about you?',
+  'Who is learning?',
   'What are you learning at school?',
-  'How should your coach explain things?',
+  'Which language works best?',
   'What would you like help with?',
   'Does this learning setup look right?',
 ] as const;
@@ -174,6 +174,8 @@ export function SchoolOnboardingWizard() {
   const [busy, setBusy] = useState(false);
   const [editConfirmed, setEditConfirmed] = useState(false);
   const [dirtyStep, setDirtyStep] = useState<SchoolOnboardingEditableStep | null>(null);
+  const [goalOwner, setGoalOwner] = useState<'learner' | 'parent'>('learner');
+  const [supportSignalsOpen, setSupportSignalsOpen] = useState(false);
   const hasMaterialChanges = activeProfile
     ? hasMaterialSchoolProfileChanges(form, activeProfile)
     : false;
@@ -186,6 +188,8 @@ export function SchoolOnboardingWizard() {
     dirtyStepRef.current = null;
     setDirtyStep(null);
     setEditConfirmed(false);
+    setGoalOwner(hydrated.form.parent_goal.trim() && !hydrated.form.learner_goal.trim() ? 'parent' : 'learner');
+    setSupportSignalsOpen(hydrated.form.prior_difficulty_signals.length > 0);
     setErrors({});
     setLoadingError('');
     setLoaded(true);
@@ -733,9 +737,31 @@ export function SchoolOnboardingWizard() {
 
           {step === 3 && (
             <div className="space-y-7">
-              <div className="grid gap-5 sm:grid-cols-2">
+              <div>
+                <div className="inline-flex rounded-xl border border-slate-200 bg-slate-100 p-1" aria-label="Whose learning goal is this?">
+                  <button
+                    type="button"
+                    aria-pressed={goalOwner === 'learner'}
+                    onClick={() => setGoalOwner('learner')}
+                    className={`min-h-11 rounded-lg px-4 text-sm font-semibold transition-[background-color,color,box-shadow] ${goalOwner === 'learner' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                  >
+                    Learner goal
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={goalOwner === 'parent'}
+                    onClick={() => setGoalOwner('parent')}
+                    className={`min-h-11 rounded-lg px-4 text-sm font-semibold transition-[background-color,color,box-shadow] ${goalOwner === 'parent' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                  >
+                    Parent goal
+                  </button>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-slate-500">Add at least one goal. Switching tabs will not clear what you wrote.</p>
+              </div>
+
+              {goalOwner === 'learner' ? (
                 <label className="block text-sm font-semibold text-slate-800">
-                  Learner goal
+                  What would you like to get better at?
                   <textarea
                     value={form.learner_goal}
                     onChange={(event) => updateField('learner_goal', event.target.value)}
@@ -747,8 +773,9 @@ export function SchoolOnboardingWizard() {
                   <span className="mt-1 block text-right text-xs text-slate-500">{form.learner_goal.length}/360</span>
                   <FieldError field="learner_goal" errors={errors} />
                 </label>
+              ) : (
                 <label className="block text-sm font-semibold text-slate-800">
-                  Parent goal
+                  What progress would a parent like to see?
                   <textarea
                     value={form.parent_goal}
                     onChange={(event) => updateField('parent_goal', event.target.value)}
@@ -760,32 +787,48 @@ export function SchoolOnboardingWizard() {
                   <span className="mt-1 block text-right text-xs text-slate-500">{form.parent_goal.length}/360</span>
                   <FieldError field="parent_goal" errors={errors} />
                 </label>
-              </div>
-              <ChoiceGroup label="Where support may be needed" error={<FieldError field="prior_difficulty_signals" errors={errors} />}>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {DIFFICULTY_OPTIONS.map((option) => {
-                    const selected = form.prior_difficulty_signals.includes(option.value);
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        aria-pressed={selected}
-                        onClick={() => toggleDifficulty(option.value)}
-                        className={`flex min-h-12 items-center gap-3 rounded-xl border px-3 text-left text-sm font-semibold transition-[background-color,border-color,color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--school-accent)] focus-visible:ring-offset-2 ${
-                          selected
-                            ? 'border-[var(--school-accent)] bg-[var(--school-accent-soft)] text-[var(--school-accent-deep)]'
-                            : 'border-slate-300 bg-[var(--school-surface,#fcfdff)] text-slate-700 hover:border-[var(--school-accent-border)]'
-                        }`}
-                      >
-                        <span className="flex h-5 w-5 flex-none items-center justify-center border border-current" aria-hidden="true">
-                          {selected && <CheckIcon className="h-3.5 w-3.5" />}
-                        </span>
-                        {option.label}
-                      </button>
-                    );
-                  })}
+              )}
+
+              <details
+                open={supportSignalsOpen}
+                onToggle={(event) => setSupportSignalsOpen(event.currentTarget.open)}
+                className="border-y border-slate-200 py-4"
+              >
+                <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-slate-800">
+                  <span>
+                    Areas where support may help
+                    <span className="ml-2 font-normal text-slate-500">Optional</span>
+                  </span>
+                  <span className="text-xs text-slate-500">{form.prior_difficulty_signals.length || 'None'} selected</span>
+                </summary>
+                <div className="pt-5">
+                  <ChoiceGroup label="Choose any that apply" error={<FieldError field="prior_difficulty_signals" errors={errors} />}>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {DIFFICULTY_OPTIONS.map((option) => {
+                        const selected = form.prior_difficulty_signals.includes(option.value);
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            aria-pressed={selected}
+                            onClick={() => toggleDifficulty(option.value)}
+                            className={`flex min-h-12 items-center gap-3 rounded-xl border px-3 text-left text-sm font-semibold transition-[background-color,border-color,color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--school-accent)] focus-visible:ring-offset-2 ${
+                              selected
+                                ? 'border-[var(--school-accent)] bg-[var(--school-accent-soft)] text-[var(--school-accent-deep)]'
+                                : 'border-slate-300 bg-[var(--school-surface,#fcfdff)] text-slate-700 hover:border-[var(--school-accent-border)]'
+                            }`}
+                          >
+                            <span className="flex h-5 w-5 flex-none items-center justify-center border border-current" aria-hidden="true">
+                              {selected && <CheckIcon className="h-3.5 w-3.5" />}
+                            </span>
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </ChoiceGroup>
                 </div>
-              </ChoiceGroup>
+              </details>
             </div>
           )}
 
@@ -851,7 +894,7 @@ export function SchoolOnboardingWizard() {
                 </div>
               ) : (
                 <div className="rounded-xl border border-[var(--school-accent-border)] bg-[var(--school-accent-soft)] p-4 text-sm leading-6 text-[var(--school-accent-deep)]">
-                  Your coach will save this setup and begin with a short starting-point check.
+                  We will save this setup and begin with a short starting-point check.
                 </div>
               )}
             </div>
@@ -921,11 +964,11 @@ export function SchoolOnboardingWizard() {
 
 function StepIntroduction({ step }: { step: SchoolOnboardingStep }) {
   const copy = [
-    'What should your coach call you, and where do you study?',
-    'Choose the class journey you want your coach to prepare you for.',
+    'Add the learner name and school details used in this journey.',
+    'Choose the class journey you want to prepare for.',
     'Pick the language that makes explanations easiest to understand.',
-    'Tell your coach what you want to improve and what often feels difficult.',
-    'Check your choices before the readiness adventure begins.',
+    'Share what you want to improve and what often feels difficult.',
+    'Check your choices before the starting-point check begins.',
   ] as const;
   return <>{copy[step]}</>;
 }

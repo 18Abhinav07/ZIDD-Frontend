@@ -36,13 +36,22 @@ test('placement presentation keeps one child-facing activity and a compact three
   assert.match(source, /const current = !finished && index === activeIndex/);
   assert.match(source, /data-testid="school-placement-progress"/);
   assert.match(source, /data-testid="school-placement-card"/);
-  assert.match(source, /data-testid="school-placement-instruction"/);
   assert.match(source, /data-testid="school-placement-passage"/);
   assert.match(source, /data-testid="school-placement-question"/);
-  assert.match(source, /data-testid="school-placement-support"/);
+  assert.match(source, /resolveSchoolCoachPresentation/);
+  assert.match(source, /fallbackMessage: item\.instruction/);
+  assert.match(source, /teachingBlock: item\.support/);
+  assert.match(source, /<SchoolLearningWorkspace/);
+  assert.match(source, /<SchoolCoachPanel/);
+  assert.match(source, /actions=\{\(/);
+  assert.match(source, /aria-label="Stop starting-point check"/);
+  assert.match(source, /aria-label="Refresh starting-point check"/);
+  assert.doesNotMatch(source, />\s*Stop for now\s*<\/button>/);
+  assert.doesNotMatch(source, /item\.learner_skill_label|<SchoolStatusChip/);
   assert.match(source, /A starting point, not a test\./);
   assert.match(source, /About 8 minutes/);
-  assert.match(source, /PlacementCoachScene/);
+  assert.doesNotMatch(source, /PlacementCoachScene/);
+  assert.match(source, /<SchoolCoachPanel/);
   assert.match(source, /schoolPrimaryActionClass/);
   assert.match(source, /schoolSecondaryActionClass/);
   assert.match(source, /@radix-ui\/react-icons/);
@@ -127,7 +136,6 @@ test('placement report leads with the exact conclusion and progressively disclos
     'report.learner_summary',
     'report.parent_summary',
     'report.target_class_no',
-    'report.evaluated_class_no',
     'report.blocking_skills',
     'report.watchlist_skills',
     'report.evidence_summary',
@@ -150,6 +158,7 @@ test('placement report leads with the exact conclusion and progressively disclos
   assert.match(source, /What we saw/);
   assert.match(source, /What the evidence supports/);
   assert.match(source, /placementLearningPathDetail\(report\)/);
+  assert.match(source, /placementEvaluatedClassLabel\(report\)/);
   assert.match(source, /learningPath\.label/);
   assert.match(source, /learningPath\.value/);
   assert.match(source, /What happens next/);
@@ -161,12 +170,11 @@ test('placement report leads with the exact conclusion and progressively disclos
   );
   assert.match(
     source,
-    /<SchoolDisclosure title="Parent summary"[\s\S]*?<p>\{report\.parent_summary\}<\/p>[\s\S]*?<\/SchoolDisclosure>/,
+    /<SchoolDisclosure title="Parent summary"[\s\S]*?<p[^>]*>\{report\.parent_summary\}<\/p>[\s\S]*?<\/SchoolDisclosure>/,
   );
   assert.match(source, /<SchoolDisclosure/);
   assert.match(source, /getSchoolState\(\{ force: true \}\)/);
   assert.match(source, /resolveSchoolPlacementReportAction/);
-  assert.match(source, /Current next step/);
   assert.match(source, /currentAction\.label/);
   assert.doesNotMatch(source, /report\.allowed_next_actions/);
   assert.doesNotMatch(source, /Available next steps from this report/);

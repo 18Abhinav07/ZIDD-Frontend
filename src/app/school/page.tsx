@@ -8,6 +8,7 @@ import { SchoolClassHome } from '@/components/school/catalog/SchoolClassHome';
 import { SchoolPageHeading, schoolPrimaryActionClass } from '@/components/school/SchoolPrimitives';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 import { resolveSchoolStateDestination } from '@/lib/schoolActivityPolicy';
+import { schoolProfileEditHref } from '@/lib/schoolOnboardingPolicy';
 import {
   schoolHomeActionLabel,
   shouldRenderUnlockedSchoolHome,
@@ -21,7 +22,7 @@ import {
 export default function SchoolPage() {
   const router = useRouter();
   const [schoolClass, setSchoolClass] = useState<SchoolClassMap | null>(null);
-  const [learnerMessage, setLearnerMessage] = useState('Your coach is ready for the next chapter.');
+  const [learnerMessage, setLearnerMessage] = useState('Your next chapter is ready.');
   const [schoolUnavailable, setSchoolUnavailable] = useState(false);
   const [primaryAction, setPrimaryAction] = useState<{ label: string; href: string } | null>(null);
   const [error, setError] = useState('');
@@ -80,7 +81,7 @@ export default function SchoolPage() {
             onSelect: () => router.push(primaryAction.href),
           } : undefined}
           onViewMap={() => router.push(`/school/classes/${schoolClass.class_no}`)}
-          onChangeSetup={() => router.push('/school/onboarding?intent=edit_profile&step=2')}
+          onChangeSetup={() => router.push(schoolProfileEditHref())}
         />
       ) : schoolUnavailable ? (
         <main className="mx-auto flex min-h-[100dvh] w-full max-w-[760px] items-center px-5 py-28 sm:px-8">

@@ -87,6 +87,45 @@ export function groupSkillEvidenceByLabel(skills, labelSkill) {
   return [...grouped.values()];
 }
 
+const REPORT_ACTIVITY_LABELS = Object.freeze({
+  guided_check: 'guided practice',
+  bridge: 'bridge practice',
+  masterclass: 'focused practice',
+  revision_level_1: 'revision practice',
+  revision_level_2: 'revision practice',
+  revision_level_3: 'revision practice',
+  independent_check: 'independent check',
+  transfer_check: 'transfer check',
+  chapter_check: 'chapter check',
+  v2_connect: 'connection practice',
+  v2_co_construct: 'coach-supported practice',
+  v2_guided_practice: 'guided practice',
+  v2_independent_application: 'independent application',
+  v2_transfer: 'transfer check',
+  v2_review: 'review',
+  v2_support: 'supported practice',
+});
+
+/**
+ * Convert persisted activity identifiers into report copy. The fallback keeps
+ * unknown future values readable without exposing version prefixes or snake
+ * case to learners and parents.
+ *
+ * @param {string | null | undefined} activityType
+ * @returns {string}
+ */
+export function humanizeReportActivityType(activityType) {
+  const key = String(activityType || '').trim().toLocaleLowerCase('en');
+  if (!key) return 'learning';
+  if (REPORT_ACTIVITY_LABELS[key]) return REPORT_ACTIVITY_LABELS[key];
+
+  return key
+    .replace(/^v\d+[_\s-]+/, '')
+    .replaceAll(/[_-]+/g, ' ')
+    .replaceAll(/\s+/g, ' ')
+    .trim() || 'learning';
+}
+
 /**
  * @param {number} attempts
  * @param {string | null | undefined} attemptType
@@ -94,9 +133,8 @@ export function groupSkillEvidenceByLabel(skills, labelSkill) {
  */
 export function describeSavedAttempts(attempts, attemptType) {
   const count = Math.max(0, Number.isFinite(attempts) ? Math.trunc(attempts) : 0);
-  const kind = String(attemptType || 'learning').replaceAll('_', ' ').trim() || 'learning';
-  const alreadyNamesCheck = /\bcheck$/i.test(kind);
-  const noun = alreadyNamesCheck ? kind : `${kind} check`;
+  const kind = humanizeReportActivityType(attemptType);
+  const noun = /\bcheck$/i.test(kind) ? kind : `${kind} check`;
   return `${count} saved ${noun}${count === 1 ? '' : 's'}`;
 }
 

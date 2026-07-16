@@ -5,6 +5,7 @@ import {
   createLearnerSafeSkillLabeler,
   describeSavedAttempts,
   groupSkillEvidenceByLabel,
+  humanizeReportActivityType,
   reportPlacementContinuationOverride,
   resolveParentCurrentClassNo,
   selectLearnerPracticeChapter,
@@ -16,10 +17,17 @@ const read = (path) => fs.readFileSync(path, 'utf8');
 
 const learnerRoute = read('src/app/school/reports/page.tsx');
 const parentRoute = read('src/app/school/parent/page.tsx');
+const placementReportRoute = read('src/app/school/placement/report/page.tsx');
 const learnerReport = read('src/components/school/reports/LearnerGrowthSummary.tsx');
 const parentReport = read('src/components/school/reports/ParentGrowthReport.tsx');
 const reportEvidence = read('src/components/school/reports/reportEvidence.mjs');
-const productionSurface = [learnerRoute, parentRoute, learnerReport, parentReport].join('\n');
+const productionSurface = [
+  learnerRoute,
+  parentRoute,
+  placementReportRoute,
+  learnerReport,
+  parentReport,
+].join('\n');
 
 test('report skill labels come from authored level copy and never expose engine ids', () => {
   const labelSkill = createLearnerSafeSkillLabeler([
@@ -35,9 +43,17 @@ test('report skill labels come from authored level copy and never expose engine 
 });
 
 test('saved evidence copy stays grammatical for singular and repeated attempts', () => {
-  assert.equal(describeSavedAttempts(1, 'guided_check'), '1 saved guided check');
-  assert.equal(describeSavedAttempts(3, 'guided_check'), '3 saved guided checks');
+  assert.equal(describeSavedAttempts(1, 'guided_check'), '1 saved guided practice check');
+  assert.equal(describeSavedAttempts(3, 'guided_check'), '3 saved guided practice checks');
   assert.equal(describeSavedAttempts(2, ''), '2 saved learning checks');
+  assert.equal(describeSavedAttempts(2, 'v2_review'), '2 saved review checks');
+  assert.equal(describeSavedAttempts(1, 'v2_independent_application'), '1 saved independent application check');
+});
+
+test('report activity labels never expose version prefixes or snake case', () => {
+  assert.equal(humanizeReportActivityType('v2_co_construct'), 'coach-supported practice');
+  assert.equal(humanizeReportActivityType('v3_future_review'), 'future review');
+  assert.doesNotMatch(describeSavedAttempts(4, 'v3_future_review'), /\bv\d+\b|_/i);
 });
 
 test('report evidence groups related skill ids without double-counting tagged attempts', () => {
@@ -315,9 +331,8 @@ test('learner report leads with child-friendly growth, practice, and one next ch
   for (const contract of [
     'SchoolPageHeading',
     'SchoolDisclosure',
-    'SchoolCoachPanel',
     'getSchoolAvatarTheme',
-    'What you have achieved',
+    'Completed milestones',
     'Your current focus',
     'Starting point found',
     'Readiness path complete',
@@ -339,7 +354,7 @@ test('learner report leads with child-friendly growth, practice, and one next ch
   assert.match(learnerReport, /groupSkillEvidenceByLabel/);
   assert.match(learnerReport, /createLearnerSafeSkillLabeler/);
   assert.doesNotMatch(learnerReport, /latest saved answer|answer, [“\"]/i);
-  assert.match(learnerReport, /<SchoolCoachPanel[\s\S]*?compact/);
+  assert.doesNotMatch(learnerReport, /SchoolCoachPanel/);
   assert.equal(learnerReport.match(/onClick=\{onNextAction\}/g)?.length, 1);
 });
 
@@ -355,12 +370,10 @@ test('parent first viewport answers position, change, attention, and this week b
   for (const contract of [
     'SchoolPageHeading',
     'SchoolDisclosure',
-    'SchoolCoachPanel',
     'getSchoolAvatarTheme',
     'Current chapter',
     'Chapters complete',
     'Confirmed skills',
-    'Current focus',
     'Recommended next action',
     "resolution === 'capped_out'",
     'recapSession',
@@ -369,7 +382,7 @@ test('parent first viewport answers position, change, attention, and this week b
   ]) {
     assert.match(parentReport, new RegExp(contract));
   }
-  assert.match(parentReport, /<SchoolCoachPanel[\s\S]*?compact/);
+  assert.doesNotMatch(parentReport, /SchoolCoachPanel/);
   assert.match(parentReport, /createLearnerSafeSkillLabeler/);
   assert.match(parentReport, /chapter_assessment\?\.last_result/);
   assert.match(parentReport, /groupSkillEvidenceByLabel/);
@@ -379,9 +392,8 @@ test('parent first viewport answers position, change, attention, and this week b
 
 test('parent report keeps methodology and evidence density in native disclosures', () => {
   for (const title of [
-    'How the starting point was chosen',
+    'Starting-point evidence',
     'Complete chapter list',
-    'Placement evidence detail',
     'Skill evidence history',
     'Support history and limits',
     'Report limitations',
@@ -402,8 +414,23 @@ test('parent report keeps methodology and evidence density in native disclosures
   assert.match(parentReport, /readinessPathComplete/);
   assert.match(parentReport, /resolveParentCurrentClassNo/);
   assert.match(parentReport, /historical starting-point evidence, not a current gap/);
-  assert.match(parentReport, /Not decided/);
   assert.match(parentReport, /Preliminary misses are not presented as lasting weaknesses/);
+});
+
+test('report layouts keep evidence readable at narrow widths without duplicating summary rows', () => {
+  assert.match(parentReport, /grid grid-cols-1 border-y border-slate-200 text-sm sm:grid-cols-2/);
+  assert.match(parentReport, /tabular-nums/);
+  assert.match(learnerReport, /px-4 pb-24/);
+  assert.match(placementReportRoute, /max-w-\[1180px\]/);
+
+  assert.equal(learnerReport.match(/title="Your current focus"/g)?.length ?? 0, 0);
+  assert.equal(parentReport.match(/title="Placement evidence detail"/g)?.length ?? 0, 0);
+  assert.doesNotMatch(placementReportRoute, /Evidence summary\. No mark\./);
+  assert.doesNotMatch(placementReportRoute, />Current next step</);
+
+  for (const surface of [learnerReport, parentReport, placementReportRoute]) {
+    assert.match(surface, /break-words/);
+  }
 });
 
 test('missing evidence stays honest without developer-facing synthesis', () => {

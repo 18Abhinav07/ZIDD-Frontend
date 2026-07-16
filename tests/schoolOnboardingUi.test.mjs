@@ -42,9 +42,9 @@ test('onboarding uses the canonical editorial frame with one page title and one 
   assert.match(page, /max-w-\[1240px\]/);
   assert.match(page, /School, shaped around you/);
   assert.match(page, /Set up learning around school, language, and goals\./);
-  assert.match(page, /Five short steps give the teacher enough context to begin well\./);
+  assert.match(page, /Five short steps save the class, language, and learning preferences\./);
   assert.match(page, /<SchoolPageHeading/);
-  assert.match(page, /<SchoolCoachPanel[\s\S]*?compact/);
+  assert.doesNotMatch(page, /SchoolCoachPanel/);
   assert.match(page, /<SchoolOnboardingWizard \/>/);
   assert.doesNotMatch(page, /rounded-3xl|lg:grid-cols-\[minmax\(0,1fr\)_320px\]/);
   assert.doesNotMatch(wizard, /<h1\b/);
@@ -66,9 +66,9 @@ test('onboarding keeps every real setup field and backend catalog authority', ()
     assert.match(`${wizard}\n${setup}`, new RegExp(field));
   }
   assert.match(wizard, /getSchoolCatalog/);
-  assert.match(setup, /catalog\.boards\.map/);
-  assert.match(setup, /selectedBoard\.subjects\.map/);
-  assert.match(setup, /selectedSubject\.classes\.map/);
+  assert.match(setup, /availableBoards\.map/);
+  assert.match(setup, /selectedBoard\.subjects\.filter/);
+  assert.match(setup, /selectedSubject\.classes[\s\S]*?\.filter/);
   assert.match(setup, /isSchoolCatalogSupportAvailable/);
   assert.doesNotMatch(setup, /BOARD_OPTIONS|CLASS_OPTIONS/);
 });
@@ -76,7 +76,7 @@ test('onboarding keeps every real setup field and backend catalog authority', ()
 test('onboarding uses the shared School theme and Radix icon vocabulary', () => {
   assert.match(page, /getSchoolAvatarTheme\(null, null\)/);
   assert.match(page, /style=\{theme\.style\}/);
-  assert.match(page, /<SchoolCoachPanel/);
+  assert.doesNotMatch(page, /SchoolCoachPanel/);
   assert.match(wizard, /schoolPrimaryActionClass/);
   assert.match(wizard, /schoolSecondaryActionClass/);
   assert.match(wizard, /<SchoolStatusChip/);
@@ -114,7 +114,7 @@ test('onboarding checks backend navigation authority and exposes loading, saved,
 test('explicit active-profile editing is narrow and does not bypass activation recovery', () => {
   assert.match(
     schoolHome,
-    /onChangeSetup=\{\(\) => router\.push\('\/school\/onboarding\?intent=edit_profile&step=2'\)\}/,
+    /onChangeSetup=\{\(\) => router\.push\(schoolProfileEditHref\(\)\)\}/,
   );
   assert.match(wizard, /searchParams\.get\('intent'\) === 'edit_profile'/);
   assert.match(

@@ -30,16 +30,15 @@ test('tutor workspace loads backend state and the exact curriculum session, then
 });
 
 test('workspace composes the shared coach, activity, and chapter progress regions', () => {
-  assert.match(workspace, /from '@\/components\/learning\/LearningWorkspace'/);
+  assert.match(workspace, /from '@\/components\/school\/SchoolLearningWorkspace'/);
   assert.match(workspace, /from '@\/components\/school\/SchoolCoachPanel'/);
-  assert.match(workspace, /<LearningWorkspace/);
-  assert.match(workspace, /coach={<SchoolCoachPanel/);
+  assert.match(workspace, /<SchoolLearningWorkspace/);
+  assert.match(workspace, /<SchoolCoachPanel/);
   assert.match(workspace, /progress={<SchoolProgressRail/);
   assert.match(workspace, /<SchoolActivityRenderer/);
   assert.match(workspace, /chapterMapHref/);
-  assert.match(progress, /aria-current={current \? 'step' : undefined}/);
-  assert.match(workspace, /const learnerStage =/);
-  assert.match(workspace, /eyebrow={`\$\{session\.chapter\.title\} · \$\{learnerStage\}`}/);
+  assert.match(progress, /role="progressbar"/);
+  assert.doesNotMatch(workspace, /const learnerStage =|eyebrow=/);
   assert.match(workspace, /title={activity\?\.title \|\| session\.chapter\.title}/);
 });
 
@@ -52,30 +51,24 @@ test('activity renderer translates engine activity kinds and renders the complet
     'Try it yourself',
     'Use it somewhere new',
     'Chapter challenge',
-    'Chapter complete',
   ]) {
     assert.match(renderer, new RegExp(label));
   }
 
-  for (const field of [
-    'teaching_block',
-    'passage',
-    'prompt',
-    'options',
-    'last_feedback',
-    'chapter_assessment',
-  ]) {
+  for (const field of ['passage', 'prompt', 'options']) {
     assert.match(renderer, new RegExp(field));
   }
+
+  assert.doesNotMatch(renderer, /teaching_block|last_feedback|Coach clue|school-tutor-feedback/);
+  assert.match(workspace, /teachingBlock: activity\?\.teaching_block/);
+  assert.match(workspace, /selectVisibleSchoolCoachFeedback\(activity\?\.activity_id, session\.last_feedback\)/);
+  assert.match(workspace, /feedback: visibleFeedback\?\.message/);
 
   assert.doesNotMatch(renderer, /\{activity\.kind\}/);
   assert.doesNotMatch(renderer, /kind\.replaceAll/);
   assert.doesNotMatch(renderer, /memory_summary/);
   assert.doesNotMatch(renderer, /\bEMA\b|evidence field|certification/i);
-  assert.match(
-    renderer,
-    /activity\.kind === 'chapter_check' \? 'Instructions' : 'Coach clue'/,
-  );
+  assert.match(workspace, /resolveSchoolCoachPresentation/);
 });
 
 test('v2 explicit Continue steps preserve answer interactions and suppress stale non-scored feedback', () => {
@@ -118,18 +111,14 @@ test('v2 explicit Continue steps preserve answer interactions and suppress stale
   assert.match(continueBranch, /onSubmit\(TEACHING_STEP_ACKNOWLEDGEMENT\)/);
   assert.match(continueBranch, />Continue</);
   assert.doesNotMatch(continueBranch, /<input|<textarea|Think and answer|Your answer|Check my answer/);
-  assert.match(
-    renderer,
-    /const priorFeedback = session\.last_feedback[\s\S]*?session\.last_feedback\.result_visible !== false[\s\S]*?\? session\.last_feedback/,
-  );
+  assert.match(workspace, /feedback: visibleFeedback\?\.message/);
 });
 
-test('progress keeps backend stage, activity, and memory context compact and secondary', () => {
+test('progress exposes only the compact backend completion count', () => {
   assert.match(progress, /session\.progress\.current_level_index/);
-  assert.match(progress, /session\.current_activity/);
-  assert.match(progress, /memory_summary\?\.active_gaps/);
-  assert.match(progress, /What I am watching/);
-  assert.match(progress, /data-testid="school-tutor-memory"/);
+  assert.match(progress, /session\.progress\.completed_levels/);
+  assert.match(progress, /session\.progress\.total_levels/);
+  assert.doesNotMatch(progress, /session\.current_activity|memory_summary|session\.levels\.map|<details/);
 });
 
 test('answer submission keeps backend activity idempotency, local evaluator allowance, and single-flight polling', () => {
@@ -139,14 +128,14 @@ test('answer submission keeps backend activity idempotency, local evaluator allo
   assert.match(workspace, /curriculumActivityView/);
   assert.match(workspace, /startSingleFlightRevalidation/);
   assert.match(service, /answerSchoolCurriculum[\s\S]*?schoolEvaluatorFetch\(/);
-  assert.match(service, /schoolEvaluatorFetch[\s\S]*?SCHOOL_LOCAL_EVALUATOR_UNBOUNDED[\s\S]*?null/);
+  assert.match(service, /schoolEvaluatorFetch[\s\S]*?SCHOOL_LOCAL_REQUESTS_UNBOUNDED[\s\S]*?null/);
   assert.doesNotMatch(workspace, /Promise\.race|setTimeout\(/);
 });
 
 test('pending evaluation uses a message skeleton and one stable pending label without a spinner', () => {
   assert.match(renderer, /data-testid="school-tutor-message-skeleton"/);
-  assert.match(renderer, /Checking your answer/);
-  assert.match(renderer, /pendingLabel="Checking your answer"/);
+  assert.match(workspace, /I am reviewing your answer/);
+  assert.doesNotMatch(renderer, /pendingLabel=/);
   assert.doesNotMatch(renderer, /Loader2/);
 });
 
@@ -177,5 +166,5 @@ test('owned tutor production uses shared actions, Radix icons, and semantic Scho
   assert.match(renderer, /schoolPrimaryActionClass/);
   assert.match(renderer, /schoolSecondaryActionClass/);
   assert.match(owned, /@radix-ui\/react-icons/);
-  assert.doesNotMatch(owned, /lucide-react|font-black|gradient|border-l-[2-9]|(?:rose|sky|cyan|emerald|amber)-/i);
+  assert.doesNotMatch(owned, /lucide-react|font-black|gradient|(?:rose|sky|cyan|emerald|amber)-/i);
 });

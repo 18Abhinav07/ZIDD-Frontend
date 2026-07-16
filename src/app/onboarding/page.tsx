@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
 import { motion } from 'framer-motion';
 import {
   ArrowRight,
@@ -10,7 +9,6 @@ import {
   Check,
   GraduationCap,
   Loader2,
-  Sparkles,
   UserRound,
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
@@ -20,8 +18,6 @@ import {
   getOnboardingState,
   saveOnboardingDraft,
 } from '@/services/onboarding';
-import { getRandomAvatar, type AvatarData } from '@/lib/avatars';
-import { getAvatarScaleClass } from '@/lib/avatarRegistry';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 
 function cn(...inputs: ClassValue[]) {
@@ -57,7 +53,6 @@ function splitList(value: string): string[] {
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const [avatar, setAvatar] = useState<AvatarData | null>(null);
   const [step, setStep] = useState<Step>('welcome');
   const [motive, setMotive] = useState<Motive>(null);
   const [displayName, setDisplayName] = useState('');
@@ -72,10 +67,6 @@ export default function OnboardingPage() {
   const [saving, setSaving] = useState(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    setAvatar(getRandomAvatar());
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -230,42 +221,7 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-[0.9fr_1.1fr] gap-8 lg:gap-12 items-stretch">
-          <motion.section
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="relative min-h-[500px] rounded-[2rem] overflow-hidden text-white"
-            style={{ backgroundColor: avatar?.bg || '#4F46E5' }}
-          >
-            <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-white/10" />
-            {avatar && (
-              <div className="absolute bottom-[-26px] right-[-20px] w-[78%] h-[86%] pointer-events-none">
-                <Image
-                  src={avatar.url}
-                  alt="Zidd coach avatar"
-                  fill
-                  sizes="(max-width: 1024px) 80vw, 420px"
-                  className={cn("object-contain object-bottom drop-shadow-2xl", getAvatarScaleClass(avatar.url))}
-                  priority
-                  unoptimized
-                />
-              </div>
-            )}
-            <div className="relative z-10 p-8 lg:p-10 max-w-sm">
-              <span className="inline-flex items-center gap-2 rounded-full bg-white/15 border border-white/20 px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em]">
-                <Sparkles className="h-3.5 w-3.5" />
-                Welcome
-              </span>
-              <h1 className="mt-8 font-display text-5xl leading-none">
-                Let me get to know you first.
-              </h1>
-              <p className="mt-5 text-white/80 text-[15px] leading-relaxed font-medium">
-                We will set up Zidd around your actual goal instead of throwing every module at you.
-              </p>
-            </div>
-          </motion.section>
-
+        <div className="mx-auto max-w-[760px]">
           <motion.section
             key={step}
             initial={{ opacity: 0, x: 16 }}
@@ -278,7 +234,7 @@ export default function OnboardingPage() {
                 <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-indigo-500">Step 1</span>
                 <h2 className="mt-3 font-display text-4xl leading-tight">What should I call you?</h2>
                 <p className="mt-3 text-sm leading-relaxed text-slate-500">
-                  This name is used by the tutor, dashboard, and profile. Your Google email stays attached to the account.
+                  This name appears across your dashboard and profile. Your Google email stays attached to the account.
                 </p>
                 <label className="mt-10 block">
                   <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Username</span>
@@ -321,7 +277,7 @@ export default function OnboardingPage() {
                       <div>
                         <h3 className="font-bold text-xl">School English</h3>
                         <p className="mt-1 text-sm leading-relaxed text-slate-500">
-                          NCERT-style chapters, tests, weak-skill review, and a personal tutor.
+                          English chapters, readiness checks, and focused skill practice.
                         </p>
                       </div>
                     </div>
@@ -393,7 +349,7 @@ export default function OnboardingPage() {
             {step === 'career' && (
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-indigo-500">Career profile</span>
-                <h2 className="mt-3 font-display text-4xl leading-tight">Give the coach enough context.</h2>
+                <h2 className="mt-3 font-display text-4xl leading-tight">Add context for focused practice.</h2>
                 <p className="mt-3 text-sm leading-relaxed text-slate-500">
                   Resume details are optional, but they make interview and GD practice much sharper.
                 </p>

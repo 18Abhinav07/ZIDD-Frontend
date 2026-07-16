@@ -1,6 +1,5 @@
 "use client";
 
-import Image from 'next/image';
 import type { ReactNode, RefObject } from 'react';
 import {
   ArrowLeftIcon,
@@ -10,20 +9,17 @@ import {
   ClockIcon,
   ExclamationTriangleIcon,
   FileTextIcon,
-  InfoCircledIcon,
   MagicWandIcon,
   PaperPlaneIcon,
   PauseIcon,
   ReloadIcon,
   StopIcon,
 } from '@radix-ui/react-icons';
-import {
-  SchoolStatusChip,
-  schoolPrimaryActionClass,
-  schoolSecondaryActionClass,
-} from '@/components/school/SchoolPrimitives';
-import { getAvatarScaleClass } from '@/lib/avatarRegistry';
+import { SchoolCoachPanel } from '@/components/school/SchoolCoachPanel';
+import { SchoolLearningWorkspace } from '@/components/school/SchoolLearningWorkspace';
+import { schoolPrimaryActionClass, schoolSecondaryActionClass } from '@/components/school/SchoolPrimitives';
 import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
+import { resolveSchoolCoachPresentation } from '@/lib/schoolTeachingPresentation';
 import type { SchoolPlacementResponse } from '@/services/schoolRebuild';
 
 type PlacementStage = SchoolPlacementResponse['stage'];
@@ -161,50 +157,17 @@ function ActionButton({
 export function SchoolPlacementSkeleton() {
   return (
     <main
-      className="mx-auto grid min-h-[calc(100dvh-68px)] w-full max-w-[1240px] items-center gap-10 px-4 py-12 sm:px-7 lg:grid-cols-[minmax(0,1.08fr)_minmax(340px,0.72fr)] lg:px-10"
+      className="mx-auto flex min-h-[calc(100dvh-68px)] w-full max-w-[900px] items-center px-4 py-12 sm:px-7 lg:px-10"
       aria-busy="true"
       aria-label="Loading starting-point check"
     >
-      <div className="space-y-5">
+      <div className="w-full space-y-5">
         <div className="h-3 w-44 animate-pulse rounded-full bg-slate-200 motion-reduce:animate-none" />
         <div className="h-16 w-full max-w-xl animate-pulse rounded-2xl bg-slate-100 motion-reduce:animate-none" />
         <div className="h-4 w-full max-w-lg animate-pulse rounded-full bg-slate-100 motion-reduce:animate-none" />
         <div className="h-11 w-40 animate-pulse rounded-xl bg-slate-200 motion-reduce:animate-none" />
       </div>
-      <div className="mx-auto h-[370px] w-full max-w-[420px] animate-pulse rounded-t-[48%] rounded-b-[30px] border border-slate-200 bg-slate-100 motion-reduce:animate-none lg:h-[520px]" />
     </main>
-  );
-}
-
-function PlacementCoachScene({
-  avatarId,
-  paletteId,
-}: {
-  avatarId: string | null | undefined;
-  paletteId: string | null | undefined;
-}) {
-  const theme = getSchoolAvatarTheme(avatarId, paletteId);
-
-  return (
-    <div
-      className="relative mx-auto min-h-[370px] w-full max-w-[450px] overflow-hidden rounded-t-[48%] rounded-b-[30px] border border-[var(--school-accent-border)] bg-[var(--school-accent-soft)] lg:min-h-[520px]"
-      style={theme.style}
-    >
-      <span aria-hidden="true" className="absolute left-1/2 top-14 h-[min(72vw,300px)] w-[min(72vw,300px)] -translate-x-1/2 rounded-full border border-[var(--school-accent-border)] opacity-80" />
-      <span aria-hidden="true" className="absolute left-1/2 top-24 h-[min(52vw,214px)] w-[min(52vw,214px)] -translate-x-1/2 rounded-full border border-[var(--school-accent-border)] opacity-55" />
-      <div className="absolute right-4 top-7 z-20 max-w-[142px] rounded-xl border border-[var(--school-accent-border)] bg-[var(--school-paper)] px-3 py-2.5 shadow-[0_12px_30px_rgba(30,37,63,0.08)] sm:right-6">
-        <strong className="block text-[11px] font-semibold text-slate-700">Your coach</strong>
-        <span className="mt-1 block text-[10px] leading-4 text-slate-500">I will guide each prompt.</span>
-      </div>
-      <Image
-        src={theme.avatar.url}
-        alt="Your Zidd School coach ready to guide the starting point"
-        fill
-        sizes="(max-width: 860px) 92vw, 450px"
-        className={`z-10 object-contain object-bottom ${getAvatarScaleClass(theme.avatar.url)}`}
-        priority
-      />
-    </div>
   );
 }
 
@@ -346,8 +309,8 @@ export function SchoolPlacementActivity({
 
   if (!placement) {
     return (
-      <main className="mx-auto grid min-h-[calc(100dvh-68px)] w-full max-w-[1240px] items-center gap-10 px-4 py-10 sm:px-7 sm:py-14 lg:grid-cols-[minmax(0,1.08fr)_minmax(380px,0.72fr)] lg:gap-[clamp(3.5rem,8vw,7rem)] lg:px-10">
-        <section className="min-w-0">
+      <main className="mx-auto flex min-h-[calc(100dvh-68px)] w-full max-w-[900px] items-center px-4 py-10 sm:px-7 sm:py-14 lg:px-10">
+        <section className="w-full min-w-0">
           <p className="font-mono text-[10px] font-semibold uppercase text-[var(--school-accent-deep)]">Find the right first step</p>
           <h1 className="mt-3 max-w-[650px] font-display text-[3rem] font-normal leading-[0.98] text-slate-950 sm:text-[4rem]">
             A starting point, not a test.
@@ -374,55 +337,71 @@ export function SchoolPlacementActivity({
             <span>About 8 minutes. Pause whenever you need.</span>
           </p>
         </section>
-        <PlacementCoachScene avatarId={coachAvatarId} paletteId={coachPaletteId} />
       </main>
     );
   }
 
   if (item) {
+    const theme = getSchoolAvatarTheme(coachAvatarId, coachPaletteId);
+    const coachPresentation = resolveSchoolCoachPresentation({
+      status: submitting ? 'Reviewing your answer' : 'Question ready',
+      fallbackMessage: item.instruction,
+      activityKey: item.item_id,
+      teachingBlock: item.support,
+      pendingMessage: submitting
+        ? 'I am reviewing your answer. Keep this page open while the next prompt is prepared.'
+        : null,
+      error,
+    });
+
     return (
-      <main className="mx-auto min-h-[calc(100dvh-68px)] w-full max-w-[940px] px-4 pb-16 pt-8 sm:px-7 lg:px-10 lg:pt-10">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <button
-            type="button"
-            onClick={onReturnToSchool}
-            className="inline-flex min-h-11 items-center gap-2 self-start px-1 text-xs font-semibold text-slate-600 hover:text-slate-950"
-          >
-            <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />
-            School
-          </button>
-          <PlacementStageRail placement={placement} />
-        </div>
-
-        <article data-testid="school-placement-card" className="mt-6 overflow-hidden rounded-[28px] border border-[var(--school-line)] bg-[var(--school-paper)] shadow-[var(--school-shadow)]">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--school-line)] px-5 py-3 sm:px-8">
-            <div>
-              <p className="font-mono text-[10px] font-semibold uppercase text-[var(--school-accent-deep)]">{placementStageLabel(placement.stage)}</p>
-              <p className="mt-1 text-xs text-slate-500">{placement.answered_count} answered so far</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onRequestAbandon}
-                disabled={submitting}
-                className="inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-              >
-                <StopIcon className="h-4 w-4" aria-hidden="true" />
-                Stop for now
-              </button>
-              <button
-                type="button"
-                onClick={onRefresh}
-                disabled={submitting}
-                aria-label="Refresh starting-point check"
-                title="Refresh starting-point check"
-                className="flex h-11 w-11 items-center justify-center rounded-lg border border-[var(--school-line)] text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-              >
-                <ReloadIcon className="h-4 w-4" aria-hidden="true" />
-              </button>
-            </div>
-          </div>
-
+      <SchoolLearningWorkspace
+        title={item.prompt}
+        onBack={onReturnToSchool}
+        backLabel="Return to School"
+        coach={(
+          <SchoolCoachPanel
+            avatarId={coachAvatarId}
+            paletteId={coachPaletteId}
+            status={coachPresentation.status}
+            note={coachPresentation.message}
+            hint={coachPresentation.hint}
+            tone={coachPresentation.tone}
+            variant="immersive"
+          />
+        )}
+        progress={<PlacementStageRail placement={placement} />}
+        actions={(
+          <>
+            <button
+              type="button"
+              onClick={onRequestAbandon}
+              disabled={submitting}
+              aria-label="Stop starting-point check"
+              title="Stop starting-point check"
+              className="flex h-11 w-11 items-center justify-center rounded-lg border border-[var(--school-line)] text-slate-600 transition-[background-color,border-color,color,transform] hover:border-[var(--school-accent)] hover:bg-[var(--school-accent-soft)] hover:text-[var(--school-accent-deep)] active:translate-y-px disabled:opacity-50"
+            >
+              <StopIcon className="h-4 w-4" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={submitting}
+              aria-label="Refresh starting-point check"
+              title="Refresh starting-point check"
+              className="flex h-11 w-11 items-center justify-center rounded-lg border border-[var(--school-line)] text-slate-600 transition-[background-color,border-color,color,transform] hover:border-[var(--school-accent)] hover:bg-[var(--school-accent-soft)] hover:text-[var(--school-accent-deep)] active:translate-y-px disabled:opacity-50"
+            >
+              <ReloadIcon className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </>
+        )}
+        progressLabel="Starting-point progress"
+        workspaceLabel="Starting-point activity"
+        className="mode-school bg-background font-body"
+        themeStyle={theme.style}
+        rootDataAttributes={{ 'data-school-region': 'placement-workspace' }}
+      >
+        <article data-testid="school-placement-card" className="flex min-h-full flex-col">
           {confirmingAbandon ? (
             <section role="region" aria-labelledby="stop-starting-point-title" className="border-b border-orange-200 bg-orange-50 px-5 py-5 text-orange-950 sm:px-8">
               <h2 id="stop-starting-point-title" className="text-base font-semibold">Stop this starting point?</h2>
@@ -438,11 +417,8 @@ export function SchoolPlacementActivity({
 
           <div className="px-5 py-7 sm:px-10 sm:py-10">
             <div className="mx-auto max-w-3xl">
-              <SchoolStatusChip>{item.learner_skill_label}</SchoolStatusChip>
-              <p data-testid="school-placement-instruction" className="mt-3 text-sm leading-6 text-slate-600">{item.instruction}</p>
-
               {item.passage ? (
-                <div className="mt-6 border-l-2 border-[var(--school-accent-border)] pl-5">
+                <div className="border-l-2 border-[var(--school-accent-border)] pl-5">
                   <p className="font-mono text-[10px] font-semibold uppercase text-slate-500">Read this</p>
                   <p data-testid="school-placement-passage" className="mt-3 font-display text-[1.4rem] font-normal leading-8 text-slate-800 sm:text-[1.6rem]">{item.passage}</p>
                 </div>
@@ -513,19 +489,10 @@ export function SchoolPlacementActivity({
                 </div>
               )}
 
-              {item.support ? (
-                <div data-testid="school-placement-support" className="mt-5 flex items-start gap-3 border-y border-[var(--school-line)] py-3 text-sm leading-6 text-slate-600">
-                  <InfoCircledIcon className="mt-1 h-4 w-4 flex-none text-[var(--school-accent-deep)]" aria-hidden="true" />
-                  <p>{item.support}</p>
-                </div>
-              ) : <div data-testid="school-placement-support" className="sr-only">No extra prompt support was provided.</div>}
-
-              {submitting ? <p role="status" aria-live="polite" className="mt-5 text-sm font-semibold text-[var(--school-accent-deep)]">Your answer is being checked. Please keep this page open.</p> : null}
-              {error ? <p role="alert" className="mt-5 border-y border-red-200 bg-red-50 px-3 py-3 text-sm font-semibold text-red-800">{error}</p> : null}
             </div>
           </div>
         </article>
-      </main>
+      </SchoolLearningWorkspace>
     );
   }
 
@@ -536,14 +503,15 @@ export function SchoolPlacementActivity({
         tone="success"
         eyebrow="Starting point saved"
         title="Your first learning path is ready"
-        body="Your report explains what the saved evidence supports and shows the next School step authorized by the backend."
+        body="Your report explains what you are ready to learn now and the next step on your School path."
         icon={<CheckCircledIcon className="h-6 w-6" />}
         note="This is an evidence summary, not a mark or rank."
       >
-        <ActionButton icon={<ReloadIcon className="h-4 w-4" />} onClick={onRefresh}>Open current School step</ActionButton>
         {reportAvailable ? (
-          <ActionButton tone="secondary" icon={<FileTextIcon className="h-4 w-4" />} onClick={onViewReport}>See my starting point</ActionButton>
-        ) : null}
+          <ActionButton icon={<FileTextIcon className="h-4 w-4" />} onClick={onViewReport}>See my starting point</ActionButton>
+        ) : (
+          <ActionButton icon={<ArrowRightIcon className="h-4 w-4" />} onClick={onRefresh}>Continue to my School path</ActionButton>
+        )}
       </PlacementTerminal>
     );
   }

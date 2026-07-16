@@ -28,7 +28,7 @@ test('recap is a focused readiness workspace with backend-owned progression', as
     'router.replace(destination)',
     "decision.kind === 'load_session'",
     'activity.can_answer',
-    'path.modules.map',
+    'resolveSchoolCoachPresentation',
     'school-recap-complete',
     'A short bridge to your class',
     'Start recap path',
@@ -40,6 +40,7 @@ test('recap is a focused readiness workspace with backend-owned progression', as
   }
 
   assert.ok(recap.includes('progress={path ? <ReadinessProgress'), 'recap must use the workspace progress rail');
+  assert.ok(!recap.includes('path.modules.map'), 'module titles must not be repeated inside the compact progress strip');
   assert.ok(!recap.includes('Loader2'));
   assert.ok(!recap.includes('animate-spin'));
   assert.ok(!recap.includes('backend-authorized'));
@@ -74,12 +75,12 @@ test('masterclass shows linked lesson context and preserves resume and abandon m
     "case 'confirm_abandon':",
     "case 'resume':",
     'curriculum?.chapter.title',
-    'level.level_id === session.level_id',
+    'resolveSchoolCoachPresentation',
     'resumeSchoolCurriculumMasterclass',
     'abandonSchoolCurriculumMasterclass',
     'school-masterclass-complete',
     'Return without finishing',
-    'This support visit will still count',
+    'This support visit will count',
     'Leave and return',
     'Keep practising',
     '<dialog',
@@ -96,7 +97,7 @@ test('masterclass shows linked lesson context and preserves resume and abandon m
   assert.ok(!masterclass.includes('Loader2'));
   assert.ok(!masterclass.includes('animate-spin'));
   assert.ok(!masterclass.includes('Chapter detour'));
-  assert.match(masterclassChrome, /text-\[var\(--school-accent-deep\)\]/);
+  assert.match(masterclassChrome, /bg-\[var\(--school-accent-soft\)\]/);
   assert.doesNotMatch(masterclassChrome, /(?:text|border|bg)-orange-/);
   assert.ok(!/lucide-react|font-black|gradient|border-l-[2-9]|(?:rose|sky|cyan|emerald|amber)-/i.test(masterclass));
 });
@@ -109,18 +110,14 @@ test('terminal support opens an evidence-backed plan instead of redirecting to S
     'getSchoolState({ force: true })',
     'getSchoolSupportPlan(sessionId)',
     "state.active_flow !== 'support'",
-    'supportPlan.coach_avatar_id',
-    'supportPlan.coach_palette_id',
     'supportPlan.focus',
-    'supportPlan?.cap',
-    'supportPlan?.history',
     'continueSchoolCurriculumAfterSupportCap(sessionId)',
     "router.replace(`/school/session/${continued.session_id}`)",
     'Continue this lesson',
     'Continuing lesson',
-    'A different route will help here.',
+    'See what to practise next.',
+    'There is no lost work and no penalty for taking a different route.',
     "router.push('/school/reports')",
-    "router.push('/school/parent')",
     'SchoolReportSkeleton',
   ]) {
     assert.ok(support.includes(contract), `support plan contract missing ${contract}`);
@@ -129,6 +126,10 @@ test('terminal support opens an evidence-backed plan instead of redirecting to S
   assert.ok(!support.includes('answer_key'));
   assert.ok(!support.includes('getSchoolCurriculumSession'));
   assert.ok(!support.includes('getActiveSchoolRecap'));
+  assert.ok(!support.includes('SchoolCoachPanel'));
+  assert.ok(!support.includes("router.push('/school/parent')"));
+  assert.ok(!support.includes('supportPlan?.cap'));
+  assert.ok(!support.includes('supportPlan?.history'));
   assert.match(service, /export interface SchoolSupportPlan extends SchoolCoachIdentity/);
   assert.match(service, /flow_type: 'support'/);
   assert.match(service, /parent_flow_type: 'curriculum' \| 'recap' \| 'readiness'/);
@@ -142,17 +143,10 @@ test('terminal support opens an evidence-backed plan instead of redirecting to S
 
 test('support activity retains browser selectors and duplicate-submit controls', async () => {
   const activity = await source(activityPath);
-  const masterclassToneChrome = activity.match(
-    /\{isFocusedSupport \? \([\s\S]*?\) : null}/,
-  )?.[0] ?? '';
-
   for (const contract of [
     'data-testid={`${testIdPrefix}-card`}',
-    'data-testid={`${testIdPrefix}-kind`}',
-    'data-testid={`${testIdPrefix}-teaching`}',
     'data-testid={`${testIdPrefix}-passage`}',
     'data-testid={`${testIdPrefix}-question`}',
-    'data-testid={`${testIdPrefix}-feedback`}',
     'disabled={submitting}',
     "if (event.key === 'Enter') onSubmit();",
     "submitting ? 'Checking your answer' : 'Check my answer'",
@@ -164,7 +158,6 @@ test('support activity retains browser selectors and duplicate-submit controls',
   assert.ok(!activity.includes('animate-spin'));
   assert.ok(activity.includes("from '@radix-ui/react-icons'"));
   assert.ok(activity.includes('schoolPrimaryActionClass'));
-  assert.match(masterclassToneChrome, /text-\[var\(--school-accent-deep\)\]/);
-  assert.doesNotMatch(masterclassToneChrome, /(?:text|border|bg)-orange-/);
+  assert.doesNotMatch(activity, /kindLabel|teachingBlock|feedback\.message|Coach clue/);
   assert.ok(!/lucide-react|font-black|gradient|(?:rose|sky|cyan|emerald|amber)-/i.test(activity));
 });

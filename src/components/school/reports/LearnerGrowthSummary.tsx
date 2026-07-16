@@ -7,7 +7,6 @@ import {
   RowsIcon,
   TargetIcon,
 } from '@radix-ui/react-icons';
-import { SchoolCoachPanel } from '@/components/school/SchoolCoachPanel';
 import {
   SchoolDisclosure,
   SchoolPageHeading,
@@ -176,25 +175,18 @@ export function LearnerGrowthSummary({
 
   return (
     <main
-      className="mx-auto w-full max-w-[1180px] overflow-x-hidden px-5 pb-24 pt-14 sm:px-8 sm:pt-16 lg:px-12"
+      className="mx-auto w-full max-w-[1180px] overflow-x-hidden px-4 pb-24 pt-12 sm:px-8 sm:pt-16 lg:px-12"
       style={theme.style}
     >
       <header className="flex flex-col gap-6 border-b border-slate-200 pb-9 md:flex-row md:items-end md:justify-between">
-        <div className="flex min-w-0 items-start gap-4">
-          <SchoolCoachPanel
-            avatarId={identity.coach_avatar_id}
-            paletteId={identity.coach_palette_id}
-            status="Growth report"
-            note={state.learner_message || 'Your saved work decides what comes next.'}
-            compact
-          />
+        <div className="min-w-0">
           <SchoolPageHeading
             eyebrow="Your growth"
             title={learnerName ? `${learnerName}, look what is changing.` : 'Look what is changing.'}
             description="This summary uses your saved readiness checks and chapter work."
           />
         </div>
-        <button type="button" onClick={onOpenParentView} className={schoolSecondaryActionClass}>
+        <button type="button" onClick={onOpenParentView} className={`${schoolSecondaryActionClass} w-full sm:w-auto`}>
           <PersonIcon className="h-4 w-4" aria-hidden="true" />
           Open parent view
         </button>
@@ -204,7 +196,7 @@ export function LearnerGrowthSummary({
         <section className="grid gap-5 border-b border-slate-200 py-8 md:grid-cols-[220px_minmax(0,1fr)]" aria-labelledby="learner-can-do-heading">
           <div>
             <p className="text-[11px] font-semibold uppercase text-teal-700">What you can do now</p>
-            <h2 id="learner-can-do-heading" className="mt-2 font-display text-[2rem] font-normal leading-[1.05] text-slate-950">
+            <h2 id="learner-can-do-heading" className="mt-2 break-words font-display text-[1.75rem] font-normal leading-[1.08] text-slate-950 sm:text-[2rem]">
               Your saved wins
             </h2>
           </div>
@@ -219,7 +211,7 @@ export function LearnerGrowthSummary({
             </ul>
           ) : (
             <div className="border-y border-slate-200 py-4">
-              <h3 className="font-semibold text-slate-950">
+              <h3 className="font-medium text-slate-950">
                 {placementReport?.placement_status === 'insufficient_evidence'
                   ? 'Not enough evidence yet'
                   : 'Your first saved win is still ahead'}
@@ -236,7 +228,7 @@ export function LearnerGrowthSummary({
         <section className="grid gap-5 border-b border-slate-200 py-8 md:grid-cols-[220px_minmax(0,1fr)]" aria-labelledby="learner-practice-heading">
           <div>
             <p className="text-[11px] font-semibold uppercase text-orange-800">What you are practising</p>
-            <h2 id="learner-practice-heading" className="mt-2 font-display text-[2rem] font-normal leading-[1.05] text-slate-950">
+            <h2 id="learner-practice-heading" className="mt-2 break-words font-display text-[1.75rem] font-normal leading-[1.08] text-slate-950 sm:text-[2rem]">
               Your current focus
             </h2>
           </div>
@@ -244,14 +236,14 @@ export function LearnerGrowthSummary({
             <div className="divide-y divide-slate-200 border-y border-slate-200">
               {practiceRows.map((focus) => (
                 <article key={focus.title} className="py-4">
-                  <h3 className="font-semibold text-slate-950">{focus.title}</h3>
+                  <h3 className="break-words font-medium text-slate-950">{focus.title}</h3>
                   <p className="mt-1 break-words text-sm leading-6 text-slate-600">{focus.detail}</p>
                 </article>
               ))}
             </div>
           ) : (
             <div className="border-y border-slate-200 py-4">
-              <h3 className="font-semibold text-slate-950">No current focus has been confirmed.</h3>
+              <h3 className="font-medium text-slate-950">No current focus has been confirmed.</h3>
               <p className="mt-1 text-sm leading-6 text-slate-600">
                 Zidd will wait for saved evidence before naming something to practise.
               </p>
@@ -263,14 +255,14 @@ export function LearnerGrowthSummary({
           <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase text-[var(--school-accent-deep)]">Your next challenge</p>
-              <h2 id="learner-next-heading" className="mt-2 font-display text-[2.15rem] font-normal leading-[1.05] text-slate-950">
+              <h2 id="learner-next-heading" className="mt-2 break-words font-display text-[1.85rem] font-normal leading-[1.08] text-slate-950 sm:text-[2.15rem]">
                 {nextStepOverride?.heading ?? nextActionLabel(state.next_action)}
               </h2>
               <p className="mt-3 max-w-[64ch] break-words text-sm leading-6 text-slate-600">
                 {nextStepOverride?.message || state.learner_message || 'Continue from the exact place saved in your learning path.'}
               </p>
             </div>
-            <button type="button" onClick={onNextAction} className={schoolPrimaryActionClass}>
+            <button type="button" onClick={onNextAction} className={`${schoolPrimaryActionClass} w-full sm:w-auto`}>
               {nextStepOverride?.actionLabel ?? nextActionLabel(state.next_action)}
               <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
             </button>
@@ -280,59 +272,43 @@ export function LearnerGrowthSummary({
 
       <section className="mt-10" aria-labelledby="learner-more-heading">
         <SchoolPageHeading
-          eyebrow="More from your report"
-          title="Open the detail when you need it."
+          eyebrow="Saved report details"
+          title="The evidence behind your progress."
           level="h2"
           size="section"
           id="learner-more-heading"
         />
         <div className="mt-6">
-          <SchoolDisclosure title="What you have achieved" summary="Saved readiness and completed chapter work">
+          <SchoolDisclosure title="Completed milestones" summary="Starting-point and completed chapter history">
             <div className="space-y-4">
               {placementReport && placementIsConclusive ? (
                 <div>
-                  <h3 className="font-semibold text-slate-950">Starting point found</h3>
+                  <h3 className="font-medium text-slate-950">Starting point found</h3>
                   <p className="mt-1">{placementReport.evidence_summary.total_attempts} readiness checks helped build your path.</p>
                 </div>
               ) : null}
               {readinessPathComplete ? (
                 <div>
-                  <h3 className="font-semibold text-slate-950">Readiness path complete</h3>
+                  <h3 className="font-medium text-slate-950">Readiness path complete</h3>
                   <p className="mt-1">The placement gap is part of your starting-point history, not your current focus.</p>
                 </div>
               ) : null}
               {completedChapters.length > 0 ? (
                 <div>
-                  <h3 className="font-semibold text-slate-950">Completed chapter work</h3>
+                  <h3 className="font-medium text-slate-950">Completed chapter work</h3>
                   <ul className="mt-2 list-disc space-y-1 pl-5">
                     {completedChapters.map((chapter) => <li key={chapter.chapter_id}>{chapter.title}</li>)}
                   </ul>
-                </div>
-              ) : null}
-              {latestAssessment?.passed && latestAssessmentPercent !== null && curriculumSession ? (
-                <div>
-                  <h3 className="font-semibold text-slate-950">Latest chapter challenge</h3>
-                  <p className="mt-1">
-                    {curriculumSession.chapter.title}: {latestAssessmentPercent}% across {curriculumSession.chapter_assessment?.total_items ?? 0} independent questions.
-                  </p>
                 </div>
               ) : null}
               {!placementReport && completedChapters.length === 0 ? <p>No deeper completed work is available yet.</p> : null}
             </div>
           </SchoolDisclosure>
 
-          <SchoolDisclosure title="Your current focus" summary="Only focus areas supported by current saved evidence">
-            {practiceRows.length > 0 ? (
-              <ul className="space-y-3">
-                {practiceRows.map((focus) => <li key={focus.title}><strong className="font-semibold text-slate-950">{focus.title}:</strong> {focus.detail}</li>)}
-              </ul>
-            ) : <p>No current focus has been confirmed.</p>}
-          </SchoolDisclosure>
-
           {limitations.length > 0 ? (
             <SchoolDisclosure title="Report limitations" summary="Evidence that could not be included right now">
-              <ul className="list-disc space-y-2 pl-5">
-                {limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}
+              <ul className="list-disc space-y-2 break-words pl-5 text-sm leading-6 text-slate-700">
+                {limitations.map((limitation) => <li key={limitation} className="pl-1">{limitation}</li>)}
               </ul>
             </SchoolDisclosure>
           ) : null}

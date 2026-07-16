@@ -16,7 +16,6 @@ import type { CurriculumActivityView } from '@/lib/schoolActivityPolicy';
 import type { SchoolCurriculumSession } from '@/services/schoolRebuild';
 
 type SchoolActivity = NonNullable<SchoolCurriculumSession['current_activity']>;
-type SchoolFeedback = NonNullable<SchoolCurriculumSession['last_feedback']>;
 
 const TEACHING_STEP_ACKNOWLEDGEMENT = 'continue';
 
@@ -26,7 +25,6 @@ interface SchoolActivityRendererProps {
   answer: string;
   submitting: boolean;
   openingMasterclass: boolean;
-  error: string;
   onAnswerChange: (answer: string) => void;
   onSubmit: (answer?: string) => void;
   onOpenMasterclass?: () => void;
@@ -66,31 +64,11 @@ export function schoolActivityLabel(kind: SchoolActivity['kind']) {
   }
 }
 
-function Feedback({ feedback, className = '' }: { feedback: SchoolFeedback; className?: string }) {
-  const tone = feedback.result_visible === false || feedback.correct === null
-    ? 'border-slate-200 bg-slate-50 text-slate-700'
-    : feedback.correct
-      ? 'border-teal-200 bg-teal-50 text-teal-900'
-      : 'border-orange-200 bg-orange-50 text-orange-950';
-
+function PendingEvaluation() {
   return (
-    <p
-      data-testid="school-tutor-feedback"
-      role="status"
-      aria-live="polite"
-      className={`border-y px-5 py-4 text-sm font-semibold leading-6 sm:px-8 ${tone} ${className}`}
-    >
-      {feedback.message}
-    </p>
-  );
-}
-
-function PendingEvaluation({ pendingLabel }: { pendingLabel: string }) {
-  return (
-    <section role="status" aria-live="polite" className="px-5 py-9 sm:px-8 sm:py-12">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-teal-700">Answer submitted</p>
-      <h2 className="mt-2 font-display text-3xl font-normal text-slate-950">{pendingLabel}</h2>
-      <div data-testid="school-tutor-message-skeleton" aria-hidden="true" className="mt-7 max-w-xl space-y-3">
+    <section aria-hidden="true" className="px-5 py-12 sm:px-9 sm:py-16">
+      <div data-testid="school-tutor-message-skeleton" className="max-w-xl space-y-4">
+        <div className="h-7 w-2/3 animate-pulse rounded-lg bg-slate-100 motion-reduce:animate-none" />
         <div className="h-4 w-full animate-pulse rounded-full bg-slate-200 motion-reduce:animate-none" />
         <div className="h-4 w-5/6 animate-pulse rounded-full bg-slate-200 motion-reduce:animate-none" />
         <div className="h-4 w-2/3 animate-pulse rounded-full bg-slate-200 motion-reduce:animate-none" />
@@ -101,7 +79,6 @@ function PendingEvaluation({ pendingLabel }: { pendingLabel: string }) {
 
 function ActivityCard({
   activity,
-  feedback,
   answer,
   submitting,
   canSubmit,
@@ -109,7 +86,6 @@ function ActivityCard({
   onSubmit,
 }: {
   activity: SchoolActivity;
-  feedback: SchoolFeedback | null;
   answer: string;
   submitting: boolean;
   canSubmit: boolean;
@@ -127,23 +103,8 @@ function ActivityCard({
   return (
     <article data-testid="school-tutor-activity" className="flex min-h-full flex-col">
       <div className="px-5 pb-8 pt-7 sm:px-9 sm:pb-10 sm:pt-9">
-        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] font-semibold uppercase text-[var(--school-accent-deep)]">
-          <span>{schoolActivityLabel(activity.kind)}</span>
-          <span aria-hidden="true" className="text-slate-300">/</span>
-          <span className="break-words text-slate-500">{activity.focus}</span>
-        </p>
-
-        {activity.teaching_block ? (
-          <section data-testid="school-tutor-teaching" className="mt-7 border-l-2 border-[var(--school-accent-border)] bg-[var(--school-accent-soft)] px-5 py-4 text-sm font-medium leading-6 text-[var(--school-muted)]">
-            <p className="font-mono text-[10px] font-semibold uppercase text-[var(--school-accent-deep)]">
-              {activity.kind === 'chapter_check' ? 'Instructions' : 'Coach clue'}
-            </p>
-            <p className="mt-2">{activity.teaching_block}</p>
-          </section>
-        ) : null}
-
         {activity.passage ? (
-          <section className="mt-7 border-l-2 border-[var(--school-accent-border)] py-1 pl-5 sm:pl-6">
+          <section className="border-l-2 border-[var(--school-accent-border)] py-1 pl-5 sm:pl-6">
             <p className="font-mono text-[10px] font-semibold uppercase text-[var(--school-faint)]">Read the passage</p>
             <p data-testid="school-tutor-passage" className="mt-3 whitespace-pre-wrap break-words font-display text-[1.45rem] font-normal leading-[1.45] text-[var(--school-ink)] sm:text-[1.65rem]">
               {activity.passage}
@@ -151,11 +112,11 @@ function ActivityCard({
           </section>
         ) : null}
 
-        <section className="pt-8" aria-labelledby="school-tutor-question">
+        <section className={activity.passage ? 'pt-8' : 'pt-1'} aria-labelledby="school-tutor-question">
           <p className="font-mono text-[10px] font-semibold uppercase text-[var(--school-accent-deep)]">
             {isContinueOnlyActivity ? 'Learn and continue' : 'Think and answer'}
           </p>
-          <h2
+          <h1
             id="school-tutor-question"
             ref={questionHeadingRef}
             tabIndex={-1}
@@ -163,7 +124,7 @@ function ActivityCard({
             className="mt-2 max-w-[31ch] break-words font-sans text-[1.85rem] font-bold leading-[1.08] text-[var(--school-ink)] outline-none sm:text-[2.35rem]"
           >
             {activity.prompt}
-          </h2>
+          </h1>
           {activity.kind === 'chapter_check' ? (
             <p className="mt-3 text-xs font-semibold text-[var(--school-accent-deep)]">Answer this chapter challenge in your own words.</p>
           ) : null}
@@ -267,8 +228,6 @@ function ActivityCard({
           Your next question is being prepared. Refresh this lesson if it does not appear.
         </p>
       )}
-
-      {feedback ? <Feedback feedback={feedback} className="mt-5" /> : null}
     </article>
   );
 }
@@ -279,7 +238,6 @@ export function SchoolActivityRenderer({
   answer,
   submitting,
   openingMasterclass,
-  error,
   onAnswerChange,
   onSubmit,
   onOpenMasterclass,
@@ -287,33 +245,12 @@ export function SchoolActivityRenderer({
   onRetry,
 }: SchoolActivityRendererProps) {
   const activity = session.current_activity;
-  const priorFeedback = session.phase !== 'chapter_check'
-    && session.last_feedback
-    && activity
-    && session.last_feedback.activity_id !== activity.activity_id
-    && session.last_feedback.result_visible !== false
-    ? session.last_feedback
-    : null;
-  const currentFeedback = session.phase !== 'chapter_check'
-    && session.last_feedback
-    && activity
-    && session.last_feedback.activity_id === activity.activity_id
-    ? session.last_feedback
-    : null;
 
   return (
     <div className="flex min-h-full flex-col">
-      {priorFeedback ? <Feedback feedback={priorFeedback} /> : null}
-
       {session.phase === 'paused_for_masterclass' && session.active_interrupt ? (
         <section data-testid="school-tutor-masterclass-handoff" className="px-5 py-9 sm:px-8 sm:py-12">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-orange-700">Focused practice</p>
-          <h2 className="mt-3 max-w-xl break-words font-display text-3xl font-normal leading-tight text-slate-950 sm:text-4xl">
-            Pause here and strengthen {session.active_interrupt.focus}
-          </h2>
-          <p className="mt-4 max-w-2xl border-y border-orange-200 bg-orange-50 px-4 py-4 text-sm font-medium leading-6 text-slate-700">
-            Your exact place in {session.chapter.title} is saved. Finish this short practice, then return to the same stage.
-          </p>
+          <h1 className="max-w-xl break-words font-sans text-3xl font-bold leading-tight text-slate-950 sm:text-4xl">Focused practice is ready</h1>
           {onOpenMasterclass ? (
             <button
               type="button"
@@ -327,17 +264,10 @@ export function SchoolActivityRenderer({
           ) : null}
         </section>
       ) : view.kind === 'pending' ? (
-        <PendingEvaluation pendingLabel="Checking your answer" />
+        <PendingEvaluation />
       ) : view.kind === 'support' ? (
         <section role="status" className="px-5 py-9 sm:px-8 sm:py-12">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-orange-700">More support is ready</p>
-          <h2 className="mt-3 max-w-xl font-display text-3xl font-normal leading-tight text-slate-950 sm:text-4xl">This chapter is paused for a revised path</h2>
-          <p className="mt-4 max-w-2xl border-y border-orange-200 bg-orange-50 px-4 py-4 text-sm leading-6 text-slate-700">
-            Your answers and chapter place are saved. Return to the chapter map to continue with the support selected for you.
-          </p>
-          {session.chapter_assessment?.last_result ? (
-            <p className="mt-5 text-sm font-semibold text-slate-700">Latest chapter challenge: {Math.round(session.chapter_assessment.last_result.score * 100)}%</p>
-          ) : null}
+          <h1 className="max-w-xl font-sans text-3xl font-bold leading-tight text-slate-950 sm:text-4xl">Continue from your chapter path</h1>
           <button type="button" onClick={onExit} className={`mt-8 ${schoolPrimaryActionClass}`}>
             <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" /> Return to chapter map
           </button>
@@ -345,7 +275,6 @@ export function SchoolActivityRenderer({
       ) : view.kind === 'activity' && activity ? (
         <ActivityCard
           activity={activity}
-          feedback={currentFeedback}
           answer={answer}
           submitting={submitting}
           canSubmit={view.canSubmit}
@@ -355,17 +284,14 @@ export function SchoolActivityRenderer({
       ) : view.kind === 'complete' ? (
         <section role="status" aria-live="polite" className="px-5 py-9 sm:px-8 sm:py-12">
           <CheckCircledIcon className="h-9 w-9 text-teal-700" aria-hidden="true" />
-          <p className="mt-5 text-[10px] font-semibold uppercase tracking-[0.14em] text-teal-700">Chapter complete</p>
-          <h2 className="mt-2 max-w-xl font-display text-4xl font-normal leading-tight text-slate-950">Your chapter map is ready</h2>
-          <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600">Your progress is saved. Return to the map to review this chapter or choose what comes next.</p>
+          <h1 className="mt-5 max-w-xl font-sans text-4xl font-bold leading-tight text-slate-950">Your chapter map is ready</h1>
           <button type="button" onClick={onExit} className={`mt-8 ${schoolPrimaryActionClass}`}>
             <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" /> Return to chapter map
           </button>
         </section>
       ) : (
         <section role="alert" className="px-5 py-9 sm:px-8 sm:py-12">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-red-700">Lesson unavailable</p>
-          <h2 className="mt-2 font-display text-3xl font-normal text-slate-950">We could not find the next lesson step</h2>
+          <h1 className="font-sans text-3xl font-bold text-slate-950">We could not find the next lesson step</h1>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <button type="button" onClick={onRetry} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-red-800 px-5 py-2.5 text-sm font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-700 focus-visible:ring-offset-2">
               <ReloadIcon className="h-4 w-4" aria-hidden="true" /> Refresh lesson
@@ -377,7 +303,6 @@ export function SchoolActivityRenderer({
         </section>
       )}
 
-      {error ? <p role="alert" className="mt-auto border-t border-red-200 bg-red-50 px-5 py-4 text-sm font-semibold text-red-800 sm:px-8">{error}</p> : null}
     </div>
   );
 }

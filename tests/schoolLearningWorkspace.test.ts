@@ -11,6 +11,8 @@ test('School teaching uses its canonical two-region workspace', () => {
 
   assert.match(shell, /data-school-region="coach-rail"/);
   assert.match(shell, /data-school-region="activity-surface"/);
+  assert.match(shell, /actions\?: ReactNode/);
+  assert.match(shell, /aria-label="Activity controls"/);
   assert.doesNotMatch(shell, /grid-cols-\[.*_.*_.*/);
   assert.match(learning, /SchoolLearningWorkspace/);
   assert.match(tutor, /SchoolLearningWorkspace/);
@@ -24,24 +26,28 @@ test('lesson progress is compact and options remain scannable', () => {
   const recap = read('src/app/school/recap/page.tsx');
   const masterclass = read('src/app/school/masterclass/[sessionId]/page.tsx');
 
-  assert.match(progress, /<details/);
   assert.match(progress, /role="progressbar"/);
-  assert.match(recap, /data-testid="school-recap-progress"[\s\S]*?<details/);
-  assert.match(masterclass, /data-testid="school-masterclass-context"[\s\S]*?<details/);
+  assert.doesNotMatch(progress, /<details|session\.levels\.map|memory_summary/);
+  assert.match(recap, /data-testid="school-recap-progress"/);
+  assert.doesNotMatch(recap, /data-testid="school-recap-progress"[\s\S]*?<details/);
+  assert.match(masterclass, /data-testid="school-masterclass-context"/);
+  assert.doesNotMatch(masterclass, /data-testid="school-masterclass-context"[\s\S]*?<details/);
   assert.doesNotMatch(activity + support, /sm:grid-cols-2/);
 });
 
-test('mobile learning keeps coach identity, status, and guidance instead of an avatar-only fallback', () => {
+test('mobile learning reflows the same coach dialogue above the activity', () => {
   const workspace = read('src/components/school/SchoolLearningWorkspace.tsx');
   const learning = read('src/components/school/SchoolLearningShell.tsx');
   const tutor = read('src/components/school/tutor/SchoolTutorWorkspace.tsx');
   const coach = read('src/components/school/SchoolCoachPanel.tsx');
   const styles = read('src/components/school/SchoolLearningWorkspace.module.css');
 
-  assert.match(workspace, /data-school-region="mobile-coach"/);
-  assert.match(learning, /mobileCoach={<SchoolCoachPanel[\s\S]*?variant="inline"/);
-  assert.match(tutor, /mobileCoach={<SchoolCoachPanel[\s\S]*?variant="inline"/);
-  assert.match(coach, /variant === 'inline'/);
-  assert.match(styles, /\.mobileCoach\s*\{[^}]*display:\s*none/);
-  assert.match(styles, /@media \(max-width: 820px\)[\s\S]*?\.mobileCoach\s*\{[^}]*display:\s*block/);
+  assert.doesNotMatch(workspace, /data-school-region="mobile-coach"|mobileCoach/);
+  assert.equal((learning.match(/<SchoolCoachPanel/g) ?? []).length, 1);
+  assert.equal((tutor.match(/<SchoolCoachPanel/g) ?? []).length, 1);
+  assert.match(coach, /data-testid="school-coach-dialogue"/);
+  assert.match(styles, /grid-template-columns:\s*minmax\(320px, 360px\) minmax\(0, 1fr\)/);
+  assert.match(styles, /\.coachRail\s*\{[^}]*height:\s*100%/);
+  assert.match(styles, /\.activitySurface\s*\{[^}]*height:\s*100%/);
+  assert.match(styles, /@media \(max-width: 820px\)[\s\S]*?\.coachRail\s*\{[^}]*height:\s*auto/);
 });

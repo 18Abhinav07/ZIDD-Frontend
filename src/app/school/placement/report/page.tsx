@@ -147,28 +147,27 @@ function PlacementReportContent({
 
   return (
     <main
-      className="mx-auto min-h-[calc(100dvh-68px)] w-full max-w-[1240px] overflow-x-hidden px-4 pb-24 pt-12 sm:px-7 sm:pt-16 lg:px-10"
+      className="mx-auto min-h-[calc(100dvh-68px)] w-full max-w-[1180px] overflow-x-hidden px-4 pb-24 pt-12 sm:px-8 sm:pt-16 lg:px-12"
       style={theme.style}
     >
-      <header className="grid gap-9 border-b border-[var(--school-line-strong)] pb-10 lg:grid-cols-[minmax(0,1fr)_230px] lg:items-end lg:gap-[clamp(3rem,8vw,7rem)] lg:pb-14">
+      <header className="grid gap-8 border-b border-[var(--school-line-strong)] pb-10 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.42fr)] lg:items-end lg:gap-12 lg:pb-14 xl:gap-20">
         <SchoolPageHeading
           eyebrow="Starting-point report"
           title={report.learner_summary}
           description="This conclusion comes from saved evidence. It is not a school mark, percentage, or rank."
         />
-        <div className={`border-l-2 py-1 pl-5 ${conclusionColor(report)}`}>
+        <div className={`border-l py-1 pl-5 ${conclusionColor(report)}`}>
           <span className="block font-mono text-[9px] font-semibold uppercase text-slate-500">
             {historical ? 'Past starting point' : 'Current starting point'}
           </span>
-          <strong className="mt-2 block text-sm font-semibold text-slate-800">{conclusionLabel(report)}</strong>
-          <small className="mt-2 block font-mono text-[9px] font-semibold uppercase text-slate-500">Evidence summary. No mark.</small>
+          <p className="mt-2 break-words text-sm font-medium leading-6 text-slate-800">{conclusionLabel(report)}</p>
         </div>
       </header>
 
-      <div className="grid gap-12 pt-10 lg:grid-cols-[minmax(0,1.2fr)_minmax(300px,0.68fr)] lg:gap-[clamp(3.5rem,9vw,8rem)] lg:pt-14">
+      <div className="grid gap-12 pt-10 lg:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)] lg:gap-12 lg:pt-14 xl:gap-20">
         <section aria-labelledby="placement-evidence-title">
           <p className="font-mono text-[10px] font-semibold uppercase text-[var(--school-muted)]">What we saw</p>
-          <h2 id="placement-evidence-title" className="mt-3 font-display text-[2.15rem] font-normal leading-[1.04] text-slate-950 sm:text-[2.65rem]">
+          <h2 id="placement-evidence-title" className="mt-3 break-words font-display text-[1.9rem] font-normal leading-[1.08] text-slate-950 sm:text-[2.4rem] lg:text-[2.65rem]">
             What the evidence supports
           </h2>
           {leadEvidence.rows.length > 0 ? (
@@ -176,7 +175,7 @@ function PlacementReportContent({
               {leadEvidence.rows.map((row, index) => (
               <li key={`${index}-${row}`} className="grid grid-cols-[32px_minmax(0,1fr)] gap-4 border-b border-[var(--school-line)] py-5 sm:grid-cols-[40px_minmax(0,1fr)] sm:gap-5">
                 <span className="pt-1 font-mono text-[10px] font-semibold text-slate-400">{String(index + 1).padStart(2, '0')}</span>
-                <p className="text-sm leading-6 text-slate-600">{row}</p>
+                <p className="min-w-0 break-words text-sm leading-6 text-slate-600">{row}</p>
               </li>
               ))}
             </ol>
@@ -190,11 +189,11 @@ function PlacementReportContent({
         <aside className="self-start border-t border-[var(--school-line-strong)] pt-7 lg:border-l lg:border-t-0 lg:pl-7 lg:pt-1" aria-labelledby="placement-next-title">
           <span className="block h-1 w-10 rounded-full bg-[var(--school-accent)]" aria-hidden="true" />
           <p className="mt-7 font-mono text-[10px] font-semibold uppercase text-[var(--school-muted)]">What happens next</p>
-          <h2 id="placement-next-title" className="mt-3 font-display text-[2rem] font-normal leading-[1.05] text-slate-950">
+          <h2 id="placement-next-title" className="mt-3 break-words font-display text-[1.8rem] font-normal leading-[1.08] text-slate-950 sm:text-[2rem]">
             {historical ? 'This result remains in your learning history' : currentAction.label}
           </h2>
-          <p className="mt-4 text-sm leading-6 text-slate-600">{nextReason}</p>
-          {error ? <p role="alert" className="mt-4 border-y border-red-200 bg-red-50 px-3 py-3 text-sm font-semibold text-red-800">{error}</p> : null}
+          <p className="mt-4 break-words text-sm leading-6 text-slate-600">{nextReason}</p>
+          {error ? <p role="alert" className="mt-4 break-words border-y border-red-200 bg-red-50 px-3 py-3 text-sm font-medium leading-6 text-red-800">{error}</p> : null}
           <div className="mt-7 flex flex-col items-start gap-3">
             {currentAction.kind === 'current' ? (
               <button
@@ -230,7 +229,7 @@ function PlacementReportContent({
         </aside>
       </div>
 
-      <section className="mt-14 max-w-[900px] border-t border-[var(--school-line-strong)] pt-10" aria-label="Placement report details">
+      <section className="mt-14 border-t border-[var(--school-line-strong)] pt-10" aria-label="Placement report details">
         <SchoolPageHeading
           eyebrow="Report details"
           title="Open the saved detail when you need it"
@@ -241,28 +240,24 @@ function PlacementReportContent({
 
         <div className="mt-6">
           <SchoolDisclosure title="Parent summary" summary="A concise explanation for a parent or guardian">
-            <p>{report.parent_summary}</p>
+            <p className="break-words text-sm leading-6 text-slate-700">{report.parent_summary}</p>
           </SchoolDisclosure>
 
           <SchoolDisclosure title="How this starting point was chosen" summary="Evidence method and current School state">
             <p>{placementBasisCopy(report.evidence_summary.scoring_source)}</p>
             <dl className="mt-4 divide-y divide-[var(--school-line)] border-y border-[var(--school-line)]">
-              <div className="flex flex-wrap justify-between gap-3 py-3"><dt>Target class</dt><dd className="font-semibold text-slate-900">Class {report.target_class_no}</dd></div>
-              <div className="flex flex-wrap justify-between gap-3 py-3"><dt>Starting point evaluated</dt><dd className="font-semibold text-slate-900">{placementEvaluatedClassLabel(report)}</dd></div>
-              <div className="flex flex-wrap justify-between gap-3 py-3"><dt>{learningPath.label}</dt><dd className="font-semibold text-slate-900">{learningPath.value}</dd></div>
+              <div className="flex flex-wrap justify-between gap-3 py-3"><dt>Target class</dt><dd className="font-medium tabular-nums text-slate-900">Class {report.target_class_no}</dd></div>
+              <div className="flex flex-wrap justify-between gap-3 py-3"><dt>Starting point evaluated</dt><dd className="font-medium text-slate-900">{placementEvaluatedClassLabel(report)}</dd></div>
+              <div className="flex flex-wrap justify-between gap-3 py-3"><dt>{learningPath.label}</dt><dd className="font-medium text-slate-900">{learningPath.value}</dd></div>
             </dl>
-            <div className="mt-4">
-              <p className="font-semibold text-slate-900">Current next step</p>
-              <p className="mt-2">{currentAction.kind === 'historical_only' ? 'Open School to confirm the current next step.' : currentAction.label}</p>
-              <p className="mt-2 text-xs text-slate-500">This comes from the latest School state. An older report cannot override the current path.</p>
-            </div>
+            <p className="mt-4 break-words text-xs leading-5 text-slate-500">This saved report cannot override the next step shown in the current School plan.</p>
           </SchoolDisclosure>
 
           <SchoolDisclosure title="Saved answer details" summary={`${report.evidence_summary.total_attempts} saved answers were used`}>
             <dl className="divide-y divide-[var(--school-line)] border-y border-[var(--school-line)]">
-              <div className="flex justify-between gap-4 py-3"><dt>Saved answers used</dt><dd className="font-semibold text-slate-900">{report.evidence_summary.total_attempts}</dd></div>
-              <div className="flex justify-between gap-4 py-3"><dt>Strong checks</dt><dd className="font-semibold text-slate-900">{report.evidence_summary.correct_attempts}</dd></div>
-              <div className="flex justify-between gap-4 py-3"><dt>Needs another look</dt><dd className="font-semibold text-slate-900">{report.evidence_summary.incorrect_attempts}</dd></div>
+              <div className="flex flex-wrap justify-between gap-3 py-3"><dt>Saved answers used</dt><dd className="font-medium tabular-nums text-slate-900">{report.evidence_summary.total_attempts}</dd></div>
+              <div className="flex flex-wrap justify-between gap-3 py-3"><dt>Strong checks</dt><dd className="font-medium tabular-nums text-slate-900">{report.evidence_summary.correct_attempts}</dd></div>
+              <div className="flex flex-wrap justify-between gap-3 py-3"><dt>Needs another look</dt><dd className="font-medium tabular-nums text-slate-900">{report.evidence_summary.incorrect_attempts}</dd></div>
             </dl>
             {stageEvidence.length > 0 ? (
               <ul className="mt-4 space-y-2" aria-label="Evidence gathered by stage">
@@ -278,7 +273,7 @@ function PlacementReportContent({
                 {report.blocking_skills.map((skill) => (
                   <article key={`${skill.label}-${skill.source_class_no}`} className="py-4">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <h3 className="font-semibold text-slate-950">{skill.label}</h3>
+                      <h3 className="break-words font-medium text-slate-950">{skill.label}</h3>
                       <p className="text-xs text-slate-500">Class {skill.source_class_no} foundation</p>
                     </div>
                     <p className="mt-2">{skill.learner_reason}</p>
@@ -289,7 +284,7 @@ function PlacementReportContent({
             ) : <p>No blocking foundation gap was confirmed.</p>}
             {report.recommended_recap_modules.length > 0 ? (
               <div className="mt-5">
-                <p className="font-semibold text-slate-900">Recommended foundation work</p>
+                <p className="font-medium text-slate-900">Recommended foundation work</p>
                 <ul className="mt-2 space-y-2">
                   {report.recommended_recap_modules.map((module) => <li key={module.module_id}>{recapModuleDisplayLabel(module)}</li>)}
                 </ul>
@@ -304,8 +299,8 @@ function PlacementReportContent({
               <ul className="divide-y divide-[var(--school-line)] border-y border-[var(--school-line)]">
                 {report.watchlist_skills.map((skill) => (
                   <li key={`${skill.label}-${skill.source_class_no}`} className="py-4">
-                    <p className="font-semibold text-slate-950">{skill.label}</p>
-                    <p className="mt-1">Your coach will check this Class {skill.source_class_no} skill again inside lessons.</p>
+                    <p className="break-words font-medium text-slate-950">{skill.label}</p>
+                    <p className="mt-1">This Class {skill.source_class_no} skill will be checked again during lessons.</p>
                   </li>
                 ))}
               </ul>
