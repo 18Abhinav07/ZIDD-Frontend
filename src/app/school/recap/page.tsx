@@ -19,8 +19,10 @@ import { SchoolSupportActivity } from '@/components/school/support/SchoolSupport
 import {
   recapLoadDecision,
   resolveSchoolStateDestination,
+  startSingleFlightRevalidation,
 } from '@/lib/schoolActivityPolicy';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
+import { recoverSchoolAnswerState } from '@/lib/schoolRequestPolicy.mjs';
 import {
   resolveSchoolCoachPresentation,
   selectVisibleSchoolCoachFeedback,
@@ -32,6 +34,8 @@ import {
   startSchoolRecap,
   type SchoolRecapPath,
 } from '@/services/schoolRebuild';
+
+const RECAP_REVALIDATE_MS = 5_000;
 
 function activityLabel(kind: string) {
   if (kind === 'independent_check') return 'Try it yourself';
@@ -70,6 +74,7 @@ export default function SchoolRecapPage() {
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [awaitingEvaluation, setAwaitingEvaluation] = useState(false);
   const [answer, setAnswer] = useState('');
   const [error, setError] = useState('');
   const [recapLoadFailed, setRecapLoadFailed] = useState(false);
@@ -79,13 +84,16 @@ export default function SchoolRecapPage() {
   const submitInFlightRef = useRef(false);
   const startInFlightRef = useRef(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    setRecapLoadFailed(false);
+  const load = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    if (!background) {
+      setLoading(true);
+      setError('');
+      setRecapLoadFailed(false);
       setCanStartRecap(false);
+    }
     try {
-      const state = await getSchoolState();
+      const state = await getSchoolState({ force: true });
+      const stateAwaitingEvaluation = state.status === 'awaiting_evaluation' && state.active_flow === 'recap';
       const decision = recapLoadDecision({
         loadFailed: false,
         activeFlow: state.active_flow,
@@ -97,11 +105,13 @@ export default function SchoolRecapPage() {
         const activePath = await getActiveSchoolRecap();
         if (activePath.session_id !== decision.sessionId) throw new Error('school_state_unresolved');
         setPath(activePath);
+        setAwaitingEvaluation(stateAwaitingEvaluation);
         return;
       }
       if (decision.kind === 'start') {
         setCanStartRecap(true);
         setPath(null);
+        setAwaitingEvaluation(false);
         return;
       }
       const destination = resolveSchoolStateDestination({
@@ -115,18 +125,31 @@ export default function SchoolRecapPage() {
       }
       throw new Error('school_state_unresolved');
     } catch (err: unknown) {
+      if (background) return;
       setError(learnerSafeErrorMessage(err, 'No readiness path is open yet.'));
       setPath(null);
+      setAwaitingEvaluation(false);
       setRecapLoadFailed(true);
       setCanStartRecap(false);
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   }, [router]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!awaitingEvaluation) return;
+    const revalidator = startSingleFlightRevalidation({
+      intervalMs: RECAP_REVALIDATE_MS,
+      revalidate: () => load({ background: true }),
+      schedule: (callback, intervalMs) => window.setInterval(callback, intervalMs),
+      cancelSchedule: (timer) => window.clearInterval(timer),
+    });
+    return () => revalidator.cancel();
+  }, [awaitingEvaluation, load]);
 
   const begin = async () => {
     if (!canStartRecap || starting || startInFlightRef.current) return;
@@ -147,7 +170,7 @@ export default function SchoolRecapPage() {
   const submit = async (value?: string) => {
     const activity = path?.current_activity;
     const finalAnswer = value ?? answer;
-    if (!path || !activity || !activity.can_answer || !finalAnswer.trim() || submitting || submitInFlightRef.current) return;
+    if (!path || !activity || !activity.can_answer || awaitingEvaluation || !finalAnswer.trim() || submitting || submitInFlightRef.current) return;
     submitInFlightRef.current = true;
     setSubmitting(true);
     setError('');
@@ -155,6 +178,22 @@ export default function SchoolRecapPage() {
       setPath(await answerSchoolRecap(path.session_id, activity.activity_id, finalAnswer));
       setAnswer('');
     } catch (err: unknown) {
+      try {
+        const recovery = await recoverSchoolAnswerState({
+          error: err,
+          refreshState: () => getSchoolState({ force: true }),
+        });
+        if (recovery.kind === 'pending') {
+          setAwaitingEvaluation(true);
+          setAnswer('');
+          setError('');
+          void load({ background: true });
+          return;
+        }
+      } catch (refreshError: unknown) {
+        setError(learnerSafeErrorMessage(refreshError, 'Could not confirm the current path status. Please refresh before trying again.'));
+        return;
+      }
       setError(learnerSafeErrorMessage(err, 'Your answer was not checked. Please try again.'));
     } finally {
       submitInFlightRef.current = false;
@@ -200,7 +239,7 @@ export default function SchoolRecapPage() {
     activityKey: activity?.activity_id || path?.status || 'readiness-path',
     teachingBlock: activity?.teaching_block,
     feedback: visibleFeedback?.message,
-    pendingMessage: submitting || (path?.status === 'active' && activity?.can_answer === false)
+    pendingMessage: awaitingEvaluation || submitting || (path?.status === 'active' && activity?.can_answer === false)
       ? 'I am reviewing your answer and preparing the next step.'
       : null,
     transitionMessage: path?.status === 'complete'
@@ -303,8 +342,8 @@ export default function SchoolRecapPage() {
           answer={answer}
           inputId="school-recap-answer"
           inputLabel="Your recap answer"
-          submitting={submitting}
-          canAnswer={activity.can_answer}
+          submitting={submitting || awaitingEvaluation}
+          canAnswer={awaitingEvaluation ? false : activity.can_answer}
           questionRef={questionHeadingRef}
           onAnswerChange={setAnswer}
           onSubmit={(value) => void submit(value)}

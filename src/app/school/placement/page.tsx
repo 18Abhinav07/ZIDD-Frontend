@@ -12,6 +12,7 @@ import {
   startSingleFlightRevalidation,
 } from '@/lib/schoolActivityPolicy';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
+import { recoverSchoolAnswerState } from '@/lib/schoolRequestPolicy.mjs';
 import {
   resolveSchoolPlacementMutation,
   visiblePlacementAnswer,
@@ -380,10 +381,23 @@ export default function SchoolPlacementPage() {
       }
     } catch (err: unknown) {
       const code = errorCode(err);
-      if (code === 'placement_answer_in_progress') {
-        setAwaitingEvaluation(true);
-        setStateMessage('Your saved answer is still being checked. This page will refresh when it is ready.');
-      } else if (code === 'unexpected_placement_item') {
+      try {
+        const recovery = await recoverSchoolAnswerState({
+          error: err,
+          refreshState: () => getSchoolState({ force: true }),
+        });
+        if (recovery.kind === 'pending') {
+          applyStateIdentity(recovery.state);
+          setAwaitingEvaluation(true);
+          setError('');
+          void load(true);
+          return;
+        }
+      } catch (refreshError: unknown) {
+        setError(learnerSafeErrorMessage(refreshError, 'Could not confirm the current check status. Please refresh before trying again.'));
+        return;
+      }
+      if (code === 'unexpected_placement_item') {
         enterPlacementRecovery('Your saved question changed while this page was open. Refreshing the canonical check now.');
         void load(true);
       } else if (answerSaved) {

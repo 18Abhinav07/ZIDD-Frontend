@@ -62,14 +62,16 @@ test('masterclass page retains backend status, polls single-flight, and gates su
     'session.session_id',
     'activity.activity_id',
     'nextSession.interrupt_id !== session.interrupt_id',
-    'isMasterclassAnswerInProgress(err)',
-    "setSchoolStatus('awaiting_evaluation')",
+    'recoverSchoolAnswerState({',
+    'refreshState: () => getSchoolState({ force: true })',
+    "recovery.kind === 'pending'",
+    'setSchoolStatus(recovery.state.status)',
   ]) {
     assert.ok(page.includes(contract), `masterclass pending contract missing ${contract}`);
   }
 
   assert.match(page, /resolveSchoolStateDestination\([\s\S]*?\?\? resolveSchoolPassiveStateDestination\(/);
-  assert.match(page, /if \(isMasterclassAnswerInProgress\(err\)\) \{[\s\S]*?setError\(''\)[\s\S]*?load\(\{ background: true }\)/);
+  assert.match(page, /recoverSchoolAnswerState\(\{[\s\S]*?refreshState: \(\) => getSchoolState\(\{ force: true \}\)[\s\S]*?recovery\.kind === 'pending'[\s\S]*?setError\(''\)[\s\S]*?load\(\{ background: true }\)/);
 });
 
 test('masterclass heading focus preserves the learner viewport position', async () => {

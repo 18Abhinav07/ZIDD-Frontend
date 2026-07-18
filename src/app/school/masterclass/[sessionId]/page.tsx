@@ -15,6 +15,7 @@ import {
 } from '@/components/school/SchoolPrimitives';
 import { SchoolSupportActivity } from '@/components/school/support/SchoolSupportActivity';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
+import { recoverSchoolAnswerState } from '@/lib/schoolRequestPolicy.mjs';
 import {
   resolveSchoolCoachPresentation,
   selectVisibleSchoolCoachFeedback,
@@ -33,10 +34,7 @@ import {
   type SchoolMasterclassLineage,
   type SchoolTutorLoadOwner,
 } from '@/lib/schoolActivityPolicy';
-import {
-  isMasterclassAnswerInProgress,
-  masterclassActivityView,
-} from '@/lib/schoolMasterclassPolicy';
+import { masterclassActivityView } from '@/lib/schoolMasterclassPolicy';
 import {
   abandonSchoolCurriculumMasterclass,
   answerSchoolMasterclass,
@@ -230,14 +228,23 @@ export default function SchoolMasterclassPage() {
       setSession(nextSession);
       setAnswer('');
     } catch (err: unknown) {
-      if (isMasterclassAnswerInProgress(err)) {
-        setSchoolStatus('awaiting_evaluation');
-        setAnswer('');
-        setError('');
-        void load({ background: true });
-      } else {
-        setError(learnerSafeErrorMessage(err, 'Your answer was not checked. Please try again.'));
+      try {
+        const recovery = await recoverSchoolAnswerState({
+          error: err,
+          refreshState: () => getSchoolState({ force: true }),
+        });
+        if (recovery.kind === 'pending') {
+          setSchoolStatus(recovery.state.status);
+          setAnswer('');
+          setError('');
+          void load({ background: true });
+          return;
+        }
+      } catch (refreshError: unknown) {
+        setError(learnerSafeErrorMessage(refreshError, 'Could not confirm the focused-practice status. Please refresh before trying again.'));
+        return;
       }
+      setError(learnerSafeErrorMessage(err, 'Your answer was not checked. Please try again.'));
     } finally {
       submitInFlightRef.current = false;
       setSubmitting(false);
@@ -321,7 +328,7 @@ export default function SchoolMasterclassPage() {
     teachingBlock: activity?.teaching_block,
     feedback: visibleFeedback?.message,
     pendingMessage: activityView.kind === 'pending' || submitting
-      ? 'I am reviewing your answer. Your chapter place stays saved while the next step is prepared.'
+      ? 'School is reviewing your answer. The next step will appear here when it is ready.'
       : null,
     transitionMessage: session?.status === 'complete'
       ? `This focused practice is complete. Return to ${curriculum?.chapter.title || 'your chapter'} at the saved lesson step.`

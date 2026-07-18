@@ -137,7 +137,7 @@ test('answer submission keeps backend activity idempotency, local evaluator allo
   assert.doesNotMatch(workspace, /Promise\.race|setTimeout\(/);
 });
 
-test('pending evaluation confirms the saved answer and offers a safe chapter-map exit without advancing', () => {
+test('authoritative pending evaluation offers a safe chapter-map exit without advancing', () => {
   const pendingEvaluation = renderer.match(
     /function PendingEvaluation\(\{ onExit \}: \{ onExit: \(\) => void \}\) \{([\s\S]*?)\n\}/,
   )?.[1] ?? '';
@@ -156,7 +156,7 @@ test('pending evaluation confirms the saved answer and offers a safe chapter-map
   assert.match(pendingEvaluation, /Return to chapter map/);
   assert.match(pendingBranch, /<PendingEvaluation onExit=\{onExit\} \/>/);
   assert.doesNotMatch(pendingBranch, /ActivityCard|onSubmit|Continue|Check my answer/);
-  assert.match(workspace, /Your answer is saved\. Your place in this chapter is saved, and feedback will appear here\./);
+  assert.match(workspace, /School is reviewing your answer\. Feedback will appear here when the next step is ready\./);
   assert.doesNotMatch([workspace, renderer].join('\n'), /Keep this page open/);
   assert.doesNotMatch(renderer, /pendingLabel=|Loader2/);
 });

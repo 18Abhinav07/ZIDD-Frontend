@@ -11,6 +11,7 @@ import { useResolvedSchoolCoachIdentity } from '@/components/school/shell/School
 import { SchoolActivityRenderer, schoolActivityLabel } from '@/components/school/tutor/SchoolActivityRenderer';
 import { SchoolProgressRail } from '@/components/school/tutor/SchoolProgressRail';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
+import { recoverSchoolAnswerState } from '@/lib/schoolRequestPolicy.mjs';
 import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
 import {
   resolveSchoolCoachPresentation,
@@ -183,7 +184,7 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
         commitSchoolStatus: setSchoolStatus,
       });
       if (result.refreshFailed) {
-        setError('Your answer is saved. The lesson status will refresh automatically.');
+        setError('The lesson status could not refresh automatically. Refresh to confirm the current step.');
       } else if (refreshResult.state) {
         const refreshedState = refreshResult.state;
         setSchoolNextAction(refreshedState.next_action);
@@ -197,6 +198,23 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
         }
       }
     } catch (err: unknown) {
+      try {
+        const recovery = await recoverSchoolAnswerState({
+          error: err,
+          refreshState: () => getSchoolState({ force: true }),
+        });
+        if (recovery.kind === 'pending') {
+          setSchoolStatus(recovery.state.status);
+          setSchoolNextAction(recovery.state.next_action);
+          setAnswer('');
+          setError('');
+          void load({ background: true });
+          return;
+        }
+      } catch (refreshError: unknown) {
+        setError(learnerSafeErrorMessage(refreshError, 'Could not confirm the current lesson status. Please refresh before trying again.'));
+        return;
+      }
       const staleAnswer = err instanceof Error && err.message === 'stale_curriculum_answer';
       if (staleAnswer) {
         setAnswer('');
@@ -326,7 +344,7 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
     teachingBlock: activity?.teaching_block,
     feedback: visibleFeedback?.message,
     pendingMessage: activityView.kind === 'pending'
-      ? 'Your answer is saved. Your place in this chapter is saved, and feedback will appear here.'
+      ? 'School is reviewing your answer. Feedback will appear here when the next step is ready.'
       : null,
     transitionMessage,
     error,
