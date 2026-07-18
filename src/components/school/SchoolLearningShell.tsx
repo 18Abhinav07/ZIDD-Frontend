@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 import { SchoolCoachPanel } from '@/components/school/SchoolCoachPanel';
 import { SchoolLearningWorkspace } from '@/components/school/SchoolLearningWorkspace';
+import { useResolvedSchoolCoachIdentity } from '@/components/school/shell/SchoolCoachIdentityContext';
 import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
 import type { SchoolCoachHint, SchoolCoachTone } from '@/lib/schoolTeachingPresentation';
 
@@ -33,7 +34,11 @@ export function SchoolLearningShell({
   children,
   progress,
 }: SchoolLearningShellProps) {
-  const theme = getSchoolAvatarTheme(coachAvatarId, coachPaletteId);
+  const coachIdentity = useResolvedSchoolCoachIdentity({
+    avatarId: coachAvatarId,
+    paletteId: coachPaletteId,
+  });
+  const theme = getSchoolAvatarTheme(coachIdentity.avatarId, coachIdentity.paletteId);
 
   return (
     <SchoolLearningWorkspace
@@ -41,8 +46,8 @@ export function SchoolLearningShell({
       onBack={onBack}
       coach={(
         <SchoolCoachPanel
-          avatarId={coachAvatarId}
-          paletteId={coachPaletteId}
+          avatarId={coachIdentity.avatarId}
+          paletteId={coachIdentity.paletteId}
           status={coachStatus}
           note={coachNote}
           hint={coachHint}

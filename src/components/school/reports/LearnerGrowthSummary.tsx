@@ -15,6 +15,7 @@ import {
   schoolSecondaryActionClass,
 } from '@/components/school/SchoolPrimitives';
 import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
+import { useResolvedSchoolCoachIdentity } from '@/components/school/shell/SchoolCoachIdentityContext';
 import {
   createLearnerSafeSkillLabeler,
   describeSavedAttempts,
@@ -89,7 +90,11 @@ export function LearnerGrowthSummary({
   onOpenParentView,
 }: LearnerGrowthSummaryProps) {
   const identity = activeCoachIdentity ?? classMap ?? state;
-  const theme = getSchoolAvatarTheme(identity.coach_avatar_id, identity.coach_palette_id);
+  const coachIdentity = useResolvedSchoolCoachIdentity({
+    avatarId: identity.coach_avatar_id,
+    paletteId: identity.coach_palette_id,
+  });
+  const theme = getSchoolAvatarTheme(coachIdentity.avatarId, coachIdentity.paletteId);
   const completedChapters = classMap?.chapters.filter((chapter) => chapter.status === 'complete') ?? [];
   const activeChapter = selectLearnerPracticeChapter(classMap);
   const placementStillOwnsPath = state.unlock_state !== 'target_unlocked';

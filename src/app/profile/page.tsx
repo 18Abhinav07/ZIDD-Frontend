@@ -44,6 +44,7 @@ import {
   type ModuleId,
 } from '@/services/me';
 import { useAppSession } from '@/components/shared/AppSessionProvider';
+import { isBetaBillingDisabled } from '@/lib/publicConfig.mjs';
 import { labelGdTopic } from '@/lib/gdTopics';
 import { careerCompetenceLabel, careerPracticeHref } from '@/lib/careerPathPresentation.mjs';
 
@@ -104,6 +105,7 @@ function careerModuleFromMemory(item: CareerMemoryItem): ModuleId | null {
 export default function ProfilePage() {
   const router = useRouter();
   const { loadBalance, loadMe } = useAppSession();
+  const billingDisabled = isBetaBillingDisabled();
   const [me, setMe] = useState<MeResponse | null>(null);
   const [activity, setActivity] = useState<MeActivity | null>(null);
   const [learningGraph, setLearningGraph] = useState<MeLearningGraph | null>(null);
@@ -329,7 +331,7 @@ export default function ProfilePage() {
         </motion.div>
 
         <div className="mt-10 grid grid-cols-1 lg:grid-cols-3 gap-5">
-          <section className="lg:col-span-2 rounded-[1.75rem] border border-slate-200/70 bg-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
+          <section className={`${billingDisabled ? 'lg:col-span-3' : 'lg:col-span-2'} rounded-[1.75rem] border border-slate-200/70 bg-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.04)]`}>
             <div className="flex items-center gap-2 text-slate-500">
               <IdCard className="w-4 h-4" />
               <span className="text-[11px] font-bold uppercase tracking-[0.2em]">Account</span>
@@ -341,23 +343,25 @@ export default function ProfilePage() {
             </div>
           </section>
 
-          <section className="rounded-[1.75rem] border border-slate-200/70 bg-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
-            <div className="flex items-center gap-2 text-slate-500">
-              <LightningBoltIcon className="w-4 h-4" />
-              <span className="text-[11px] font-bold uppercase tracking-[0.2em]">Wallet</span>
-            </div>
-            <p className="mt-4 font-display text-5xl leading-none">{credits}</p>
-            <p className="mt-1 text-xs text-slate-500 font-medium">credits available</p>
-            {mounted && canShowDevCreditGrant() && !me.demo_unlimited && (
-              <button
-                onClick={topUp}
-                disabled={granting}
-                className="mt-5 inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.15em] text-indigo-600 hover:text-indigo-700 disabled:opacity-50 transition-colors"
-              >
-                <PlusIcon className="w-3.5 h-3.5" /> {granting ? 'Adding...' : 'Add 500 (dev)'}
-              </button>
-            )}
-          </section>
+          {!billingDisabled && (
+            <section className="rounded-[1.75rem] border border-slate-200/70 bg-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
+              <div className="flex items-center gap-2 text-slate-500">
+                <LightningBoltIcon className="w-4 h-4" />
+                <span className="text-[11px] font-bold uppercase tracking-[0.2em]">Wallet</span>
+              </div>
+              <p className="mt-4 font-display text-5xl leading-none">{credits}</p>
+              <p className="mt-1 text-xs text-slate-500 font-medium">credits available</p>
+              {mounted && canShowDevCreditGrant() && !me.demo_unlimited && (
+                <button
+                  onClick={topUp}
+                  disabled={granting}
+                  className="mt-5 inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.15em] text-indigo-600 hover:text-indigo-700 disabled:opacity-50 transition-colors"
+                >
+                  <PlusIcon className="w-3.5 h-3.5" /> {granting ? 'Adding...' : 'Add 500 (dev)'}
+                </button>
+              )}
+            </section>
+          )}
         </div>
 
         {activityError && (

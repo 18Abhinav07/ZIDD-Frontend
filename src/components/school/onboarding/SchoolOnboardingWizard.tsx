@@ -1,5 +1,6 @@
 "use client";
 
+import Image from 'next/image';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -22,6 +23,7 @@ import {
   createSchoolActivationRecoveryStore,
   createOnboardingRequestCoordinator,
   decideSchoolOnboardingNavigation,
+  emptySchoolOnboardingCoachIdentity,
   emptySchoolOnboardingForm,
   hydrateSchoolOnboarding,
   hasMaterialSchoolProfileChanges,
@@ -34,11 +36,15 @@ import {
   type SchoolOnboardingFieldErrors,
   type SchoolOnboardingForm,
   type SchoolOnboardingEditableStep,
+  type SchoolOnboardingCoachIdentity,
   type SchoolOnboardingStep,
   type SchoolActivationContext,
 } from '@/lib/schoolOnboardingPolicy';
 import { resolveSchoolStateDestination } from '@/lib/schoolActivityPolicy';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
+import { COACH_AVATARS, getRandomAvatar } from '@/lib/avatars';
+import { getAvatarScaleClass } from '@/lib/avatarRegistry';
+import { getSchoolAvatarThemeForAvatar } from '@/lib/schoolTheme';
 import {
   activateSchoolOnboarding,
   getSchoolCatalog,
@@ -87,6 +93,7 @@ const COMFORT_LABELS = {
 } as const;
 
 const SCHOOL_FIELD_CLASS = 'mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-[var(--school-surface,#fcfdff)] px-3 text-base outline-none transition-[border-color,box-shadow] focus:border-[var(--school-accent)] focus:ring-2 focus:ring-[var(--school-accent-soft)]';
+const ONBOARDING_COACH_CANDIDATE_KEY = 'zidd.school.onboarding.coach-candidate.v1';
 
 type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'conflict' | 'error' | 'refresh_required';
 type CatalogStatus = 'loading' | 'ready' | 'error';
@@ -99,6 +106,43 @@ function onboardingStepHref(step: SchoolOnboardingStep, activeProfileEditIntent:
 
 function requestId() {
   return crypto.randomUUID();
+}
+
+function coachIdentityForAvatar(avatarId: string): SchoolOnboardingCoachIdentity {
+  return {
+    coach_avatar_id: avatarId,
+    coach_palette_id: avatarId,
+  };
+}
+
+function avatarForCoachIdentity(identity: SchoolOnboardingCoachIdentity) {
+  if (
+    !identity.coach_avatar_id
+    || identity.coach_avatar_id !== identity.coach_palette_id
+  ) {
+    return null;
+  }
+  return COACH_AVATARS.find((avatar) => avatar.id === identity.coach_avatar_id) ?? null;
+}
+
+function readPendingCoachIdentity(): SchoolOnboardingCoachIdentity | null {
+  try {
+    const stored = window.sessionStorage.getItem(ONBOARDING_COACH_CANDIDATE_KEY);
+    if (!stored) return null;
+    const parsed = JSON.parse(stored) as SchoolOnboardingCoachIdentity;
+    return avatarForCoachIdentity(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePendingCoachIdentity(identity: SchoolOnboardingCoachIdentity) {
+  try {
+    window.sessionStorage.setItem(ONBOARDING_COACH_CANDIDATE_KEY, JSON.stringify(identity));
+  } catch {
+    // A blocked storage area only affects the unsaved preview; the first save
+    // still pins the selected coach in the backend draft.
+  }
 }
 
 function fieldErrorId(field: keyof SchoolOnboardingForm) {
@@ -176,6 +220,13 @@ export function SchoolOnboardingWizard() {
   const [dirtyStep, setDirtyStep] = useState<SchoolOnboardingEditableStep | null>(null);
   const [goalOwner, setGoalOwner] = useState<'learner' | 'parent'>('learner');
   const [supportSignalsOpen, setSupportSignalsOpen] = useState(false);
+  const [coachIdentity, setCoachIdentity] = useState<SchoolOnboardingCoachIdentity>(
+    emptySchoolOnboardingCoachIdentity,
+  );
+  const coachAvatar = avatarForCoachIdentity(coachIdentity);
+  const coachTheme = coachAvatar
+    ? getSchoolAvatarThemeForAvatar(coachAvatar, coachIdentity.coach_palette_id ?? coachAvatar.id)
+    : null;
   const hasMaterialChanges = activeProfile
     ? hasMaterialSchoolProfileChanges(form, activeProfile)
     : false;
@@ -185,6 +236,14 @@ export function SchoolOnboardingWizard() {
     setPersistedStep(hydrated.persistedStep);
     setActiveProfile(hydrated.activeProfile as SchoolProfile | null);
     setDraft(hydrated.draft);
+    setCoachIdentity(hydrated.coachIdentity);
+    if (hydrated.coachIdentity.coach_avatar_id) {
+      try {
+        window.sessionStorage.removeItem(ONBOARDING_COACH_CANDIDATE_KEY);
+      } catch {
+        // The backend draft is already the durable identity source.
+      }
+    }
     dirtyStepRef.current = null;
     setDirtyStep(null);
     setEditConfirmed(false);
@@ -321,6 +380,14 @@ export function SchoolOnboardingWizard() {
   }, [loadCatalog]);
 
   useEffect(() => {
+    if (!loaded || coachAvatar) return;
+    const restored = readPendingCoachIdentity();
+    const nextIdentity = restored ?? coachIdentityForAvatar(getRandomAvatar().id);
+    setCoachIdentity(nextIdentity);
+    if (!restored) writePendingCoachIdentity(nextIdentity);
+  }, [coachAvatar, loaded]);
+
+  useEffect(() => {
     if (!loaded) return;
     const routeStep = clampOnboardingRouteStep(searchParams.get('step'), persistedStep);
     if (dirtyStep !== null && routeStep !== step) {
@@ -437,7 +504,7 @@ export function SchoolOnboardingWizard() {
       setLoadingError('');
       setSaveStatus('saving');
       setMessage('Saving this step...');
-      const patch = buildOnboardingStepPatch(stepToSave, form);
+      const patch = buildOnboardingStepPatch(stepToSave, form, coachIdentity);
       const payload = {
         ...patch,
         ...(draft ? {
@@ -657,33 +724,67 @@ export function SchoolOnboardingWizard() {
 
         <div className="py-7">
           {step === 0 && (
-            <div className="grid gap-5 sm:grid-cols-2">
-              <label className="block text-sm font-semibold text-slate-800">
-                Learner name
-                <input
-                  value={form.display_name}
-                  onChange={(event) => updateField('display_name', event.target.value)}
-                  aria-invalid={Boolean(errors.display_name)}
-                  aria-describedby={describedBy('display_name', errors)}
-                  maxLength={120}
-                  autoComplete="name"
-                  className={SCHOOL_FIELD_CLASS}
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_13.5rem] lg:items-stretch">
+              <div className="grid gap-5 sm:grid-cols-2">
+                <label className="block text-sm font-semibold text-slate-800">
+                  Learner name
+                  <input
+                    value={form.display_name}
+                    onChange={(event) => updateField('display_name', event.target.value)}
+                    aria-invalid={Boolean(errors.display_name)}
+                    aria-describedby={describedBy('display_name', errors)}
+                    maxLength={120}
+                    autoComplete="name"
+                    className={SCHOOL_FIELD_CLASS}
+                  />
+                  <FieldError field="display_name" errors={errors} />
+                </label>
+                <label className="block text-sm font-semibold text-slate-800">
+                  School name
+                  <input
+                    value={form.school_name}
+                    onChange={(event) => updateField('school_name', event.target.value)}
+                    aria-invalid={Boolean(errors.school_name)}
+                    aria-describedby={describedBy('school_name', errors)}
+                    maxLength={160}
+                    autoComplete="organization"
+                    className={SCHOOL_FIELD_CLASS}
+                  />
+                  <FieldError field="school_name" errors={errors} />
+                </label>
+              </div>
+              {coachAvatar && coachTheme ? (
+                <aside
+                  className="overflow-hidden rounded-2xl border border-black/10 bg-[var(--school-paper)]"
+                  style={coachTheme.style}
+                  aria-label="Learning guide preview"
+                >
+                  <div className="relative min-h-48 overflow-hidden bg-[var(--school-coach-surface)] lg:min-h-[10.5rem]">
+                    <Image
+                      src={coachAvatar.url}
+                      alt=""
+                      fill
+                      sizes="(max-width: 1024px) 100vw, 216px"
+                      className={`object-contain object-bottom drop-shadow-2xl ${getAvatarScaleClass(coachAvatar.url)}`}
+                      draggable={false}
+                      priority
+                    />
+                  </div>
+                  <div className="border-t border-black/10 bg-[var(--school-paper)] px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase text-[var(--school-accent-deep)]">
+                      Meet your learning guide
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-slate-600">
+                      A familiar guide will support each step of this journey.
+                    </p>
+                  </div>
+                </aside>
+              ) : (
+                <div
+                  aria-hidden="true"
+                  className="min-h-56 animate-pulse rounded-2xl bg-slate-100 motion-reduce:animate-none lg:min-h-full"
                 />
-                <FieldError field="display_name" errors={errors} />
-              </label>
-              <label className="block text-sm font-semibold text-slate-800">
-                School name
-                <input
-                  value={form.school_name}
-                  onChange={(event) => updateField('school_name', event.target.value)}
-                  aria-invalid={Boolean(errors.school_name)}
-                  aria-describedby={describedBy('school_name', errors)}
-                  maxLength={160}
-                  autoComplete="organization"
-                  className={SCHOOL_FIELD_CLASS}
-                />
-                <FieldError field="school_name" errors={errors} />
-              </label>
+              )}
             </div>
           )}
 
@@ -759,10 +860,11 @@ export function SchoolOnboardingWizard() {
                 <p className="mt-3 text-sm leading-6 text-slate-500">Add at least one goal. Switching tabs will not clear what you wrote.</p>
               </div>
 
-              {goalOwner === 'learner' ? (
-                <label className="block text-sm font-semibold text-slate-800">
+              <div hidden={goalOwner !== 'learner'}>
+                <label htmlFor="school-learner-goal" className="block text-sm font-semibold text-slate-800">
                   What would you like to get better at?
                   <textarea
+                    id="school-learner-goal"
                     value={form.learner_goal}
                     onChange={(event) => updateField('learner_goal', event.target.value)}
                     aria-invalid={Boolean(errors.learner_goal)}
@@ -773,10 +875,12 @@ export function SchoolOnboardingWizard() {
                   <span className="mt-1 block text-right text-xs text-slate-500">{form.learner_goal.length}/360</span>
                   <FieldError field="learner_goal" errors={errors} />
                 </label>
-              ) : (
-                <label className="block text-sm font-semibold text-slate-800">
+              </div>
+              <div hidden={goalOwner !== 'parent'}>
+                <label htmlFor="school-parent-goal" className="block text-sm font-semibold text-slate-800">
                   What progress would a parent like to see?
                   <textarea
+                    id="school-parent-goal"
                     value={form.parent_goal}
                     onChange={(event) => updateField('parent_goal', event.target.value)}
                     aria-invalid={Boolean(errors.parent_goal)}
@@ -787,7 +891,7 @@ export function SchoolOnboardingWizard() {
                   <span className="mt-1 block text-right text-xs text-slate-500">{form.parent_goal.length}/360</span>
                   <FieldError field="parent_goal" errors={errors} />
                 </label>
-              )}
+              </div>
 
               <details
                 open={supportSignalsOpen}

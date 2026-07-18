@@ -2,7 +2,6 @@
 
 import { ArrowRightIcon, GearIcon, RowsIcon } from '@radix-ui/react-icons';
 import {
-  SchoolPageHeading,
   SchoolStatusChip,
   schoolPrimaryActionClass,
 } from '@/components/school/SchoolPrimitives';
@@ -33,16 +32,18 @@ export function SchoolClassHome({
   );
   const growingSkills = schoolClass.recent_growth.improving_count
     + schoolClass.recent_growth.active_focus_count;
+  const chapterProgress = activeChapter && activeChapter.total_levels > 0
+    ? Math.round((activeChapter.completed_levels / activeChapter.total_levels) * 100)
+    : 0;
+  const classProgress = schoolClass.chapters.length > 0
+    ? Math.round((completed / schoolClass.chapters.length) * 100)
+    : 0;
 
   return (
     <main className={styles.home}>
       <section className={styles.homeHero} aria-label="Current class activity">
         <div className={styles.homeCopy}>
-          <SchoolPageHeading
-            eyebrow={`English · Class ${schoolClass.class_no}`}
-            title="Your English class"
-            description="Continue your chapter or look ahead at the class journey."
-          />
+          <p className={styles.homeEyebrow}>English · Class {schoolClass.class_no}</p>
 
           <div className={styles.homeContext}>
             <SchoolStatusChip tone={activeChapter?.status === 'needs_support' ? 'support' : 'accent'}>
@@ -53,15 +54,30 @@ export function SchoolClassHome({
 
           {activeChapter ? (
             <>
-              <h2 className={styles.homeChapterTitle}>{activeChapter.title}</h2>
+              <h1 className={styles.homeChapterTitle}>{activeChapter.title}</h1>
               <p className={styles.homeMessage}>
-                {activeChapter.completed_levels} of {activeChapter.total_levels} learning levels complete.{' '}
                 {learnerMessage}
               </p>
+              <div className={styles.homeChapterProgress}>
+                <div className={styles.homeProgressMeta}>
+                  <span>Chapter progress</span>
+                  <strong>{activeChapter.completed_levels} of {activeChapter.total_levels} stages</strong>
+                </div>
+                <div
+                  className={styles.homeProgressTrack}
+                  role="progressbar"
+                  aria-label={`${activeChapter.title} progress`}
+                  aria-valuemin={0}
+                  aria-valuemax={activeChapter.total_levels}
+                  aria-valuenow={activeChapter.completed_levels}
+                >
+                  <span className={styles.homeProgressFill} style={{ width: `${chapterProgress}%` }} />
+                </div>
+              </div>
             </>
           ) : (
             <>
-              <h2 className={styles.homeChapterTitle}>No approved chapters are available</h2>
+              <h1 className={styles.homeChapterTitle}>No approved chapters are available</h1>
               <p className={styles.homeMessage}>
                 Your class setup is saved. Approved learning content will appear here when it is ready.
               </p>
@@ -77,7 +93,7 @@ export function SchoolClassHome({
             ) : null}
             <button type="button" onClick={onViewMap} className={styles.homeLinkAction}>
               <RowsIcon className="h-4 w-4" aria-hidden="true" />
-              View class journey
+              View chapters
             </button>
           </div>
 
@@ -91,22 +107,38 @@ export function SchoolClassHome({
           </button>
         </div>
 
-      </section>
-
-      <section className={styles.homeThread} aria-label="Recent growth">
-        <span className={styles.homeThreadLabel}>Recent growth</span>
-        <div className={styles.homeThreadCopy}>
-          <span className={styles.homeThreadNumber} aria-hidden="true">
-            {activeChapter ? String(activeChapter.chapter_no).padStart(2, '0') : '--'}
-          </span>
-          <div>
-            <strong>{activeChapter?.title ?? schoolClass.book_title}</strong>
+        <aside className={styles.homeProgressPanel} aria-label="Class progress">
+          <p className={styles.homeProgressLabel}>Class progress</p>
+          <div className={styles.homeProgressValue}>
+            <strong>{completed}</strong>
+            <span>/ {schoolClass.chapters.length}</span>
           </div>
-        </div>
-        <span className={styles.homeThreadMeta}>
-          {schoolClass.recent_growth.strong_count} strong · {growingSkills} growing · {completed} of{' '}
-          {schoolClass.chapters.length} chapters complete
-        </span>
+          <p className={styles.homeProgressSummary}>chapters complete in {schoolClass.book_title}</p>
+          <div
+            className={styles.homeProgressTrack}
+            role="progressbar"
+            aria-label={`Class ${schoolClass.class_no} progress`}
+            aria-valuemin={0}
+            aria-valuemax={schoolClass.chapters.length}
+            aria-valuenow={completed}
+          >
+            <span className={styles.homeProgressFill} style={{ width: `${classProgress}%` }} />
+          </div>
+          <dl className={styles.homeProgressStats}>
+            <div>
+              <dt>Skills in progress</dt>
+              <dd>{growingSkills}</dd>
+            </div>
+            <div>
+              <dt>{schoolClass.recent_growth.strong_count > 0 ? 'Strong skills' : 'Current chapter'}</dt>
+              <dd>
+                {schoolClass.recent_growth.strong_count > 0
+                  ? schoolClass.recent_growth.strong_count
+                  : activeChapter?.chapter_no ?? '—'}
+              </dd>
+            </div>
+          </dl>
+        </aside>
       </section>
     </main>
   );

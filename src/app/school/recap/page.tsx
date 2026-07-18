@@ -180,10 +180,21 @@ export default function SchoolRecapPage() {
 
   const activity = path?.current_activity;
   const currentModule = path?.modules[path.current_module_index] ?? null;
-  const visibleFeedback = selectVisibleSchoolCoachFeedback(activity?.activity_id, path?.last_feedback);
+  const visibleFeedback = selectVisibleSchoolCoachFeedback(
+    activity?.activity_id,
+    path?.last_feedback,
+    { includePrevious: true },
+  );
+  const feedbackIsFromPreviousActivity = Boolean(
+    visibleFeedback
+    && activity
+    && visibleFeedback.activity_id !== activity.activity_id,
+  );
   const coachPresentation = resolveSchoolCoachPresentation({
     status: visibleFeedback
-      ? visibleFeedback.correct ? 'What worked' : 'Try this next'
+      ? feedbackIsFromPreviousActivity
+        ? visibleFeedback.correct ? 'Previous answer: what worked' : 'Previous answer: try this'
+        : visibleFeedback.correct ? 'What worked' : 'Try this next'
       : activity ? activityLabel(activity.kind) : path?.status === 'complete' ? 'Ready for class' : 'Your next skill',
     fallbackMessage: activity?.focus || currentModule?.focus || 'We will rebuild only the earlier skills that help you feel ready for your class.',
     activityKey: activity?.activity_id || path?.status || 'readiness-path',

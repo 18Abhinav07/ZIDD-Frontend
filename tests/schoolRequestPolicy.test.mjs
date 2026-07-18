@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const policyPath = 'src/lib/schoolRequestPolicy.mjs';
 
-test('School request policy leaves local requests unbounded without weakening cloud deadlines', async () => {
+test('School request policy leaves explicit local-Qwen requests unbounded without weakening Gemini deadlines', async () => {
   assert.ok(fs.existsSync(policyPath), 'School request policy module must exist');
   const {
     SCHOOL_CLOUD_EVALUATOR_TIMEOUT_MS,

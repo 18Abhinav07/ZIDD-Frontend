@@ -12,8 +12,10 @@ import {
 } from '@radix-ui/react-icons';
 import { getAvatarScaleClass } from '@/lib/avatarRegistry';
 import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
+import { useResolvedSchoolCoachIdentity } from '@/components/school/shell/SchoolCoachIdentityContext';
 import {
   SchoolPageHeading,
+  schoolPrimaryActionClass,
   schoolSecondaryActionClass,
 } from '@/components/school/SchoolPrimitives';
 import type { SchoolClassMap, SchoolMapStatus } from '@/services/schoolRebuild';
@@ -27,12 +29,12 @@ import styles from './SchoolPathMap.module.css';
 
 interface SchoolChapterMapProps {
   schoolClass: SchoolClassMap;
-  authorizedAction?: {
-    chapterId: string;
+  primaryAction?: {
     label: string;
     busy: boolean;
     onSelect: () => void;
   };
+  onViewChapter: (chapterId: string) => void;
   onChangeSetup: () => void;
 }
 
@@ -73,17 +75,15 @@ function ChapterPathNode({
   chapter,
   index,
   activeChapterId,
-  authorizedAction,
+  onViewChapter,
 }: {
   chapter: Chapter;
   index: number;
   activeChapterId: string | null;
-  authorizedAction: SchoolChapterMapProps['authorizedAction'];
+  onViewChapter: SchoolChapterMapProps['onViewChapter'];
 }) {
   const isCurrent = chapter.chapter_id === activeChapterId;
-  const action = authorizedAction?.chapterId === chapter.chapter_id && chapter.status !== 'locked'
-    ? authorizedAction
-    : undefined;
+  const canView = chapter.status !== 'locked';
   const avatar = getSchoolPathAvatar(chapter.chapter_id);
   const side = schoolPathSide(index);
   const label = chapterStatusLabel(chapter.status);
@@ -125,12 +125,11 @@ function ChapterPathNode({
         ) : null}
       </div>
 
-      {action ? (
+      {canView ? (
         <button
           type="button"
-          disabled={action.busy}
-          onClick={action.onSelect}
-          aria-label={`${action.busy ? 'Starting chapter' : action.label}: ${chapter.title}`}
+          onClick={() => onViewChapter(chapter.chapter_id)}
+          aria-label={`View learning stages for ${chapter.title}`}
           className={`${styles.nodeCallout} ${styles.nodeCalloutButton}`}
         >
           <span className={styles.nodeState}>{label}</span>
@@ -142,7 +141,7 @@ function ChapterPathNode({
           </span>
           {isCurrent ? <span className={styles.nodeDescription}>{description}</span> : null}
           <span className={styles.nodeAction}>
-            {action.busy ? 'Starting chapter' : action.label}
+            View stages
             <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
           </span>
         </button>
@@ -162,8 +161,17 @@ function ChapterPathNode({
   );
 }
 
-export function SchoolChapterMap({ schoolClass, authorizedAction, onChangeSetup }: SchoolChapterMapProps) {
-  const theme = getSchoolAvatarTheme(schoolClass.coach_avatar_id, schoolClass.coach_palette_id);
+export function SchoolChapterMap({
+  schoolClass,
+  primaryAction,
+  onViewChapter,
+  onChangeSetup,
+}: SchoolChapterMapProps) {
+  const coachIdentity = useResolvedSchoolCoachIdentity({
+    avatarId: schoolClass.coach_avatar_id,
+    paletteId: schoolClass.coach_palette_id,
+  });
+  const theme = getSchoolAvatarTheme(coachIdentity.avatarId, coachIdentity.paletteId);
   const completedChapters = schoolClass.chapters.filter((chapter) => chapter.status === 'complete').length;
   const activeChapter = schoolClass.chapters.find(
     (chapter) => chapter.chapter_id === schoolClass.active_chapter_id,
@@ -205,17 +213,30 @@ export function SchoolChapterMap({ schoolClass, authorizedAction, onChangeSetup 
           <span className={styles.mapCount}>
             {completedChapters} of {schoolClass.chapters.length} complete
           </span>
-          <button type="button" onClick={onChangeSetup} className={schoolSecondaryActionClass}>
-            <GearIcon className="h-4 w-4" aria-hidden="true" />
-            Change class or subject
-          </button>
+          <div className={styles.mapHeaderActions}>
+            {primaryAction ? (
+              <button
+                type="button"
+                disabled={primaryAction.busy}
+                onClick={primaryAction.onSelect}
+                className={schoolPrimaryActionClass}
+              >
+                {primaryAction.busy ? 'Starting chapter' : primaryAction.label}
+                <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
+              </button>
+            ) : null}
+            <button type="button" onClick={onChangeSetup} className={schoolSecondaryActionClass}>
+              <GearIcon className="h-4 w-4" aria-hidden="true" />
+              Change class or subject
+            </button>
+          </div>
         </div>
         <div className={styles.mapHeaderBottom}>
           <div className={styles.mapHeaderCopy}>
             <SchoolPageHeading
               eyebrow={`English · Class ${schoolClass.class_no} · ${schoolClass.book_title}`}
-              title="Your class journey"
-              description="Follow the path from finished stories to the chapter waiting now."
+              title={`Class ${schoolClass.class_no} chapter map`}
+              description="Open any available chapter to see its learning stages, or continue the current lesson."
             />
           </div>
         </div>
@@ -238,7 +259,7 @@ export function SchoolChapterMap({ schoolClass, authorizedAction, onChangeSetup 
               chapter={chapter}
               index={index}
               activeChapterId={activeChapter?.chapter_id ?? null}
-              authorizedAction={authorizedAction}
+              onViewChapter={onViewChapter}
             />
           ))}
         </ol>

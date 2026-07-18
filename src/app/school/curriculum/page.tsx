@@ -5,7 +5,10 @@ import { useRouter } from 'next/navigation';
 import { ReloadIcon } from '@radix-ui/react-icons';
 import { SchoolMapSkeleton } from '@/components/learning/LearningSkeletons';
 import { SchoolPageHeading, schoolPrimaryActionClass, schoolSecondaryActionClass } from '@/components/school/SchoolPrimitives';
-import { resolveSchoolStateDestination } from '@/lib/schoolActivityPolicy';
+import {
+  resolveSchoolMapDestination,
+  resolveSchoolStateDestination,
+} from '@/lib/schoolActivityPolicy';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 import { getSchoolState } from '@/services/schoolRebuild';
 
@@ -22,11 +25,19 @@ export default function SchoolCurriculumResolverPage() {
     void getSchoolState({ force: true })
       .then((state) => {
         if (requestIdRef.current !== requestId) return;
-        const destination = resolveSchoolStateDestination({
+        const actionDestination = resolveSchoolStateDestination({
           nextAction: state.next_action,
           allowedNextActions: state.allowed_next_actions,
           nextActionUrl: state.next_action_url,
         });
+        const mapDestination = resolveSchoolMapDestination({
+          profileStatus: state.profile_status,
+          unlockState: state.unlock_state,
+          subjectId: state.subject_id,
+          activeLearningClassNo: state.active_learning_class_no,
+          targetClassNo: state.target_class_no,
+        });
+        const destination = mapDestination ?? actionDestination;
         if (!destination || destination === '/school/curriculum') throw new Error('school_state_unresolved');
         router.replace(destination);
       })
@@ -42,7 +53,7 @@ export default function SchoolCurriculumResolverPage() {
   if (!error) return <SchoolMapSkeleton />;
 
   return (
-    <main className="mx-auto flex min-h-[calc(100dvh-68px)] w-full max-w-[760px] items-center px-5 py-16 sm:px-8">
+    <main className="mx-auto flex min-h-[calc(100dvh-64px)] w-full max-w-[760px] items-center px-5 py-16 sm:px-8">
       <section className="w-full border-y border-red-200 py-8" role="alert" aria-live="polite">
         <SchoolPageHeading
           eyebrow="My path"

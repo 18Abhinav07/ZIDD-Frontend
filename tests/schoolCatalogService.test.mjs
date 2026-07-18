@@ -13,18 +13,18 @@ test('school catalog client exposes the hierarchy endpoints', () => {
   assert.match(source, /`\/school\/catalog\/\$\{subjectId\}\/classes\/\$\{classNo\}\/chapters\/\$\{chapterId\}`/);
 });
 
-test('all local School requests are unbounded while cloud requests keep explicit deadlines', () => {
+test('only explicit local-Qwen School requests are unbounded while Gemini keeps explicit deadlines', () => {
   assert.match(
     source,
-    /const schoolReadFetch[\s\S]*?SCHOOL_LOCAL_REQUESTS_UNBOUNDED[\s\S]*?null[\s\S]*?SCHOOL_READ_TIMEOUT_MS/,
+    /const schoolReadFetch[\s\S]*?SCHOOL_QWEN_REQUESTS_UNBOUNDED[\s\S]*?null[\s\S]*?SCHOOL_READ_TIMEOUT_MS/,
   );
   assert.match(
     source,
-    /const schoolControlFetch[\s\S]*?SCHOOL_LOCAL_REQUESTS_UNBOUNDED[\s\S]*?null[\s\S]*?SCHOOL_CONTROL_TIMEOUT_MS/,
+    /const schoolControlFetch[\s\S]*?SCHOOL_QWEN_REQUESTS_UNBOUNDED[\s\S]*?null[\s\S]*?SCHOOL_CONTROL_TIMEOUT_MS/,
   );
   assert.match(
     source,
-    /const schoolEvaluatorFetch[\s\S]*?SCHOOL_LOCAL_REQUESTS_UNBOUNDED[\s\S]*?null[\s\S]*?SCHOOL_CLOUD_EVALUATOR_TIMEOUT_MS/,
+    /const schoolEvaluatorFetch[\s\S]*?SCHOOL_QWEN_REQUESTS_UNBOUNDED[\s\S]*?null[\s\S]*?SCHOOL_CLOUD_EVALUATOR_TIMEOUT_MS/,
   );
 
   for (const answerFunction of [

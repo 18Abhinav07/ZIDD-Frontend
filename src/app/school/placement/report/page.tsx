@@ -15,6 +15,7 @@ import {
   schoolPrimaryActionClass,
   schoolSecondaryActionClass,
 } from '@/components/school/SchoolPrimitives';
+import { useResolvedSchoolCoachIdentity } from '@/components/school/shell/SchoolCoachIdentityContext';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 import {
   constrainPlacementReportActionToSession,
@@ -135,7 +136,11 @@ function PlacementReportContent({
   onPrimaryAction: () => void;
   onRetry: () => void;
 }) {
-  const theme = getSchoolAvatarTheme(report.coach_avatar_id, report.coach_palette_id);
+  const coachIdentity = useResolvedSchoolCoachIdentity({
+    avatarId: report.coach_avatar_id,
+    paletteId: report.coach_palette_id,
+  });
+  const theme = getSchoolAvatarTheme(coachIdentity.avatarId, coachIdentity.paletteId);
   const stageEvidence = Object.entries(report.evidence_summary.stage_counts)
     .filter(([, count]) => count > 0)
     .map(([stage, count]) => ({ stage: placementStageLabel(stage), count }));
@@ -147,7 +152,7 @@ function PlacementReportContent({
 
   return (
     <main
-      className="mx-auto min-h-[calc(100dvh-68px)] w-full max-w-[1180px] overflow-x-hidden px-4 pb-24 pt-12 sm:px-8 sm:pt-16 lg:px-12"
+      className="mx-auto min-h-[calc(100dvh-64px)] w-full max-w-[1180px] overflow-x-hidden px-4 pb-24 pt-12 sm:px-8 sm:pt-16 lg:px-12"
       style={theme.style}
     >
       <header className="grid gap-8 border-b border-[var(--school-line-strong)] pb-10 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.42fr)] lg:items-end lg:gap-12 lg:pb-14 xl:gap-20">
@@ -426,7 +431,7 @@ export default function SchoolPlacementReportPage() {
           onRetry={() => void load()}
         />
       ) : (
-        <main className="mx-auto flex min-h-[calc(100dvh-68px)] w-full max-w-[760px] items-center px-4 py-16 sm:px-8">
+        <main className="mx-auto flex min-h-[calc(100dvh-64px)] w-full max-w-[760px] items-center px-4 py-16 sm:px-8">
           <section className="w-full border-y border-red-200 py-8" role="alert">
             <div className="flex items-start gap-3 text-red-800">
               <ExclamationTriangleIcon className="mt-1 h-5 w-5 flex-none" aria-hidden="true" />

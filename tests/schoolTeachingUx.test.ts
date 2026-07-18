@@ -65,6 +65,32 @@ test('shared support preserves title data without repeating the workspace activi
   assert.doesNotMatch(supportActivity, /teachingBlock|feedback\.message|Coach clue/);
 });
 
+test('readiness and lesson questions use measured prompt emphasis', () => {
+  const lessonQuestion = tutorActivity.match(/const QUESTION_PROMPT_CLASS = '([^']+)'/)?.[1] ?? '';
+  const readinessQuestion = supportActivity.match(/data-testid=\{`\$\{testIdPrefix\}-question`\}[\s\S]*?className="([^"]+)"/)?.[1] ?? '';
+
+  for (const [name, question] of [
+    ['lesson', lessonQuestion],
+    ['readiness', readinessQuestion],
+  ] as const) {
+    assert.match(question, /\bfont-normal\b/, `${name} question should use measured emphasis`);
+    assert.doesNotMatch(question, /\bfont-bold\b/, `${name} question should not read like a page headline`);
+  }
+});
+
+test('continue-only teaching uses a full-width instruction panel', () => {
+  const continuePrompt = tutorActivity.match(/const CONTINUE_PROMPT_CLASS = '([^']+)'/)?.[1] ?? '';
+
+  assert.match(continuePrompt, /\bw-full\b/);
+  assert.match(continuePrompt, /\bmax-w-none\b/);
+  assert.match(continuePrompt, /bg-\[var\(--school-surface-soft\)\]/);
+  assert.doesNotMatch(continuePrompt, /max-w-\[31ch\]|text-\[1\.85rem\]|sm:text-\[2\.35rem\]/);
+  assert.match(
+    tutorActivity,
+    /className=\{isContinueOnlyActivity \? CONTINUE_PROMPT_CLASS : QUESTION_PROMPT_CLASS\}/,
+  );
+});
+
 test('Learning Back and progress strips stay compact without repeating stage content', () => {
   const backButtonRule = workspaceStyles.match(/\.backButton \{[\s\S]*?\n\}/)?.[0] ?? '';
 

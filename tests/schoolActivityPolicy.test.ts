@@ -11,6 +11,7 @@ import {
   schoolCurriculumSessionOwnedByState,
   resolveSchoolStateAction,
   resolveSchoolStateDestination,
+  resolveSchoolMapDestination,
   resolveSchoolPassiveStateDestination,
   schoolMasterclassLineage,
   schoolMasterclassShellBackAction,
@@ -19,6 +20,30 @@ import {
   schoolTutorLoadOwnedBy,
   startSingleFlightRevalidation,
 } from '../src/lib/schoolActivityPolicy.ts';
+
+test('My Path resolves to the active class map independently of the next lesson action', () => {
+  assert.equal(resolveSchoolMapDestination({
+    profileStatus: 'complete',
+    unlockState: 'target_unlocked',
+    subjectId: 'english',
+    activeLearningClassNo: 5,
+    targetClassNo: 5,
+  }), '/school/classes/5');
+  assert.equal(resolveSchoolMapDestination({
+    profileStatus: 'complete',
+    unlockState: 'recap_required',
+    subjectId: 'english',
+    activeLearningClassNo: 4,
+    targetClassNo: 5,
+  }), null);
+  assert.equal(resolveSchoolMapDestination({
+    profileStatus: 'incomplete',
+    unlockState: 'target_unlocked',
+    subjectId: 'english',
+    activeLearningClassNo: 5,
+    targetClassNo: 5,
+  }), null);
+});
 
 test('school navigation follows only an allowed backend action and destination', () => {
   assert.equal(resolveSchoolStateDestination({

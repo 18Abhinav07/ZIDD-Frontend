@@ -43,6 +43,11 @@ export interface SchoolOnboardingProfile extends Omit<SchoolOnboardingForm,
   coach_palette_id: string | null;
 }
 
+export interface SchoolOnboardingCoachIdentity {
+  coach_avatar_id: string | null;
+  coach_palette_id: string | null;
+}
+
 export interface SchoolOnboardingDraft {
   profile_version_id: string;
   status: 'draft';
@@ -58,6 +63,8 @@ export interface SchoolOnboardingDraft {
   learner_goal: string | null;
   parent_goal: string | null;
   prior_difficulty_signals: string[] | null;
+  coach_avatar_id?: string | null;
+  coach_palette_id?: string | null;
 }
 
 export interface SchoolOnboardingSnapshot {
@@ -75,6 +82,7 @@ export interface HydratedSchoolOnboarding {
   persistedStep: SchoolOnboardingStep;
   activeProfile: SchoolOnboardingProfile | null;
   draft: SchoolOnboardingDraft | null;
+  coachIdentity: SchoolOnboardingCoachIdentity;
 }
 
 export type SchoolOnboardingNavigationDecision =
@@ -147,6 +155,13 @@ export function emptySchoolOnboardingForm(): SchoolOnboardingForm {
   };
 }
 
+export function emptySchoolOnboardingCoachIdentity(): SchoolOnboardingCoachIdentity {
+  return {
+    coach_avatar_id: null,
+    coach_palette_id: null,
+  };
+}
+
 function clampStep(step: number): SchoolOnboardingStep {
   if (!Number.isFinite(step)) return 0;
   return Math.max(0, Math.min(4, Math.trunc(step))) as SchoolOnboardingStep;
@@ -182,6 +197,20 @@ function formFromProfile(profile: SchoolOnboardingProfile): SchoolOnboardingForm
   };
 }
 
+function coachIdentityFrom(
+  source: Partial<SchoolOnboardingCoachIdentity> | null | undefined,
+): SchoolOnboardingCoachIdentity {
+  const avatarId = source?.coach_avatar_id ?? null;
+  const paletteId = source?.coach_palette_id ?? null;
+  if (!avatarId || !paletteId || avatarId !== paletteId) {
+    return emptySchoolOnboardingCoachIdentity();
+  }
+  return {
+    coach_avatar_id: avatarId,
+    coach_palette_id: paletteId,
+  };
+}
+
 function materialProfileSnapshot(form: SchoolOnboardingForm) {
   return {
     board_id: form.board_id,
@@ -209,6 +238,7 @@ export function hydrateSchoolOnboarding(snapshot: SchoolOnboardingSnapshot): Hyd
       persistedStep: clampStep(snapshot.draft.current_step),
       activeProfile: snapshot.active_profile,
       draft: snapshot.draft,
+      coachIdentity: coachIdentityFrom(snapshot.draft),
     };
   }
   if (snapshot.active_profile) {
@@ -218,6 +248,7 @@ export function hydrateSchoolOnboarding(snapshot: SchoolOnboardingSnapshot): Hyd
       persistedStep: 4,
       activeProfile: snapshot.active_profile,
       draft: null,
+      coachIdentity: coachIdentityFrom(snapshot.active_profile),
     };
   }
   return {
@@ -226,6 +257,7 @@ export function hydrateSchoolOnboarding(snapshot: SchoolOnboardingSnapshot): Hyd
     persistedStep: 0,
     activeProfile: null,
     draft: null,
+    coachIdentity: emptySchoolOnboardingCoachIdentity(),
   };
 }
 
@@ -326,11 +358,21 @@ export function validateSchoolOnboardingStep(
   };
 }
 
-export function buildOnboardingStepPatch(step: Exclude<SchoolOnboardingStep, 4>, form: SchoolOnboardingForm) {
+export function buildOnboardingStepPatch(
+  step: Exclude<SchoolOnboardingStep, 4>,
+  form: SchoolOnboardingForm,
+  coachIdentity: SchoolOnboardingCoachIdentity = emptySchoolOnboardingCoachIdentity(),
+) {
   if (step === 0) {
+    const hasCoachIdentity = Boolean(
+      coachIdentity.coach_avatar_id
+      && coachIdentity.coach_palette_id
+      && coachIdentity.coach_avatar_id === coachIdentity.coach_palette_id,
+    );
     return {
       display_name: form.display_name.trim(),
       school_name: form.school_name.trim(),
+      ...(hasCoachIdentity ? coachIdentity : {}),
       current_step: 1 as const,
     };
   }

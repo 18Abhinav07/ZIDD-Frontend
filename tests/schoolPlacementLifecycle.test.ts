@@ -92,7 +92,7 @@ test('completed placement follows primary state action while retaining report as
   });
 });
 
-test('completed placement fails closed when refreshed state still claims an interactive action', async () => {
+test('completed placement waits while the matching state projection is still interactive', async () => {
   const { resolveSchoolPlacementMutation } = await loadLifecycle();
   const completedPlacement = {
     ...interactivePlacement,
@@ -101,10 +101,56 @@ test('completed placement fails closed when refreshed state still claims an inte
   } as const;
 
   assert.deepEqual(resolveSchoolPlacementMutation(completedPlacement, baseState), {
-    kind: 'recover',
+    kind: 'settling',
     reportAvailable: false,
-    reason: 'state_unresolved',
   });
+});
+
+test('time-capped placement returns directly to its saved resumable state', async () => {
+  const { resolveSchoolPlacementMutation } = await loadLifecycle();
+  const resumablePlacement = {
+    ...interactivePlacement,
+    status: 'insufficient_evidence',
+    next_item: null,
+  } as const;
+
+  assert.deepEqual(resolveSchoolPlacementMutation(resumablePlacement, {
+    ...baseState,
+    status: 'insufficient_evidence',
+  }), {
+    kind: 'resume',
+    reportAvailable: false,
+  });
+});
+
+test('answer drafts are visible only for the authored item that owns them', async () => {
+  const { visiblePlacementAnswer } = await loadLifecycle();
+  const draft = { itemId: 'item-a', value: 'saved answer' };
+
+  assert.equal(visiblePlacementAnswer(draft, 'item-a', false), 'saved answer');
+  assert.equal(visiblePlacementAnswer(draft, 'item-b', false), '');
+  assert.equal(visiblePlacementAnswer(draft, null, true), 'saved answer');
+  assert.equal(visiblePlacementAnswer(draft, 'item-b', true), '');
+});
+
+test('terminal settling still fails closed on session or profile mismatch', async () => {
+  const { resolveSchoolPlacementMutation } = await loadLifecycle();
+  const completedPlacement = {
+    ...interactivePlacement,
+    status: 'target_ready',
+    next_item: null,
+  } as const;
+
+  for (const state of [
+    { ...baseState, active_session_id: 'placement-2' },
+    { ...baseState, profile_version_id: 'profile-2' },
+  ]) {
+    assert.deepEqual(resolveSchoolPlacementMutation(completedPlacement, state), {
+      kind: 'recover',
+      reportAvailable: false,
+      reason: 'identity_mismatch',
+    });
+  }
 });
 
 test('abandoned placement exposes report only behind the primary restart action', async () => {

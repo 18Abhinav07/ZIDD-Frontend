@@ -93,11 +93,11 @@ if (failures.length === 0) {
 
   for (const token of [
     'getSchoolCatalog',
-    'catalog.boards.map',
-    'selectedBoard.subjects.map',
-    'selectedSubject.classes.map',
+    'catalog?.boards.filter',
+    'availableBoards.map',
+    'selectedBoard.subjects.filter',
+    'selectedSubject.classes',
     'isSchoolCatalogSupportAvailable',
-    'disabled={!supported}',
     'CatalogChoiceSkeleton',
   ]) {
     if (!`${setup}\n${onboarding}`.includes(token)) failures.push(`backend-driven setup missing ${token}`);

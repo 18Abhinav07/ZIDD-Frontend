@@ -7,6 +7,7 @@ import { SchoolTutorSkeleton } from '@/components/learning/LearningSkeletons';
 import { SchoolCoachPanel } from '@/components/school/SchoolCoachPanel';
 import { SchoolLearningWorkspace } from '@/components/school/SchoolLearningWorkspace';
 import { schoolPrimaryActionClass, schoolSecondaryActionClass } from '@/components/school/SchoolPrimitives';
+import { useResolvedSchoolCoachIdentity } from '@/components/school/shell/SchoolCoachIdentityContext';
 import { SchoolActivityRenderer, schoolActivityLabel } from '@/components/school/tutor/SchoolActivityRenderer';
 import { SchoolProgressRail } from '@/components/school/tutor/SchoolProgressRail';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
@@ -239,6 +240,11 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
     }
   };
 
+  const coachIdentity = useResolvedSchoolCoachIdentity({
+    avatarId: session?.coach_avatar_id,
+    paletteId: session?.coach_palette_id,
+  });
+
   if (loading) return <SchoolTutorSkeleton />;
 
   if (!session) {
@@ -268,18 +274,33 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
   }
 
   const currentLevel = session.levels[session.progress.current_level_index] ?? null;
-  const visibleFeedback = selectVisibleSchoolCoachFeedback(activity?.activity_id, session.last_feedback);
+  const visibleFeedback = selectVisibleSchoolCoachFeedback(
+    activity?.activity_id,
+    session.last_feedback,
+    { includePrevious: true },
+  );
+  const feedbackIsFromPreviousActivity = Boolean(
+    visibleFeedback
+    && activity
+    && visibleFeedback.activity_id !== activity.activity_id,
+  );
   const feedbackTone = visibleFeedback?.correct === true
     ? 'success'
     : visibleFeedback?.correct === false
       ? 'warning'
       : 'neutral';
   const coachStatus = visibleFeedback?.message
-    ? visibleFeedback.correct === true
-      ? 'What worked'
-      : visibleFeedback.correct === false
-        ? 'Try this next'
-        : 'Coach feedback'
+    ? feedbackIsFromPreviousActivity
+      ? visibleFeedback.correct === true
+        ? 'Previous answer: what worked'
+        : visibleFeedback.correct === false
+          ? 'Previous answer: try this'
+          : 'Feedback on your previous answer'
+      : visibleFeedback.correct === true
+        ? 'What worked'
+        : visibleFeedback.correct === false
+          ? 'Try this next'
+          : 'Coach feedback'
     : session.phase === 'paused_for_masterclass'
     ? 'Focused practice'
     : activityView.kind === 'pending'
@@ -311,7 +332,7 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
     error,
     tone: feedbackTone,
   });
-  const theme = getSchoolAvatarTheme(session.coach_avatar_id, session.coach_palette_id);
+  const theme = getSchoolAvatarTheme(coachIdentity.avatarId, coachIdentity.paletteId);
   const canStartMasterclass = schoolNextAction === 'start_masterclass';
 
   return (
@@ -320,8 +341,8 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
       onBack={() => router.push(chapterMapHref)}
       coach={(
         <SchoolCoachPanel
-          avatarId={session.coach_avatar_id}
-          paletteId={session.coach_palette_id}
+          avatarId={coachIdentity.avatarId}
+          paletteId={coachIdentity.paletteId}
           status={coachPresentation.status}
           note={coachPresentation.message}
           hint={coachPresentation.hint}

@@ -71,6 +71,10 @@ test('onboarding keeps every real setup field and backend catalog authority', ()
   assert.match(setup, /selectedSubject\.classes[\s\S]*?\.filter/);
   assert.match(setup, /isSchoolCatalogSupportAvailable/);
   assert.doesNotMatch(setup, /BOARD_OPTIONS|CLASS_OPTIONS/);
+  assert.match(wizard, /hidden=\{goalOwner !== 'learner'\}/);
+  assert.match(wizard, /hidden=\{goalOwner !== 'parent'\}/);
+  assert.match(wizard, /id="school-learner-goal"/);
+  assert.match(wizard, /id="school-parent-goal"/);
 });
 
 test('onboarding uses the shared School theme and Radix icon vocabulary', () => {
@@ -83,6 +87,19 @@ test('onboarding uses the shared School theme and Radix icon vocabulary', () => 
   assert.match(setup, /schoolSecondaryActionClass/);
   assert.match(ownedSurface, /@radix-ui\/react-icons/);
   assert.doesNotMatch(ownedSurface, /lucide-react|font-black|border-l-[2-9]|(?:sky|emerald|amber)-/);
+});
+
+test('the first setup step previews a stable persisted coach identity using the shared 3D avatar registry', () => {
+  assert.match(wizard, /import Image from 'next\/image';/);
+  assert.match(wizard, /getRandomAvatar/);
+  assert.match(wizard, /getAvatarScaleClass/);
+  assert.match(wizard, /ONBOARDING_COACH_CANDIDATE_KEY/);
+  assert.match(wizard, /window\.sessionStorage/);
+  assert.match(wizard, /hydrated\.coachIdentity/);
+  assert.match(wizard, /buildOnboardingStepPatch\(stepToSave, form, coachIdentity\)/);
+  assert.match(wizard, /Meet your learning guide/);
+  assert.match(wizard, /<Image[\s\S]*?src=\{coachAvatar\.url\}/);
+  assert.doesNotMatch(wizard, /AVATAR_PATHS|coach_orange\.png|coach_blue\.png/);
 });
 
 test('dirty step navigation persists before routing and activation uses the saved revision', () => {

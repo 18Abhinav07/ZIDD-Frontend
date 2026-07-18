@@ -16,8 +16,57 @@ import type { CurriculumActivityView } from '@/lib/schoolActivityPolicy';
 import type { SchoolCurriculumSession } from '@/services/schoolRebuild';
 
 type SchoolActivity = NonNullable<SchoolCurriculumSession['current_activity']>;
+type SchoolSourceReference = NonNullable<SchoolActivity['source_reference']>;
 
 const TEACHING_STEP_ACKNOWLEDGEMENT = 'continue';
+const CONTINUE_PROMPT_CLASS = 'mt-3 w-full max-w-none break-words rounded-lg border border-[var(--school-line)] bg-[var(--school-surface-soft)] px-5 py-5 font-sans text-lg font-normal leading-8 text-[var(--school-ink)] outline-none sm:px-6 sm:py-6 sm:text-xl';
+const QUESTION_PROMPT_CLASS = 'mt-2 max-w-[31ch] break-words font-sans text-[1.85rem] font-normal leading-[1.08] text-[var(--school-ink)] outline-none sm:text-[2.35rem]';
+
+function officialNcertSourceUrl(sourceUrl: string | null | undefined) {
+  if (!sourceUrl) return null;
+
+  try {
+    const url = new URL(sourceUrl);
+    return url.protocol === 'https:' && url.hostname === 'ncert.nic.in'
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function sourceAnchorLabel(anchor: NonNullable<SchoolSourceReference['anchors']>[number]) {
+  const sectionLabel = anchor.section_label?.trim();
+  const pageStart = Number.isInteger(anchor.page_start) && anchor.page_start! > 0
+    ? anchor.page_start
+    : null;
+  const pageEnd = pageStart && Number.isInteger(anchor.page_end) && anchor.page_end! >= pageStart
+    ? anchor.page_end
+    : null;
+  const pageLabel = pageStart
+    ? pageEnd && pageEnd !== pageStart
+      ? `pp. ${pageStart}-${pageEnd}`
+      : `p. ${pageStart}`
+    : null;
+
+  return [sectionLabel, pageLabel].filter(Boolean).join(' - ') || null;
+}
+
+function sourceReferenceDetails(sourceReference: SchoolActivity['source_reference']) {
+  if (!sourceReference?.anchors?.length) return null;
+
+  const anchors = sourceReference.anchors.flatMap((anchor) => {
+    const sourceUrl = officialNcertSourceUrl(anchor.source_url);
+    const label = sourceAnchorLabel(anchor);
+    return sourceUrl && label ? [{ label, sourceUrl }] : [];
+  });
+
+  return anchors.length ? {
+    bookTitle: sourceReference.book_title?.trim() || null,
+    chapterTitle: sourceReference.chapter_title?.trim() || null,
+    anchors,
+  } : null;
+}
 
 interface SchoolActivityRendererProps {
   session: SchoolCurriculumSession;
@@ -94,6 +143,7 @@ function ActivityCard({
 }) {
   const questionHeadingRef = useRef<HTMLHeadingElement | null>(null);
   const isContinueOnlyActivity = activity.interaction_type === 'continue';
+  const sourceDetails = sourceReferenceDetails(activity.source_reference);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => questionHeadingRef.current?.focus({ preventScroll: true }));
@@ -121,12 +171,37 @@ function ActivityCard({
             ref={questionHeadingRef}
             tabIndex={-1}
             data-testid="school-tutor-question"
-            className="mt-2 max-w-[31ch] break-words font-sans text-[1.85rem] font-bold leading-[1.08] text-[var(--school-ink)] outline-none sm:text-[2.35rem]"
+            className={isContinueOnlyActivity ? CONTINUE_PROMPT_CLASS : QUESTION_PROMPT_CLASS}
           >
             {activity.prompt}
           </h1>
           {activity.kind === 'chapter_check' ? (
             <p className="mt-3 text-xs font-semibold text-[var(--school-accent-deep)]">Answer this chapter challenge in your own words.</p>
+          ) : null}
+          {sourceDetails ? (
+            <details data-testid="school-tutor-source-details" className="mt-7 max-w-xl border-t border-[var(--school-line)]">
+              <summary className="cursor-pointer py-3 text-sm font-semibold text-[var(--school-accent-deep)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--school-accent)] focus-visible:ring-offset-2">
+                NCERT source details
+              </summary>
+              <div className="space-y-3 pb-1 text-sm leading-6 text-[var(--school-muted)]">
+                {sourceDetails.bookTitle ? <p><span className="font-semibold text-[var(--school-ink)]">Book</span>: {sourceDetails.bookTitle}</p> : null}
+                {sourceDetails.chapterTitle ? <p><span className="font-semibold text-[var(--school-ink)]">Chapter</span>: {sourceDetails.chapterTitle}</p> : null}
+                <ul className="space-y-2">
+                  {sourceDetails.anchors.map((anchor) => (
+                    <li key={`${anchor.sourceUrl}-${anchor.label}`}>
+                      <a
+                        href={anchor.sourceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-semibold text-[var(--school-accent-deep)] underline decoration-[var(--school-accent-border)] underline-offset-4 hover:text-[var(--school-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--school-accent)] focus-visible:ring-offset-2"
+                      >
+                        {anchor.label}<span className="sr-only"> on the NCERT website</span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </details>
           ) : null}
         </section>
       </div>

@@ -75,6 +75,8 @@ const persistedDraft = {
   learner_goal: null,
   parent_goal: null,
   prior_difficulty_signals: null,
+  coach_avatar_id: 'quiet_quint',
+  coach_palette_id: 'quiet_quint',
 };
 
 test('validates every step against the backend field contract', () => {
@@ -139,6 +141,10 @@ test('hydrates the exact persisted draft without inventing completion values', (
   assert.equal(hydrated.source, 'draft');
   assert.equal(hydrated.persistedStep, 2);
   assert.equal(hydrated.draft?.draft_revision, 4);
+  assert.deepEqual(hydrated.coachIdentity, {
+    coach_avatar_id: 'quiet_quint',
+    coach_palette_id: 'quiet_quint',
+  });
   assert.deepEqual(hydrated.form, {
     display_name: 'Persisted Mira',
     school_name: '',
@@ -173,6 +179,10 @@ test('seeds active edits exactly and keeps a missing profile empty', () => {
   assert.equal(active.source, 'active');
   assert.equal(active.persistedStep, 4);
   assert.deepEqual(active.form, completeForm);
+  assert.deepEqual(active.coachIdentity, {
+    coach_avatar_id: 'brave_bella',
+    coach_palette_id: 'brave_bella',
+  });
 
   for (let requestedStep = 0; requestedStep <= 4; requestedStep += 1) {
     assert.deepEqual(decideSchoolOnboardingNavigation({
@@ -196,6 +206,10 @@ test('seeds active edits exactly and keeps a missing profile empty', () => {
   assert.deepEqual(missing.form, emptySchoolOnboardingForm());
   assert.equal(missing.form.target_class_no, null);
   assert.equal(missing.form.preferred_teaching_language, null);
+  assert.deepEqual(missing.coachIdentity, {
+    coach_avatar_id: null,
+    coach_palette_id: null,
+  });
 });
 
 test('builds flattened patches containing only the current step fields', () => {
@@ -223,6 +237,27 @@ test('builds flattened patches containing only the current step fields', () => {
     parent_goal: '',
     prior_difficulty_signals: ['reading', 'chapter_answers'],
     current_step: 4,
+  });
+});
+
+test('pins a selected coach on the first saved onboarding step only', () => {
+  const coachIdentity = {
+    coach_avatar_id: 'fluent_finn',
+    coach_palette_id: 'fluent_finn',
+  };
+
+  assert.deepEqual(buildOnboardingStepPatch(0, completeForm, coachIdentity), {
+    display_name: 'Mira',
+    school_name: 'City School',
+    coach_avatar_id: 'fluent_finn',
+    coach_palette_id: 'fluent_finn',
+    current_step: 1,
+  });
+  assert.deepEqual(buildOnboardingStepPatch(1, completeForm, coachIdentity), {
+    board_id: 'cbse',
+    target_class_no: 3,
+    subject_ids: ['english'],
+    current_step: 2,
   });
 });
 

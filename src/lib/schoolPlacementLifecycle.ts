@@ -20,8 +20,10 @@ interface PlacementMutationState {
 export type SchoolPlacementMutationDecision =
   | { kind: 'interactive'; reportAvailable: boolean }
   | { kind: 'pending'; reportAvailable: boolean }
+  | { kind: 'settling'; reportAvailable: boolean }
   | { kind: 'terminal'; reportAvailable: boolean }
   | { kind: 'start'; reportAvailable: boolean }
+  | { kind: 'resume'; reportAvailable: boolean }
   | { kind: 'navigate'; destination: string; reportAvailable: boolean }
   | {
     kind: 'recover';
@@ -33,6 +35,20 @@ function isPlacementDestination(destination: string) {
   return destination === '/school/placement'
     || destination.startsWith('/school/placement?')
     || destination.startsWith('/school/placement#');
+}
+
+export interface SchoolPlacementAnswerDraft {
+  itemId: string | null;
+  value: string;
+}
+
+export function visiblePlacementAnswer(
+  draft: SchoolPlacementAnswerDraft,
+  currentItemId: string | null,
+  awaitingEvaluation: boolean,
+) {
+  if (draft.itemId === currentItemId) return draft.value;
+  return awaitingEvaluation && currentItemId === null ? draft.value : '';
 }
 
 export function resolveSchoolPlacementMutation(
@@ -81,6 +97,16 @@ export function resolveSchoolPlacementMutation(
     return { kind: 'start', reportAvailable };
   }
 
+  if (
+    placement.status === 'insufficient_evidence'
+    && state.status === 'insufficient_evidence'
+    && state.next_action === 'resume_placement'
+    && state.active_flow === 'placement'
+    && sessionMatches
+  ) {
+    return { kind: 'resume', reportAvailable };
+  }
+
   if (state.active_flow !== 'placement' || !sessionMatches) {
     return { kind: 'recover', reportAvailable, reason: 'identity_mismatch' };
   }
@@ -93,7 +119,14 @@ export function resolveSchoolPlacementMutation(
     placement.status === 'in_progress'
     && ['resume_placement', 'finish_placement'].includes(state.next_action ?? '')
   );
-  return terminalStateMatches
-    ? { kind: 'terminal', reportAvailable }
-    : { kind: 'recover', reportAvailable, reason: 'state_unresolved' };
+  if (terminalStateMatches) {
+    return { kind: 'terminal', reportAvailable };
+  }
+
+  if (placement.status !== 'in_progress') {
+    return ['resume_placement', 'finish_placement'].includes(state.next_action ?? '')
+      ? { kind: 'settling', reportAvailable }
+      : { kind: 'recover', reportAvailable, reason: 'state_unresolved' };
+  }
+  return { kind: 'recover', reportAvailable, reason: 'state_unresolved' };
 }

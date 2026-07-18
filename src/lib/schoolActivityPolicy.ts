@@ -130,6 +130,24 @@ export function resolveSchoolStateDestination<Action extends string>(input: {
   return canonicalSchoolDestination(destination);
 }
 
+export function resolveSchoolMapDestination(input: {
+  profileStatus: string;
+  unlockState: string;
+  subjectId: string | null;
+  activeLearningClassNo: number | null;
+  targetClassNo: number | null;
+}): string | null {
+  const classNo = input.activeLearningClassNo ?? input.targetClassNo;
+  if (
+    input.profileStatus !== 'complete'
+    || input.unlockState !== 'target_unlocked'
+    || !input.subjectId
+    || !Number.isInteger(classNo)
+  ) return null;
+
+  return `/school/classes/${classNo}`;
+}
+
 export function resolveSchoolPassiveStateDestination<Action extends string>(input: {
   status: string;
   nextAction: Action | null;

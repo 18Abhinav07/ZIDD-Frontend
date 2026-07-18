@@ -11,8 +11,12 @@ import {
   schoolSecondaryActionClass,
 } from '@/components/school/SchoolPrimitives';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
+import { schoolHomeActionLabel } from '@/lib/schoolHomePolicy.mjs';
 import { schoolProfileEditHref } from '@/lib/schoolOnboardingPolicy';
-import { resolveSchoolStateDestination } from '@/lib/schoolActivityPolicy';
+import {
+  resolveSchoolMapDestination,
+  resolveSchoolStateDestination,
+} from '@/lib/schoolActivityPolicy';
 import {
   createSchoolRouteLoadSingleFlight,
   schoolRouteLoadDisposition,
@@ -30,7 +34,7 @@ import {
 
 interface SchoolClassSnapshot {
   schoolClass: SchoolClassMapData;
-  stateAction: { action: SchoolNextAction; href: string };
+  stateAction: { action: SchoolNextAction; href: string } | null;
 }
 
 type SchoolClassLoadResult =
@@ -38,21 +42,36 @@ type SchoolClassLoadResult =
   | { kind: 'ready'; snapshot: SchoolClassSnapshot };
 
 const classMapLoadSingleFlight = createSchoolRouteLoadSingleFlight<SchoolClassLoadResult>();
+const CLASS_CONTINUATION_ACTIONS = new Set<SchoolNextAction>([
+  'resume_curriculum',
+  'start_masterclass',
+  'resume_masterclass',
+  'resume_support',
+  'view_support_plan',
+]);
 
 async function loadSchoolClass(classNo: number): Promise<SchoolClassLoadResult> {
   if (!Number.isInteger(classNo)) throw new Error('school_catalog_profile_mismatch');
   const state = await getSchoolState({ force: true });
-  const destination = resolveSchoolStateDestination({
+  const actionDestination = resolveSchoolStateDestination({
     nextAction: state.next_action,
     allowedNextActions: state.allowed_next_actions,
     nextActionUrl: state.next_action_url,
   });
-  if (!destination || !state.next_action) throw new Error('school_state_unresolved');
-  if (destination !== `/school/classes/${classNo}`) {
-    return { kind: 'redirect', href: destination };
+  const mapDestination = resolveSchoolMapDestination({
+    profileStatus: state.profile_status,
+    unlockState: state.unlock_state,
+    subjectId: state.subject_id,
+    activeLearningClassNo: state.active_learning_class_no,
+    targetClassNo: state.target_class_no,
+  });
+  if (!mapDestination) {
+    if (!actionDestination) throw new Error('school_state_unresolved');
+    return { kind: 'redirect', href: actionDestination };
   }
+  if (mapDestination !== `/school/classes/${classNo}`) throw new Error('school_catalog_profile_mismatch');
   const activeClassNo = state.active_learning_class_no ?? state.target_class_no;
-  if (state.profile_status !== 'complete' || activeClassNo !== classNo || state.target_class_no !== classNo || !state.subject_id) {
+  if (state.profile_status !== 'complete' || activeClassNo !== classNo || !state.subject_id) {
     throw new Error('school_catalog_profile_mismatch');
   }
   const result = await getSchoolClassMap(state.subject_id, classNo);
@@ -63,7 +82,9 @@ async function loadSchoolClass(classNo: number): Promise<SchoolClassLoadResult> 
     kind: 'ready',
     snapshot: {
       schoolClass: result,
-      stateAction: { action: state.next_action, href: destination },
+      stateAction: actionDestination && state.next_action
+        ? { action: state.next_action, href: actionDestination }
+        : null,
     },
   };
 }
@@ -148,7 +169,7 @@ export default function SchoolClassPage() {
     if (
       !snapshot
       || !chapterId
-      || snapshot.stateAction.action !== 'start_curriculum'
+      || snapshot.stateAction?.action !== 'start_curriculum'
       || starting
     ) return;
     setStarting(true);
@@ -170,6 +191,23 @@ export default function SchoolClassPage() {
     }
   };
 
+  const activeChapterId = snapshot?.schoolClass.active_chapter_id ?? null;
+  const mapPrimaryAction = snapshot?.stateAction && activeChapterId
+    ? snapshot.stateAction.action === 'start_curriculum'
+      ? {
+          label: 'Start chapter',
+          busy: starting,
+          onSelect: () => void startAuthorizedChapter(),
+        }
+      : CLASS_CONTINUATION_ACTIONS.has(snapshot.stateAction.action)
+        ? {
+            label: schoolHomeActionLabel(snapshot.stateAction.action),
+            busy: false,
+            onSelect: () => router.push(snapshot.stateAction!.href),
+          }
+        : undefined
+    : undefined;
+
   return (
     <div className="mode-school min-h-[100dvh] bg-background font-body text-slate-950">
       {snapshot ? (
@@ -181,14 +219,10 @@ export default function SchoolClassPage() {
           ) : null}
           <SchoolChapterMap
             schoolClass={snapshot.schoolClass}
-            authorizedAction={snapshot.stateAction.action === 'start_curriculum' && snapshot.schoolClass.active_chapter_id
-              ? {
-                  chapterId: snapshot.schoolClass.active_chapter_id,
-                  label: 'Start chapter',
-                  busy: starting,
-                  onSelect: () => void startAuthorizedChapter(),
-                }
-              : undefined}
+            primaryAction={mapPrimaryAction}
+            onViewChapter={(selectedChapterId) => router.push(
+              `/school/classes/${classNo}/chapters/${selectedChapterId}`,
+            )}
             onChangeSetup={() => router.push(schoolProfileEditHref())}
           />
         </>

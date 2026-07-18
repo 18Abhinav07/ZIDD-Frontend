@@ -61,8 +61,13 @@ test('activity renderer translates engine activity kinds and renders the complet
 
   assert.doesNotMatch(renderer, /teaching_block|last_feedback|Coach clue|school-tutor-feedback/);
   assert.match(workspace, /teachingBlock: activity\?\.teaching_block/);
-  assert.match(workspace, /selectVisibleSchoolCoachFeedback\(activity\?\.activity_id, session\.last_feedback\)/);
+  assert.match(
+    workspace,
+    /selectVisibleSchoolCoachFeedback\([\s\S]{0,120}activity\?\.activity_id,[\s\S]{0,120}session\.last_feedback,[\s\S]{0,120}includePrevious: true/,
+  );
   assert.match(workspace, /feedback: visibleFeedback\?\.message/);
+  assert.match(workspace, /Previous answer: what worked/);
+  assert.match(workspace, /Previous answer: try this/);
 
   assert.doesNotMatch(renderer, /\{activity\.kind\}/);
   assert.doesNotMatch(renderer, /kind\.replaceAll/);
@@ -128,7 +133,7 @@ test('answer submission keeps backend activity idempotency, local evaluator allo
   assert.match(workspace, /curriculumActivityView/);
   assert.match(workspace, /startSingleFlightRevalidation/);
   assert.match(service, /answerSchoolCurriculum[\s\S]*?schoolEvaluatorFetch\(/);
-  assert.match(service, /schoolEvaluatorFetch[\s\S]*?SCHOOL_LOCAL_REQUESTS_UNBOUNDED[\s\S]*?null/);
+  assert.match(service, /schoolEvaluatorFetch[\s\S]*?SCHOOL_QWEN_REQUESTS_UNBOUNDED[\s\S]*?null/);
   assert.doesNotMatch(workspace, /Promise\.race|setTimeout\(/);
 });
 

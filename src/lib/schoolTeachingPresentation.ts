@@ -18,6 +18,10 @@ interface SchoolCoachFeedbackCandidate {
   result_visible?: boolean;
 }
 
+interface SchoolCoachFeedbackOptions {
+  includePrevious?: boolean;
+}
+
 interface ResolveSchoolCoachPresentationInput {
   status: string;
   fallbackMessage: string;
@@ -37,10 +41,12 @@ function clean(value: string | null | undefined) {
 export function selectVisibleSchoolCoachFeedback<T extends SchoolCoachFeedbackCandidate>(
   currentActivityId: string | null | undefined,
   feedback: T | null | undefined,
+  options: SchoolCoachFeedbackOptions = {},
 ): T | null {
   if (!feedback || feedback.result_visible === false || !clean(feedback.message)) return null;
   const currentId = clean(currentActivityId);
-  if (!currentId || clean(feedback.activity_id) !== currentId) return null;
+  if (!currentId) return null;
+  if (!options.includePrevious && clean(feedback.activity_id) !== currentId) return null;
   return feedback;
 }
 

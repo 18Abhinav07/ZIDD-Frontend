@@ -296,10 +296,21 @@ export default function SchoolMasterclassPage() {
   };
 
   const lineage = session && curriculum ? lineageForSessions(session, curriculum) : null;
-  const visibleFeedback = selectVisibleSchoolCoachFeedback(activity?.activity_id, session?.last_feedback);
+  const visibleFeedback = selectVisibleSchoolCoachFeedback(
+    activity?.activity_id,
+    session?.last_feedback,
+    { includePrevious: true },
+  );
+  const feedbackIsFromPreviousActivity = Boolean(
+    visibleFeedback
+    && activity
+    && visibleFeedback.activity_id !== activity.activity_id,
+  );
   const coachPresentation = resolveSchoolCoachPresentation({
     status: visibleFeedback
-      ? visibleFeedback.correct ? 'What worked' : 'Try this next'
+      ? feedbackIsFromPreviousActivity
+        ? visibleFeedback.correct ? 'Previous answer: what worked' : 'Previous answer: try this'
+        : visibleFeedback.correct ? 'What worked' : 'Try this next'
       : session?.status === 'complete'
         ? 'Ready to return'
         : activityView.kind === 'pending'
@@ -435,6 +446,7 @@ export default function SchoolMasterclassPage() {
           inputLabel="Your focused practice answer"
           submitting={submitting}
           canAnswer={activityView.canSubmit}
+          sourceReference={activity.source_reference}
           questionRef={questionHeadingRef}
           onAnswerChange={setAnswer}
           onSubmit={(value) => void submit(value)}

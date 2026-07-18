@@ -192,6 +192,14 @@ if (!login.includes('handleExistingAccountContinue')) {
   failures.push('login should let the learner click the existing account card to continue.');
 }
 
+if (!login.includes('safePostSignInDestination') || !login.includes("return '/dashboard'")) {
+  failures.push('Google sign-in must leave the login page through a validated in-app destination.');
+}
+
+if (login.includes("{ callbackUrl: '/auth/login' }")) {
+  failures.push('Google sign-in must not return to /auth/login and require a second account-card click.');
+}
+
 if (!login.includes('Continue as')) {
   failures.push('login should show a visible Continue as account card when a session already exists.');
 }
@@ -202,6 +210,10 @@ if (!login.includes('Choose or add another Google account')) {
 
 if (!login.includes("prompt: 'select_account'")) {
   failures.push('Google account-switch action must force the Google account chooser.');
+}
+
+if (!login.includes("existingUser ? { prompt: 'select_account' } : undefined")) {
+  failures.push('The Google chooser prompt should be reserved for explicit account switching.');
 }
 
 if (!login.includes('useSearchParams') || !login.includes("searchParams.get('error')")) {

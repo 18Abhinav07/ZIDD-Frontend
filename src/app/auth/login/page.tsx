@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { signIn, signOut, useSession } from 'next-auth/react';
+import { signIn, useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, Loader2 } from 'lucide-react';
@@ -21,6 +21,13 @@ function GoogleIcon() {
       <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.44-3.44C17.95 1.19 15.24 0 12 0 7.31 0 3.25 2.7 1.27 6.61l4 3.12C6.22 6.86 8.87 4.75 12 4.75z"/>
     </svg>
   );
+}
+
+function safePostSignInDestination(value: string | null): string {
+  if (!value || !value.startsWith('/') || value.startsWith('//') || value.startsWith('/auth/')) {
+    return '/dashboard';
+  }
+  return value;
 }
 
 function LoginContent() {
@@ -49,8 +56,10 @@ function LoginContent() {
     try {
       const me = await getMe();
       router.replace(homeForMe(me));
-    } catch {
-      await signOut({ callbackUrl: '/auth/login' });
+    } catch (err: unknown) {
+      if (!(err instanceof Error && err.message === 'Unauthorized')) {
+        setError(learnerSafeErrorMessage(err, 'We could not open your account. Please try again.'));
+      }
     } finally {
       setLoadingAction(null);
       setRouting(false);
@@ -63,8 +72,8 @@ function LoginContent() {
     try {
       await signIn(
         'google',
-        { callbackUrl: '/auth/login' },
-        { prompt: 'select_account' }
+        { callbackUrl: safePostSignInDestination(searchParams.get('callbackUrl')) },
+        existingUser ? { prompt: 'select_account' } : undefined,
       );
     } catch (err: unknown) {
       setError(learnerSafeErrorMessage(err, 'Sign-in failed. Please try again.'));

@@ -12,6 +12,7 @@ import {
 } from '@radix-ui/react-icons';
 import { getAvatarScaleClass } from '@/lib/avatarRegistry';
 import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
+import { useResolvedSchoolCoachIdentity } from '@/components/school/shell/SchoolCoachIdentityContext';
 import {
   SchoolPageHeading,
   SchoolStatusChip,
@@ -180,7 +181,11 @@ function LevelPathNode({
 }
 
 export function SchoolLevelMap({ chapter, busy = false, onBack, authorizedAction }: SchoolLevelMapProps) {
-  const theme = getSchoolAvatarTheme(chapter.coach_avatar_id, chapter.coach_palette_id);
+  const coachIdentity = useResolvedSchoolCoachIdentity({
+    avatarId: chapter.coach_avatar_id,
+    paletteId: chapter.coach_palette_id,
+  });
+  const theme = getSchoolAvatarTheme(coachIdentity.avatarId, coachIdentity.paletteId);
   const stages = buildSchoolLevelStages(chapter.levels, chapter.chapter_check, chapter.chapter_id) as Stage[];
   const activeIndex = stages.findIndex((stage) => ['active', 'ready', 'needs_support'].includes(stage.status));
   const completedStages = stages.filter((stage) => stage.status === 'complete').length;

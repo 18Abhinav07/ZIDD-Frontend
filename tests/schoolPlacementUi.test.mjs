@@ -10,14 +10,21 @@ const workspacePath = path.join(
   'src/components/school/placement/SchoolPlacementWorkspace.tsx',
 );
 const reportPath = path.join(ROOT, 'src/app/school/placement/report/page.tsx');
+const learningWorkspaceCssPath = path.join(
+  ROOT,
+  'src/components/school/SchoolLearningWorkspace.module.css',
+);
 
 test('placement uses the canonical entry composition without spinner loading', () => {
   assert.match(pageSource, /<SchoolPlacementSkeleton\s*\/>/);
   assert.match(pageSource, /<SchoolPlacementActivity/);
   assert.doesNotMatch(pageSource, /<SchoolLearningShell/);
   assert.doesNotMatch(pageSource, /Loader2|animate-spin/);
-  assert.match(pageSource, /const coachAvatarId = placement\?\.coach_avatar_id \?\? coachIdentity\.coach_avatar_id/);
-  assert.match(pageSource, /const coachPaletteId = placement\?\.coach_palette_id \?\? coachIdentity\.coach_palette_id/);
+  assert.match(pageSource, /const placementHasCoachIdentity = Boolean/);
+  assert.match(pageSource, /useResolvedSchoolCoachIdentity/);
+  assert.match(pageSource, /const resolvedCoachIdentity = useResolvedSchoolCoachIdentity/);
+  assert.match(pageSource, /const coachAvatarId = resolvedCoachIdentity.avatarId/);
+  assert.match(pageSource, /const coachPaletteId = resolvedCoachIdentity.paletteId/);
   assert.match(pageSource, /coachAvatarId=\{coachAvatarId\}/);
   assert.match(pageSource, /coachPaletteId=\{coachPaletteId\}/);
   assert.doesNotMatch(pageSource, /avatarSeed|coach_seed/);
@@ -59,6 +66,26 @@ test('placement presentation keeps one child-facing activity and a compact three
   assert.doesNotMatch(source, /Targeted check|evidence conflicts|Readiness journey|Placement status|lucide-react|font-black|(?:sky|emerald|amber)-|localStorage|(?:bg|from|via|to)-gradient|tracking-\[-/);
 });
 
+test('placement back stop and refresh controls are borderless icon actions', () => {
+  const source = fs.readFileSync(workspacePath, 'utf8');
+  const workspaceCss = fs.readFileSync(learningWorkspaceCssPath, 'utf8');
+  const utilityClasses = [...source.matchAll(
+    /aria-label="(?:Stop|Refresh) starting-point check"[\s\S]*?className="([^"]+)"/g,
+  )].map((match) => match[1].split(/\s+/));
+  const backRule = workspaceCss.match(/\.backButton\s*\{([\s\S]*?)\}/)?.[1] ?? '';
+
+  assert.equal(utilityClasses.length, 2);
+  for (const tokens of utilityClasses) {
+    assert.ok(tokens.includes('bg-transparent'));
+    assert.ok(tokens.includes('border-0'));
+    assert.equal(tokens.some((token) => token === 'border' || token.startsWith('border-[')), false);
+    assert.ok(tokens.some((token) => token.startsWith('focus-visible:ring-')));
+  }
+  assert.match(backRule, /border:\s*0/);
+  assert.match(backRule, /background:\s*transparent/);
+  assert.match(workspaceCss, /\.backButton:focus-visible/);
+});
+
 test('placement route retains its backend and learner-control contracts', () => {
   for (const contract of [
     'getSchoolState({ force: true })',
@@ -71,7 +98,10 @@ test('placement route retains its backend and learner-control contracts', () => 
   ]) {
     assert.ok(pageSource.includes(contract), `missing placement contract: ${contract}`);
   }
-  assert.match(pageSource, /if \(!canStartPlacement \|\| startingRef\.current\) return/);
+  assert.match(
+    pageSource,
+    /if \(\(!canStartPlacement && !canResumePlacement\) \|\| startingRef\.current\) return/,
+  );
   assert.match(pageSource, /if \(!placement \|\| !item \|\| submittingRef\.current\) return/);
   assert.match(pageSource, /if \(!placement \|\| abandoningRef\.current\) return/);
   assert.match(pageSource, /state\.status === 'awaiting_evaluation'/);
@@ -116,14 +146,19 @@ test('placement question focus preserves the top context on narrow viewports', (
   assert.doesNotMatch(pageSource, /questionHeadingRef\.current\?\.focus\(\)/);
 });
 
-test('insufficient evidence never restarts placement when the backend cannot resume it', () => {
+test('insufficient evidence continues the same session when the backend authorizes resume', () => {
   const source = fs.readFileSync(workspacePath, 'utf8');
+  const terminal = source.match(
+    /if \(placement\.status === 'insufficient_evidence'\) \{([\s\S]*?)\n  if \(placement\.status === 'abandoned'\)/,
+  )?.[1] ?? '';
 
-  assert.match(source, /This saved check cannot continue yet/);
-  assert.match(source, /no additional question for this saved session/);
-  assert.match(source, /Starting again could replace your saved answers/);
-  assert.doesNotMatch(source, /Continue the check|onResume/);
-  assert.doesNotMatch(pageSource, /setCanStartPlacement\(state\.next_action === 'resume_placement'\)/);
+  assert.match(pageSource, /canResumePlacement/);
+  assert.match(pageSource, /state\.next_action === 'resume_placement'/);
+  assert.match(pageSource, /startSchoolPlacement\(\)/);
+  assert.match(source, /onResume/);
+  assert.match(terminal, /Continue readiness check/);
+  assert.doesNotMatch(terminal, /Back to School|Check for another question|onRefresh/);
+  assert.doesNotMatch(terminal, /backend has no additional question/);
 });
 
 test('placement report leads with the exact conclusion and progressively discloses evidence', () => {

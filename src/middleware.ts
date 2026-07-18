@@ -15,6 +15,9 @@ type ProfileGate = {
   home?: string;
 };
 
+const PROFILE_GATE_UNAUTHORIZED = 'profile_gate_unauthorized' as const;
+type ProfileGateResult = ProfileGate | null | typeof PROFILE_GATE_UNAUTHORIZED;
+
 const PROTECTED_PREFIXES = [
   '/dashboard',
   '/career',
@@ -109,7 +112,7 @@ function pruneProfileGateCache(now = Date.now()) {
   }
 }
 
-async function loadProfileGate(accessToken: string): Promise<ProfileGate | null> {
+async function loadProfileGate(accessToken: string): Promise<ProfileGateResult> {
   const now = Date.now();
   pruneProfileGateCache(now);
 
@@ -133,7 +136,7 @@ async function loadProfileGate(accessToken: string): Promise<ProfileGate | null>
       signal: controller.signal,
     });
     if (res.status === 401) {
-      return null;
+      return PROFILE_GATE_UNAUTHORIZED;
     }
     if (!res.ok) {
       throw new Error(`profile gate failed: ${res.status}`);
@@ -188,11 +191,15 @@ export async function middleware(req: NextRequest) {
       : redirectToLogin(req, callbackPath);
   }
 
-  let profile: ProfileGate | null = null;
+  let profile: ProfileGateResult = null;
   try {
     profile = await loadProfileGate(token.accessToken);
   } catch {
     return continueDuringProfileGateOutage();
+  }
+
+  if (profile === PROFILE_GATE_UNAUTHORIZED) {
+    return redirectToLoginAndClearAuth(req, callbackPath, 'profile_unauthorized');
   }
 
   if (!profile) {

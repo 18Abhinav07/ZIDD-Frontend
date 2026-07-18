@@ -12,12 +12,14 @@ test('class page loads the active backend class map and fails closed on mismatch
   assert.match(route, /school_catalog_profile_mismatch/);
   assert.match(route, /<SchoolMapSkeleton/);
   assert.match(route, /<SchoolChapterMap/);
+  assert.match(route, /resolveSchoolMapDestination/);
+  assert.doesNotMatch(route, /destination !== `\/school\/classes\/\$\{classNo\}`/);
 });
 
 test('chapter map renders every backend chapter on the canonical winding avatar path', () => {
   assert.doesNotMatch(component, /from '@\/components\/learning\/JourneyMap'/);
   assert.doesNotMatch(component, /<JourneyMap/);
-  assert.match(component, /Your class journey/);
+  assert.match(component, /Class \$\{schoolClass\.class_no\} chapter map/);
   assert.match(component, /<SchoolPageHeading/);
   assert.match(component, /SchoolPathMap\.module\.css/);
   assert.match(component, /buildSchoolWindingPath/);
@@ -51,12 +53,11 @@ test('class route owns one StrictMode-safe map load at a time', () => {
   assert.match(route, /classMapLoadSingleFlight\.run/);
 });
 
-test('chapter statuses are descriptive and only an explicit state-authorized chapter is actionable', () => {
-  assert.match(component, /const action = authorizedAction\?\.chapterId === chapter\.chapter_id/);
-  assert.match(component, /chapter\.status !== 'locked'/);
-  assert.match(component, /\{action \? \(/);
-  assert.match(component, /disabled={action\.busy}/);
+test('chapter cards browse stage maps while only the separate state-authorized action mutates progress', () => {
+  assert.match(component, /const canView = chapter\.status !== 'locked'/);
+  assert.match(component, /onViewChapter\(chapter\.chapter_id\)/);
+  assert.match(component, /primaryAction/);
+  assert.match(component, /disabled={primaryAction\.busy}/);
   assert.match(component, /aria-current=/);
-  assert.doesNotMatch(component, /onOpenChapter/);
   assert.doesNotMatch(component, /lucide-react|font-black|gradient/i);
 });

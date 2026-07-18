@@ -18,6 +18,7 @@ import {
 import { SchoolCoachPanel } from '@/components/school/SchoolCoachPanel';
 import { SchoolLearningWorkspace } from '@/components/school/SchoolLearningWorkspace';
 import { schoolPrimaryActionClass, schoolSecondaryActionClass } from '@/components/school/SchoolPrimitives';
+import { useResolvedSchoolCoachIdentity } from '@/components/school/shell/SchoolCoachIdentityContext';
 import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
 import { resolveSchoolCoachPresentation } from '@/lib/schoolTeachingPresentation';
 import type { SchoolPlacementResponse } from '@/services/schoolRebuild';
@@ -103,6 +104,7 @@ interface SchoolPlacementActivityProps {
   coachAvatarId: string | null | undefined;
   coachPaletteId: string | null | undefined;
   canStartPlacement: boolean;
+  canResumePlacement: boolean;
   placementLoadFailed: boolean;
   placementRedirecting: boolean;
   placementRecoveryRequired: boolean;
@@ -118,6 +120,7 @@ interface SchoolPlacementActivityProps {
   questionHeadingRef: RefObject<HTMLHeadingElement>;
   onAnswerChange: (answer: string) => void;
   onBegin: () => void;
+  onResume: () => void;
   onSubmit: () => void;
   onRequestAbandon: () => void;
   onCancelAbandon: () => void;
@@ -157,7 +160,7 @@ function ActionButton({
 export function SchoolPlacementSkeleton() {
   return (
     <main
-      className="mx-auto flex min-h-[calc(100dvh-68px)] w-full max-w-[900px] items-center px-4 py-12 sm:px-7 lg:px-10"
+      className="mx-auto flex min-h-[calc(100dvh-64px)] w-full max-w-[900px] items-center px-4 py-12 sm:px-7 lg:px-10"
       aria-busy="true"
       aria-label="Loading starting-point check"
     >
@@ -199,7 +202,7 @@ function PlacementTerminal({
         : 'border-[var(--school-accent-border)] bg-[var(--school-accent-soft)] text-[var(--school-accent-deep)]';
 
   return (
-    <main className="mx-auto flex min-h-[calc(100dvh-68px)] w-full max-w-[900px] flex-col items-start justify-center px-4 py-14 sm:px-7 lg:px-10 lg:py-20">
+    <main className="mx-auto flex min-h-[calc(100dvh-64px)] w-full max-w-[900px] flex-col items-start justify-center px-4 py-14 sm:px-7 lg:px-10 lg:py-20">
       <section role={role} aria-live={role === 'status' ? 'polite' : undefined} className="w-full">
         <div className={`flex h-14 w-14 items-center justify-center rounded-2xl border ${markClass}`} aria-hidden="true">
           {icon}
@@ -222,6 +225,7 @@ export function SchoolPlacementActivity({
   coachAvatarId,
   coachPaletteId,
   canStartPlacement,
+  canResumePlacement,
   placementLoadFailed,
   placementRedirecting,
   placementRecoveryRequired,
@@ -237,6 +241,7 @@ export function SchoolPlacementActivity({
   questionHeadingRef,
   onAnswerChange,
   onBegin,
+  onResume,
   onSubmit,
   onRequestAbandon,
   onCancelAbandon,
@@ -245,6 +250,10 @@ export function SchoolPlacementActivity({
   onReturnToSchool,
   onViewReport,
 }: SchoolPlacementActivityProps) {
+  const coachIdentity = useResolvedSchoolCoachIdentity({
+    avatarId: coachAvatarId,
+    paletteId: coachPaletteId,
+  });
   const item = placement?.next_item ?? null;
 
   if (placementRedirecting) {
@@ -309,7 +318,7 @@ export function SchoolPlacementActivity({
 
   if (!placement) {
     return (
-      <main className="mx-auto flex min-h-[calc(100dvh-68px)] w-full max-w-[900px] items-center px-4 py-10 sm:px-7 sm:py-14 lg:px-10">
+      <main className="mx-auto flex min-h-[calc(100dvh-64px)] w-full max-w-[900px] items-center px-4 py-10 sm:px-7 sm:py-14 lg:px-10">
         <section className="w-full min-w-0">
           <p className="font-mono text-[10px] font-semibold uppercase text-[var(--school-accent-deep)]">Find the right first step</p>
           <h1 className="mt-3 max-w-[650px] font-display text-[3rem] font-normal leading-[0.98] text-slate-950 sm:text-[4rem]">
@@ -342,7 +351,7 @@ export function SchoolPlacementActivity({
   }
 
   if (item) {
-    const theme = getSchoolAvatarTheme(coachAvatarId, coachPaletteId);
+    const theme = getSchoolAvatarTheme(coachIdentity.avatarId, coachIdentity.paletteId);
     const coachPresentation = resolveSchoolCoachPresentation({
       status: submitting ? 'Reviewing your answer' : 'Question ready',
       fallbackMessage: item.instruction,
@@ -361,8 +370,8 @@ export function SchoolPlacementActivity({
         backLabel="Return to School"
         coach={(
           <SchoolCoachPanel
-            avatarId={coachAvatarId}
-            paletteId={coachPaletteId}
+            avatarId={coachIdentity.avatarId}
+            paletteId={coachIdentity.paletteId}
             status={coachPresentation.status}
             note={coachPresentation.message}
             hint={coachPresentation.hint}
@@ -379,7 +388,7 @@ export function SchoolPlacementActivity({
               disabled={submitting}
               aria-label="Stop starting-point check"
               title="Stop starting-point check"
-              className="flex h-11 w-11 items-center justify-center rounded-lg border border-[var(--school-line)] text-slate-600 transition-[background-color,border-color,color,transform] hover:border-[var(--school-accent)] hover:bg-[var(--school-accent-soft)] hover:text-[var(--school-accent-deep)] active:translate-y-px disabled:opacity-50"
+              className="flex h-11 w-11 items-center justify-center rounded-lg border-0 bg-transparent text-slate-600 transition-[background-color,color,transform] hover:bg-[var(--school-accent-soft)] hover:text-[var(--school-accent-deep)] active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--school-accent)] focus-visible:ring-offset-2 disabled:opacity-50"
             >
               <StopIcon className="h-4 w-4" aria-hidden="true" />
             </button>
@@ -389,7 +398,7 @@ export function SchoolPlacementActivity({
               disabled={submitting}
               aria-label="Refresh starting-point check"
               title="Refresh starting-point check"
-              className="flex h-11 w-11 items-center justify-center rounded-lg border border-[var(--school-line)] text-slate-600 transition-[background-color,border-color,color,transform] hover:border-[var(--school-accent)] hover:bg-[var(--school-accent-soft)] hover:text-[var(--school-accent-deep)] active:translate-y-px disabled:opacity-50"
+              className="flex h-11 w-11 items-center justify-center rounded-lg border-0 bg-transparent text-slate-600 transition-[background-color,color,transform] hover:bg-[var(--school-accent-soft)] hover:text-[var(--school-accent-deep)] active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--school-accent)] focus-visible:ring-offset-2 disabled:opacity-50"
             >
               <ReloadIcon className="h-4 w-4" aria-hidden="true" />
             </button>
@@ -522,13 +531,18 @@ export function SchoolPlacementActivity({
         role="status"
         tone="warning"
         eyebrow="More evidence needed"
-        title="This saved check cannot continue yet"
-        body="The backend has no additional question for this saved session. Starting again could replace your saved answers, so Zidd will not restart it here."
+        title="Continue your saved readiness check"
+        body={error || 'Your previous answers are safe. Continue this same check to answer an unused question and complete the evidence needed for your learning path.'}
         icon={<PauseIcon className="h-6 w-6" />}
         note={stateMessage || 'No learning path, class readiness, or unlock has been assigned from this incomplete evidence.'}
       >
-        <ActionButton icon={<ArrowLeftIcon className="h-4 w-4" />} onClick={onReturnToSchool}>Back to School</ActionButton>
-        <ActionButton tone="secondary" icon={<ReloadIcon className="h-4 w-4" />} onClick={onRefresh}>Check for another question</ActionButton>
+        <ActionButton
+          icon={starting ? <ClockIcon className="h-4 w-4" /> : <ArrowRightIcon className="h-4 w-4" />}
+          onClick={onResume}
+          disabled={!canResumePlacement || starting}
+        >
+          {starting ? 'Preparing next question' : 'Continue readiness check'}
+        </ActionButton>
       </PlacementTerminal>
     );
   }

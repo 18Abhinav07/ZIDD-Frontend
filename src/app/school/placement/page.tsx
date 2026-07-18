@@ -6,12 +6,17 @@ import {
   SchoolPlacementActivity,
   SchoolPlacementSkeleton,
 } from '@/components/school/placement/SchoolPlacementWorkspace';
+import { useResolvedSchoolCoachIdentity } from '@/components/school/shell/SchoolCoachIdentityContext';
 import {
   resolveSchoolStateDestination,
   startSingleFlightRevalidation,
 } from '@/lib/schoolActivityPolicy';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
-import { resolveSchoolPlacementMutation } from '@/lib/schoolPlacementLifecycle';
+import {
+  resolveSchoolPlacementMutation,
+  visiblePlacementAnswer,
+  type SchoolPlacementAnswerDraft,
+} from '@/lib/schoolPlacementLifecycle';
 import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
 import {
   abandonSchoolPlacement,
@@ -25,6 +30,7 @@ import {
 } from '@/services/schoolRebuild';
 
 const PLACEMENT_REVALIDATE_MS = 5_000;
+const PLACEMENT_TERMINAL_SETTLING_MAX_POLLS = 6;
 
 function isPlacementDestination(destination: string) {
   return destination === '/school/placement'
@@ -45,7 +51,10 @@ export default function SchoolPlacementPage() {
   const [abandoning, setAbandoning] = useState(false);
   const [confirmingAbandon, setConfirmingAbandon] = useState(false);
   const [awaitingEvaluation, setAwaitingEvaluation] = useState(false);
-  const [answer, setAnswer] = useState('');
+  const [answerDraft, setAnswerDraft] = useState<SchoolPlacementAnswerDraft>({
+    itemId: null,
+    value: '',
+  });
   const [error, setError] = useState('');
   const [stateMessage, setStateMessage] = useState('');
   const [targetClassNo, setTargetClassNo] = useState<number | null>(null);
@@ -55,6 +64,7 @@ export default function SchoolPlacementPage() {
   });
   const [placementLoadFailed, setPlacementLoadFailed] = useState(false);
   const [canStartPlacement, setCanStartPlacement] = useState(false);
+  const [canResumePlacement, setCanResumePlacement] = useState(false);
   const [placementRedirecting, setPlacementRedirecting] = useState(false);
   const [placementRecoveryRequired, setPlacementRecoveryRequired] = useState(false);
   const [reportAvailable, setReportAvailable] = useState(false);
@@ -65,6 +75,13 @@ export default function SchoolPlacementPage() {
   const startingRef = useRef(false);
   const submittingRef = useRef(false);
   const abandoningRef = useRef(false);
+  const terminalSettlingPlacementRef = useRef<SchoolPlacementResponse | null>(null);
+  const terminalSettlingPollsRef = useRef(0);
+
+  const clearTerminalSettling = useCallback(() => {
+    terminalSettlingPlacementRef.current = null;
+    terminalSettlingPollsRef.current = 0;
+  }, []);
 
   const applyStateIdentity = useCallback((state: SchoolState) => {
     setTargetClassNo(state.target_class_no);
@@ -77,13 +94,15 @@ export default function SchoolPlacementPage() {
   }, []);
 
   const enterPlacementRecovery = useCallback((message: string) => {
+    clearTerminalSettling();
     setAwaitingEvaluation(false);
     setPlacementRecoveryRequired(true);
     setPlacementLoadFailed(false);
     setCanStartPlacement(false);
+    setCanResumePlacement(false);
     setPlacementRedirecting(false);
     setStateMessage(message);
-  }, []);
+  }, [clearTerminalSettling]);
 
   const load = useCallback(async (background = false) => {
     const requestId = loadRequestIdRef.current + 1;
@@ -93,6 +112,7 @@ export default function SchoolPlacementPage() {
       setError('');
       setPlacementLoadFailed(false);
       setCanStartPlacement(false);
+      setCanResumePlacement(false);
       setPlacementRedirecting(false);
       setPlacementRecoveryRequired(false);
       setReportAvailable(false);
@@ -104,6 +124,7 @@ export default function SchoolPlacementPage() {
       setError('');
       setPlacementLoadFailed(false);
       setCanStartPlacement(false);
+      setCanResumePlacement(false);
       setPlacementRedirecting(false);
       setPlacementRecoveryRequired(false);
 
@@ -131,7 +152,62 @@ export default function SchoolPlacementPage() {
         nextActionUrl: state.next_action_url,
       });
       if (!destination) throw new Error('school_state_unresolved');
+
+      const settlingPlacement = terminalSettlingPlacementRef.current;
+      if (settlingPlacement) {
+        const settlingDecision = resolveSchoolPlacementMutation(settlingPlacement, state);
+        if (settlingDecision.kind === 'navigate') {
+          clearTerminalSettling();
+          setPlacement(null);
+          setAwaitingEvaluation(false);
+          setPlacementRedirecting(true);
+          router.replace(settlingDecision.destination);
+          return;
+        }
+        if (settlingDecision.kind === 'terminal') {
+          clearTerminalSettling();
+          setPlacement(settlingPlacement);
+          setAwaitingEvaluation(false);
+          setReportAvailable(settlingDecision.reportAvailable);
+          return;
+        }
+        if (settlingDecision.kind === 'start') {
+          clearTerminalSettling();
+          setPlacement(null);
+          setAwaitingEvaluation(false);
+          setCanStartPlacement(true);
+          setReportAvailable(settlingDecision.reportAvailable);
+          return;
+        }
+        if (settlingDecision.kind === 'resume') {
+          clearTerminalSettling();
+          setPlacement(settlingPlacement);
+          setAwaitingEvaluation(false);
+          setCanResumePlacement(true);
+          setReportAvailable(settlingDecision.reportAvailable);
+          return;
+        }
+        if (settlingDecision.kind === 'recover') {
+          enterPlacementRecovery(
+            settlingDecision.reason === 'identity_mismatch'
+              ? 'Your saved work no longer matches the active School check. Refresh before continuing.'
+              : 'The completed check could not be matched to the current School path. Refresh before continuing.',
+          );
+          return;
+        }
+        terminalSettlingPollsRef.current += 1;
+        if (terminalSettlingPollsRef.current >= PLACEMENT_TERMINAL_SETTLING_MAX_POLLS) {
+          enterPlacementRecovery('Your answers are saved, but the completed report is taking longer than expected. Refresh to confirm the current School path.');
+          return;
+        }
+        setPlacement(settlingPlacement);
+        setAwaitingEvaluation(true);
+        setStateMessage('Your final answer is saved. Zidd is preparing the evidence report now.');
+        return;
+      }
+
       if (!isPlacementDestination(destination)) {
+        clearTerminalSettling();
         setPlacement(null);
         setAwaitingEvaluation(false);
         setPlacementRedirecting(true);
@@ -160,6 +236,11 @@ export default function SchoolPlacementPage() {
       }
       setPlacement(activePlacement);
       setAwaitingEvaluation(false);
+      setCanResumePlacement(
+        state.next_action === 'resume_placement'
+        && activePlacement.status === 'insufficient_evidence'
+        && activePlacement.next_item === null,
+      );
     } catch (err: unknown) {
       if (!mountedRef.current || loadRequestIdRef.current !== requestId) return;
       if (background) {
@@ -171,13 +252,14 @@ export default function SchoolPlacementPage() {
       setAwaitingEvaluation(false);
       setPlacementLoadFailed(true);
       setCanStartPlacement(false);
+      setCanResumePlacement(false);
       setPlacementRedirecting(false);
     } finally {
       if (mountedRef.current && loadRequestIdRef.current === requestId && !background) {
         setLoading(false);
       }
     }
-  }, [applyStateIdentity, router]);
+  }, [applyStateIdentity, clearTerminalSettling, enterPlacementRecovery, router]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -201,6 +283,7 @@ export default function SchoolPlacementPage() {
 
   const reconcileMutation = async (nextPlacement: SchoolPlacementResponse) => {
     setCanStartPlacement(false);
+    setCanResumePlacement(false);
     setAwaitingEvaluation(false);
     setPlacementRecoveryRequired(false);
     setReportAvailable(false);
@@ -216,13 +299,26 @@ export default function SchoolPlacementPage() {
           : 'Your saved work could not be matched to a current School step. Refresh before continuing.',
       );
     } else if (decision.kind === 'pending') {
+      clearTerminalSettling();
       setPlacement(nextPlacement);
       setAwaitingEvaluation(true);
+    } else if (decision.kind === 'settling') {
+      terminalSettlingPlacementRef.current = nextPlacement;
+      terminalSettlingPollsRef.current = 0;
+      setPlacement(nextPlacement);
+      setAwaitingEvaluation(true);
+      setStateMessage('Your final answer is saved. Zidd is preparing the evidence report now.');
     } else if (decision.kind === 'interactive' || decision.kind === 'terminal') {
+      clearTerminalSettling();
       setPlacement(nextPlacement);
     } else if (decision.kind === 'start') {
+      clearTerminalSettling();
       setPlacement(null);
       setCanStartPlacement(true);
+    } else if (decision.kind === 'resume') {
+      clearTerminalSettling();
+      setPlacement(nextPlacement);
+      setCanResumePlacement(true);
     } else {
       setPlacement(null);
       setPlacementRedirecting(true);
@@ -233,10 +329,14 @@ export default function SchoolPlacementPage() {
   };
 
   const begin = async () => {
-    if (!canStartPlacement || startingRef.current) return;
+    if ((!canStartPlacement && !canResumePlacement) || startingRef.current) return;
+    const resumingSavedPlacement = canResumePlacement;
     startingRef.current = true;
     setStarting(true);
     setError('');
+    setCanStartPlacement(false);
+    setCanResumePlacement(false);
+    setAnswerDraft({ itemId: null, value: '' });
     let started = false;
     try {
       const nextPlacement = await startSchoolPlacement();
@@ -246,7 +346,14 @@ export default function SchoolPlacementPage() {
       if (started) {
         enterPlacementRecovery('Your check started, but the current School step could not be confirmed. Refresh before answering.');
       } else {
-        setError(learnerSafeErrorMessage(err, 'The starting-point check is not ready for this class yet.'));
+        if (resumingSavedPlacement) setCanResumePlacement(true);
+        else setCanStartPlacement(true);
+        setError(learnerSafeErrorMessage(
+          err,
+          resumingSavedPlacement
+            ? 'Could not continue your saved readiness check. Your previous answers are unchanged, so you can retry.'
+            : 'The starting-point check is not ready for this class yet.',
+        ));
       }
     } finally {
       startingRef.current = false;
@@ -257,18 +364,20 @@ export default function SchoolPlacementPage() {
   const submit = async () => {
     const item = placement?.next_item;
     if (!placement || !item || submittingRef.current) return;
-    const finalAnswer = answer;
+    const finalAnswer = visiblePlacementAnswer(answerDraft, item.item_id, false);
     if (!finalAnswer.trim()) return;
     submittingRef.current = true;
     setSubmitting(true);
-    setAnswer(finalAnswer);
+    setAnswerDraft({ itemId: item.item_id, value: finalAnswer });
     setError('');
     let answerSaved = false;
     try {
       const nextPlacement = await answerSchoolPlacement(placement.session_id, item.item_id, finalAnswer);
       answerSaved = true;
       const decision = await reconcileMutation(nextPlacement);
-      if (decision.kind !== 'pending' && decision.kind !== 'recover') setAnswer('');
+      if (!['pending', 'recover', 'settling'].includes(decision.kind)) {
+        setAnswerDraft({ itemId: null, value: '' });
+      }
     } catch (err: unknown) {
       const code = errorCode(err);
       if (code === 'placement_answer_in_progress') {
@@ -298,7 +407,7 @@ export default function SchoolPlacementPage() {
       const nextPlacement = await abandonSchoolPlacement(placement.session_id);
       stopped = true;
       setConfirmingAbandon(false);
-      setAnswer('');
+      setAnswerDraft({ itemId: null, value: '' });
       await reconcileMutation(nextPlacement);
     } catch (err: unknown) {
       if (stopped) {
@@ -313,6 +422,11 @@ export default function SchoolPlacementPage() {
   };
 
   const item = placement?.next_item;
+  const answer = visiblePlacementAnswer(
+    answerDraft,
+    item?.item_id ?? null,
+    awaitingEvaluation,
+  );
 
   useEffect(() => {
     const itemId = awaitingEvaluation || placementRecoveryRequired ? null : item?.item_id ?? null;
@@ -322,10 +436,18 @@ export default function SchoolPlacementPage() {
     return () => cancelAnimationFrame(frame);
   }, [awaitingEvaluation, item?.item_id, placementRecoveryRequired]);
 
+  const placementHasCoachIdentity = Boolean(
+    placement?.coach_avatar_id && placement?.coach_palette_id,
+  );
+  const resolvedCoachIdentity = useResolvedSchoolCoachIdentity({
+    avatarId: placementHasCoachIdentity ? placement?.coach_avatar_id : coachIdentity.coach_avatar_id,
+    paletteId: placementHasCoachIdentity ? placement?.coach_palette_id : coachIdentity.coach_palette_id,
+  });
+
   if (loading) return <SchoolPlacementSkeleton />;
 
-  const coachAvatarId = placement?.coach_avatar_id ?? coachIdentity.coach_avatar_id;
-  const coachPaletteId = placement?.coach_palette_id ?? coachIdentity.coach_palette_id;
+  const coachAvatarId = resolvedCoachIdentity.avatarId;
+  const coachPaletteId = resolvedCoachIdentity.paletteId;
   const theme = getSchoolAvatarTheme(coachAvatarId, coachPaletteId);
 
   return (
@@ -336,6 +458,7 @@ export default function SchoolPlacementPage() {
         coachAvatarId={coachAvatarId}
         coachPaletteId={coachPaletteId}
         canStartPlacement={canStartPlacement}
+        canResumePlacement={canResumePlacement}
         placementLoadFailed={placementLoadFailed}
         placementRedirecting={placementRedirecting}
         placementRecoveryRequired={placementRecoveryRequired}
@@ -349,8 +472,12 @@ export default function SchoolPlacementPage() {
         answer={answer}
         error={error}
         questionHeadingRef={questionHeadingRef}
-        onAnswerChange={setAnswer}
+        onAnswerChange={(value) => setAnswerDraft({
+          itemId: item?.item_id ?? null,
+          value,
+        })}
         onBegin={() => void begin()}
+        onResume={() => void begin()}
         onSubmit={() => void submit()}
         onRequestAbandon={() => setConfirmingAbandon(true)}
         onCancelAbandon={() => setConfirmingAbandon(false)}

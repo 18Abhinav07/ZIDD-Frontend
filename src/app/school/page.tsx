@@ -71,7 +71,7 @@ export default function SchoolPage() {
   }, [resolveSchoolHome, retryKey]);
 
   return (
-    <div className="mode-school min-h-[100dvh] bg-background font-body text-slate-950">
+    <div className="mode-school min-h-[calc(100dvh-4rem)] bg-background font-body text-slate-950">
       {schoolClass ? (
         <SchoolClassHome
           schoolClass={schoolClass}

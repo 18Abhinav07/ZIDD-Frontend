@@ -8,6 +8,8 @@ const schoolHome = read('src/app/school/page.tsx');
 const classPage = read('src/app/school/classes/[classNo]/page.tsx');
 const chapterPage = read('src/app/school/classes/[classNo]/chapters/[chapterId]/page.tsx');
 const profilePage = read('src/app/profile/page.tsx');
+const shell = read('src/components/school/shell/SchoolShell.tsx');
+const appHeader = read('src/components/shared/AppHeader.tsx');
 
 test('school home resolves into real learning instead of replaying setup history', () => {
   for (const lifecycleCopy of [
@@ -27,8 +29,8 @@ test('school home resolves into real learning instead of replaying setup history
   assert.match(schoolHome, /SchoolClassHome/);
   assert.match(schoolHome, /nextAction: state\.next_action/);
   const curriculumResolver = read('src/app/school/curriculum/page.tsx');
-  assert.match(curriculumResolver, /resolveSchoolStateDestination/);
-  assert.match(curriculumResolver, /router\.replace\(destination\)/);
+  assert.match(curriculumResolver, /resolveSchoolMapDestination/);
+  assert.match(curriculumResolver, /mapDestination \?\? actionDestination/);
   assert.doesNotMatch(curriculumResolver, /state\.active_flow|state\.active_session_id/);
 });
 
@@ -37,6 +39,24 @@ test('class and chapter routes are real backend-driven surfaces', () => {
   assert.equal(chapterPage.includes("redirect('/school/curriculum')"), false);
   assert.match(classPage, /SchoolChapterMap/);
   assert.match(chapterPage, /SchoolLevelMap/);
+  assert.match(classPage, /resolveSchoolMapDestination/);
+  assert.match(chapterPage, /resolveSchoolMapDestination/);
+  assert.doesNotMatch(classPage, /destination !== `\/school\/classes\/\$\{classNo\}`/);
+  assert.doesNotMatch(chapterPage, /destination !== `\/school\/classes\/\$\{classNo\}\/chapters\/\$\{chapterId\}`/);
+});
+
+test('My Path is map navigation while Continue remains session navigation', () => {
+  assert.match(shell, /label: 'My path', href: '\/school\/curriculum'/);
+  assert.match(shell, /pathname\.startsWith\('\/school\/session'\)[\s\S]*?return 'learning'/);
+  assert.doesNotMatch(shell, /pathname\.startsWith\('\/school\/session'\)[\s\S]{0,180}return 'path'/);
+  assert.match(schoolHome, /primaryAction\.href/);
+  assert.match(schoolHome, /`\/school\/classes\/\$\{schoolClass\.class_no\}`/);
+});
+
+test('shared mobile header keeps brand and menu on opposite edges', () => {
+  assert.match(appHeader, /grid-cols-\[minmax\(0,1fr\)_auto\]/);
+  assert.match(appHeader, /md:grid-cols-\[minmax\(0,1fr\)_auto_minmax\(0,1fr\)\]/);
+  assert.match(appHeader, /col-start-2[\s\S]*md:col-start-3/);
 });
 
 test('primary school navigation pages use skeletons instead of spinner loaders', () => {

@@ -8,19 +8,40 @@
 
 .home {
   width: min(1180px, calc(100% - 68px));
+  min-height: calc(100dvh - 64px);
   margin: 0 auto;
-  padding: 44px 0 88px;
+  padding: 48px 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
 }
 
 .homeHero {
-  min-height: 500px;
-  display: flex;
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.72fr);
+  gap: 88px;
   align-items: center;
 }
 
 .homeCopy {
   min-width: 0;
-  padding: 24px 0 48px;
+}
+
+.homeEyebrow,
+.homeProgressLabel,
+.homeProgressMeta,
+.homeProgressStats dt {
+  font-family: var(--font-geist-mono), var(--font-mono), monospace;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.homeEyebrow {
+  margin: 0;
+  color: var(--school-accent-deep);
+  font-size: 11px;
+  font-weight: 750;
 }
 
 .homeContext {
@@ -28,25 +49,64 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  margin-bottom: 20px;
+  margin-top: 20px;
 }
 
 .homeChapterTitle {
-  max-width: 680px;
-  margin: 24px 0 0;
+  max-width: 720px;
+  margin: 20px 0 0;
   color: var(--school-navy);
   font-family: var(--font-display), Georgia, serif;
-  font-size: clamp(34px, 4.4vw, 58px);
+  font-size: 56px;
   font-weight: 400;
-  line-height: 1.02;
+  line-height: 1.04;
+  overflow-wrap: anywhere;
 }
 
 .homeMessage {
-  max-width: 590px;
+  max-width: 620px;
   margin: 16px 0 0;
   color: var(--school-muted);
-  font-size: 15px;
-  line-height: 1.7;
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+.homeChapterProgress {
+  max-width: 620px;
+  margin-top: 28px;
+}
+
+.homeProgressMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  color: var(--school-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.homeProgressMeta strong {
+  color: var(--school-ink);
+  font-weight: 700;
+}
+
+.homeProgressTrack {
+  width: 100%;
+  height: 6px;
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e5e7e8;
+}
+
+.homeProgressFill {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--school-accent);
+  transition: width 260ms ease-out;
 }
 
 .homeActions {
@@ -87,17 +147,13 @@
   color: var(--school-muted);
 }
 
-.homeThread {
-  display: grid;
-  grid-template-columns: 152px minmax(0, 1fr) auto;
-  gap: 28px;
-  align-items: center;
-  padding: 25px 0;
+.homeProgressPanel {
+  min-width: 0;
+  padding: 36px 0;
   border-top: 1px solid var(--school-line-strong);
   border-bottom: 1px solid var(--school-line-strong);
 }
 
-.homeThreadLabel,
 .nodeState,
 .nodeNumber,
 .levelMeta,
@@ -106,48 +162,66 @@
   text-transform: uppercase;
 }
 
-.homeThreadLabel {
+.homeProgressLabel {
+  margin: 0;
   color: var(--school-muted);
   font-size: 10px;
   font-weight: 700;
 }
 
-.homeThreadCopy {
-  min-width: 0;
+.homeProgressValue {
   display: flex;
-  align-items: center;
-  gap: 17px;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 24px;
 }
 
-.homeThreadNumber {
-  flex: 0 0 auto;
-  color: var(--school-accent);
-  font-family: var(--font-geist-mono), var(--font-mono), monospace;
-  font-size: 11px;
-  font-weight: 700;
+.homeProgressValue strong {
+  color: var(--school-navy);
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 66px;
+  font-weight: 400;
+  line-height: 0.9;
 }
 
-.homeThreadCopy strong {
-  display: block;
-  overflow-wrap: anywhere;
-  color: #2f3b51;
-  font-size: 14px;
+.homeProgressValue span {
+  color: var(--school-muted);
+  font-size: 15px;
+  font-weight: 650;
 }
 
-.homeThreadCopy p {
-  margin: 4px 0 0;
-  color: #737f91;
-  font-size: 12px;
+.homeProgressSummary {
+  margin: 12px 0 24px;
+  color: var(--school-muted);
+  font-size: 13px;
   line-height: 1.55;
 }
 
-.homeThreadMeta {
-  color: #5f6d83;
-  font-family: var(--font-geist-mono), var(--font-mono), monospace;
+.homeProgressStats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+  margin: 28px 0 0;
+  padding: 25px 0 0;
+  border-top: 1px solid var(--school-line);
+}
+
+.homeProgressStats div {
+  min-width: 0;
+}
+
+.homeProgressStats dt {
+  color: var(--school-muted);
   font-size: 9px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.homeProgressStats dd {
+  margin: 8px 0 0;
+  color: var(--school-navy);
+  font-size: 24px;
   font-weight: 650;
-  text-transform: uppercase;
-  white-space: nowrap;
 }
 
 .mapHeader {
@@ -581,6 +655,55 @@
 }
 
 @media (max-width: 900px) {
+  .home {
+    align-items: flex-start;
+  }
+
+  .homeHero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 52px;
+  }
+
+  .homeChapterTitle {
+    font-size: 46px;
+  }
+
+  .homeProgressPanel {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 0.8fr);
+    column-gap: 48px;
+  }
+
+  .homeProgressPanel > .homeProgressTrack {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: end;
+    margin-bottom: 9px;
+  }
+
+  .homeProgressPanel > .homeProgressStats {
+    grid-column: 2;
+    grid-row: 3;
+  }
+
+  .homeProgressValue {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .homeProgressSummary {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  .homeProgressLabel {
+    grid-column: 1 / -1;
+  }
+
+  .homeProgressValue {
+    align-self: end;
+  }
+
   .mapHeaderBottom {
     align-items: flex-start;
     flex-direction: column;
@@ -595,25 +718,20 @@
 
   .home {
     padding-top: 32px;
+    padding-bottom: 56px;
   }
 
   .homeHero {
-    min-height: 0;
+    gap: 42px;
   }
 
   .homeCopy {
-    padding: 12px 0 0;
+    padding-top: 12px;
   }
 
-  .homeThread {
+  .homeProgressPanel {
+    display: block;
     grid-template-columns: 1fr;
-    gap: 14px;
-    margin-top: 36px;
-  }
-
-  .homeThreadMeta {
-    padding-left: 29px;
-    white-space: normal;
   }
 
   .mapHeader {
@@ -763,6 +881,16 @@
 
   .homeActions > * {
     width: 100%;
+  }
+
+  .homeProgressMeta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .homeProgressStats {
+    gap: 16px;
   }
 
   .mapHeaderActions {

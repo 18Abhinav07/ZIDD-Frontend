@@ -5,6 +5,7 @@ import { LightningBoltIcon } from '@radix-ui/react-icons';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { useAppSession } from '@/components/shared/AppSessionProvider';
+import { isBetaBillingDisabled } from '@/lib/publicConfig.mjs';
 import { PacksModal } from './PacksModal';
 
 function cn(...inputs: ClassValue[]) {
@@ -26,20 +27,23 @@ interface CreditsBadgeProps {
 export const CreditsBadge = forwardRef<CreditsBadgeHandle, CreditsBadgeProps>(
   function CreditsBadge({ className, refreshOnMount = false }, ref) {
     const { balance, loadingBalance, loadBalance } = useAppSession();
+    const billingDisabled = isBetaBillingDisabled();
     const [packsOpen, setPacksOpen] = useState(false);
     const [loadFailed, setLoadFailed] = useState(false);
     const hasLoadedOnMountRef = useRef(false);
 
     const refresh = useCallback(() => {
+      if (billingDisabled) return;
       setLoadFailed(false);
       loadBalance(true)
         .then(() => setLoadFailed(false))
         .catch(() => {
           setLoadFailed(true);
         });
-    }, [loadBalance]);
+    }, [billingDisabled, loadBalance]);
 
     useEffect(() => {
+      if (billingDisabled) return;
       const shouldForceRefresh = refreshOnMount && !hasLoadedOnMountRef.current;
       if (shouldForceRefresh) {
         hasLoadedOnMountRef.current = true;
@@ -52,9 +56,11 @@ export const CreditsBadge = forwardRef<CreditsBadgeHandle, CreditsBadgeProps>(
         .catch(() => {
           setLoadFailed(true);
         });
-    }, [balance, loadBalance, refreshOnMount]);
+    }, [balance, billingDisabled, loadBalance, refreshOnMount]);
 
     useImperativeHandle(ref, () => ({ refresh }), [refresh]);
+
+    if (billingDisabled) return null;
 
     const unlimited = balance?.demo_unlimited === true;
     const label = unlimited ? '∞' : balance ? String(balance.credits) : '';

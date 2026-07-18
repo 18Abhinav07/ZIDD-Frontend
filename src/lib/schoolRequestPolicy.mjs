@@ -15,8 +15,8 @@ export function isSchoolEvaluatorPath(path) {
   return SCHOOL_EVALUATOR_PATHS.some((pattern) => pattern.test(normalizedPath));
 }
 
-export function schoolProxyTimeoutMs(path, localMode) {
-  if (localMode) return null;
+export function schoolProxyTimeoutMs(path, localQwenMode) {
+  if (localQwenMode) return null;
   if (!isSchoolEvaluatorPath(path)) return SCHOOL_PROXY_REQUEST_TIMEOUT_MS;
   return SCHOOL_CLOUD_EVALUATOR_TIMEOUT_MS;
 }

@@ -28,7 +28,7 @@ test('unlocked learners keep a real Home surface with an authorized continuation
     active_learning_class_no: 4,
     target_class_no: 5,
   }), false);
-  assert.equal(schoolHomeActionLabel('resume_curriculum'), 'Continue my chapter');
+  assert.equal(schoolHomeActionLabel('resume_curriculum'), 'Continue chapter');
   assert.equal(schoolHomeActionLabel('resume_support'), 'Continue focused support');
   assert.match(schoolHomePage, /shouldRenderUnlockedSchoolHome/);
   assert.match(schoolHomePage, /schoolHomeActionLabel/);
@@ -36,15 +36,17 @@ test('unlocked learners keep a real Home surface with an authorized continuation
 });
 
 test('active class home uses the shared editorial system and real class context', () => {
-  for (const token of ['Your English class', 'primaryAction.label', 'View class journey', 'Change class or subject', 'Recent growth', 'recent_growth']) {
+  for (const token of ['primaryAction.label', 'View chapters', 'Change class or subject', 'Class progress', 'recent_growth']) {
     assert.match(home, new RegExp(token));
   }
-  assert.match(home, /<SchoolPageHeading/);
+  assert.match(home, /<h1 className=\{styles\.homeChapterTitle\}>/);
   assert.match(home, /SchoolPathMap\.module\.css/);
   assert.match(home, /styles\.homeHero/);
+  assert.match(home, /styles\.homeProgressPanel/);
+  assert.match(home, /role="progressbar"/);
   assert.doesNotMatch(home, /styles\.homeCoach/);
-  assert.doesNotMatch(home, /Your coach|Ready when you are/);
-  assert.match(home, /styles\.homeThread/);
+  assert.doesNotMatch(home, /Your coach|Ready when you are|Your English class|Recent growth/);
+  assert.doesNotMatch(home, /styles\.homeThread/);
   assert.match(home, /schoolPrimaryActionClass/);
   assert.match(home, /styles\.homeLinkAction/);
   assert.match(home, /styles\.homeSetup/);
@@ -70,7 +72,8 @@ test('map surfaces handle empty content and dimension-stable pending starts', ()
 
 test('canonical class and chapter actions are explicit state-authorized inputs', () => {
   assert.match(home, /primaryAction/);
-  assert.match(chapterMap, /authorizedAction/);
+  assert.match(chapterMap, /primaryAction/);
+  assert.match(chapterMap, /onViewChapter/);
   assert.match(levelMap, /authorizedAction/);
 
   assert.doesNotMatch(home, /\['active', 'ready', 'needs_support'\]/);

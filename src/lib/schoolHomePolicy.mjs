@@ -1,14 +1,14 @@
 const HOME_ACTION_LABELS = {
-  start_curriculum: 'Start my next chapter',
-  resume_curriculum: 'Continue my chapter',
+  start_curriculum: 'Start next chapter',
+  resume_curriculum: 'Continue chapter',
   start_masterclass: 'Start focused practice',
   resume_masterclass: 'Continue focused practice',
   resume_support: 'Continue focused support',
-  view_support_plan: 'Open my support plan',
-  view_report: 'Open my learning report',
-  start_recap: 'Start my readiness path',
-  resume_recap: 'Continue my readiness path',
-  revise_recap_path: 'Strengthen my readiness path',
+  view_support_plan: 'Open support plan',
+  view_report: 'Open learning report',
+  start_recap: 'Start readiness path',
+  resume_recap: 'Continue readiness path',
+  revise_recap_path: 'Strengthen readiness path',
 };
 
 /**
@@ -30,5 +30,5 @@ export function shouldRenderUnlockedSchoolHome(state) {
  * @param {string | null | undefined} action
  */
 export function schoolHomeActionLabel(action) {
-  return HOME_ACTION_LABELS[action] ?? 'Continue my learning';
+  return HOME_ACTION_LABELS[action] ?? 'Continue learning';
 }

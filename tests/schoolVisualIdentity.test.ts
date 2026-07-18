@@ -72,11 +72,16 @@ test('persisted coach identity survives rerenders, reloads, and path changes', (
   assert.equal(afterRerender.avatar.id, firstRender.avatar.id);
 });
 
-test('invalid or mismatched persisted identity fails closed to one neutral coach', () => {
+test('valid persisted coach survives stale palette metadata and unknown coaches fail closed', () => {
+  const persistedAvatarTheme = getSchoolAvatarTheme('brave_bella', 'brave_bella');
+  for (const paletteId of ['unknown-palette', 'fluent_finn', null] as const) {
+    const theme = getSchoolAvatarTheme('brave_bella', paletteId);
+    assert.equal(theme.avatar.id, 'brave_bella');
+    assert.deepEqual(theme.roles, persistedAvatarTheme.roles);
+  }
+
   for (const [avatarId, paletteId] of [
     ['unknown-avatar', 'brave_bella'],
-    ['brave_bella', 'unknown-palette'],
-    ['brave_bella', 'fluent_finn'],
     [null, null],
   ] as const) {
     const theme = getSchoolAvatarTheme(avatarId, paletteId);
@@ -93,6 +98,17 @@ test('School coach sizing uses the shared avatar padding registry', () => {
   assert.match(coachPanel, /const avatarScale = getAvatarScaleFactor\(avatar\.url\)/);
   assert.match(coachPanel, /variant === 'immersive' \? avatarScale \* 1\.26 : avatarScale/);
   assert.match(coachPanel, /Math\.min\(avatarScale, 1\.12\)/);
+});
+
+test('coach hints use one integrated card control instead of a nested callout', () => {
+  const coachPanel = fs.readFileSync('src/components/school/SchoolCoachPanel.tsx', 'utf8');
+  const coachCss = fs.readFileSync('src/components/school/SchoolCoachPanel.module.css', 'utf8');
+
+  assert.match(coachPanel, /className=\{styles\.hintToggle\}/);
+  assert.match(coachPanel, /className=\{styles\.hintClose\}/);
+  assert.doesNotMatch(coachPanel, /I&apos;ve got a hint for you|hintIcon/);
+  assert.match(coachCss, /\.hintClose,\s*\.hintToggle[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;/);
+  assert.doesNotMatch(coachCss, /\.hintBody\s*\{[^}]*background:/);
 });
 
 test('only a fully supported backend catalog combination can be submitted', () => {
@@ -153,6 +169,7 @@ test('canonical School sources do not use local storage or seed-derived coach id
 test('canonical School presentation is scoped to its own shell and design tokens', () => {
   const css = fs.readFileSync('src/components/school/SchoolSurface.module.css', 'utf8');
   const shell = fs.readFileSync('src/components/school/shell/SchoolShell.tsx', 'utf8');
+  const appHeader = fs.readFileSync('src/components/shared/AppHeader.tsx', 'utf8');
   const layout = fs.readFileSync('src/app/school/layout.tsx', 'utf8');
 
   for (const token of [
@@ -171,9 +188,12 @@ test('canonical School presentation is scoped to its own shell and design tokens
   assert.match(shell, /Starting point/);
   assert.match(shell, /My path/);
   assert.match(shell, /Reports/);
-  assert.match(shell, /authSession\?\.user\?\.image \?\? null/);
+  assert.match(shell, /<AppHeader/);
+  assert.doesNotMatch(shell, /useSession|signOut|profileImage/);
   assert.doesNotMatch(shell, /AVATAR_PATHS/);
-  assert.match(shell, /aria-label=.*menu/i);
+  assert.match(appHeader, /authSession\?\.user\?\.image \|\| null/);
+  assert.match(appHeader, /profileInitial/);
+  assert.match(appHeader, /aria-label=\{menuOpen \? 'Close menu' : 'Open menu'\}/);
   assert.match(layout, /SchoolShell/);
   assert.doesNotMatch(layout, /AppHeader/);
 });

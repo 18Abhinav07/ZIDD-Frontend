@@ -6,6 +6,7 @@ import {
 import type {
   SchoolEnglishComfort,
   SchoolOnboardingDraft,
+  SchoolOnboardingCoachIdentity,
   SchoolOnboardingProfile,
   SchoolOnboardingSnapshot,
   SchoolTeachingLanguage,
@@ -40,6 +41,19 @@ export type SchoolCurriculumEvidenceRole =
   | 'supported'
   | 'certifying'
   | 'reflection';
+export interface SchoolSourceReferenceAnchor {
+  section_label?: string | null;
+  page_start?: number | null;
+  page_end?: number | null;
+  source_url?: string | null;
+}
+
+export interface SchoolSourceReference {
+  book_title?: string | null;
+  chapter_title?: string | null;
+  anchors?: SchoolSourceReferenceAnchor[] | null;
+}
+
 export type SchoolStateStatus =
   | 'needs_action'
   | 'in_progress'
@@ -92,7 +106,8 @@ export type SchoolProfile = SchoolOnboardingProfile;
 export type SchoolProfileDraft = SchoolOnboardingDraft;
 export type SchoolOnboardingEnvelope = SchoolOnboardingSnapshot;
 
-export type SaveSchoolOnboardingRequest = Partial<SchoolProfileInput> & {
+export type SaveSchoolOnboardingRequest = Partial<SchoolProfileInput>
+  & Partial<SchoolOnboardingCoachIdentity> & {
   current_step: 0 | 1 | 2 | 3 | 4;
   request_id: string;
   profile_version_id?: string;
@@ -464,6 +479,7 @@ export interface SchoolCurriculumSession extends SchoolCoachIdentity {
     response_mode?: 'short' | 'paragraph';
     interaction_type?: SchoolCurriculumInteractionType | null;
     evidence_role?: SchoolCurriculumEvidenceRole | null;
+    source_reference?: SchoolSourceReference | null;
     attempt_no: number;
     can_answer: boolean;
   } | null;
@@ -486,9 +502,15 @@ export interface SchoolMasterclassSession extends SchoolCoachIdentity {
   level_id: string;
   focus: string;
   trigger_count: number;
+  remediation_phase: string;
+  completed_phases: number;
+  total_phases: number;
   current_activity: {
     activity_id: string;
     kind: 'masterclass';
+    remediation_phase: string;
+    phase_index: number;
+    phase_count: number;
     level_id: string;
     focus: string;
     title: string;
@@ -496,6 +518,7 @@ export interface SchoolMasterclassSession extends SchoolCoachIdentity {
     passage: string;
     prompt: string;
     options: string[] | null;
+    source_reference?: SchoolSourceReference | null;
     attempt_no: number;
     can_answer: boolean;
   } | null;
@@ -590,26 +613,26 @@ export interface SchoolChapterMap extends SchoolCoachIdentity {
 
 const SCHOOL_STATE_CACHE_MS = 5_000;
 const stateRequestCache = new SchoolStateRequestCache<SchoolStateResponse>(SCHOOL_STATE_CACHE_MS);
-const SCHOOL_LOCAL_REQUESTS_UNBOUNDED = process.env.NEXT_PUBLIC_SCHOOL_LOCAL_MODE === '1';
+const SCHOOL_QWEN_REQUESTS_UNBOUNDED = process.env.NEXT_PUBLIC_SCHOOL_QWEN_UNBOUNDED === '1';
 type SchoolApiFetchOptions = Omit<NonNullable<Parameters<typeof apiFetch>[1]>, 'timeoutMs'>;
 
 const schoolReadFetch = (endpoint: string, options: SchoolApiFetchOptions = {}) => apiFetch(endpoint, {
   ...options,
-  timeoutMs: SCHOOL_LOCAL_REQUESTS_UNBOUNDED
+  timeoutMs: SCHOOL_QWEN_REQUESTS_UNBOUNDED
     ? null
     : SCHOOL_READ_TIMEOUT_MS,
 });
 
 const schoolControlFetch = (endpoint: string, options: SchoolApiFetchOptions = {}) => apiFetch(endpoint, {
   ...options,
-  timeoutMs: SCHOOL_LOCAL_REQUESTS_UNBOUNDED
+  timeoutMs: SCHOOL_QWEN_REQUESTS_UNBOUNDED
     ? null
     : SCHOOL_CONTROL_TIMEOUT_MS,
 });
 
 const schoolEvaluatorFetch = (endpoint: string, options: SchoolApiFetchOptions = {}) => apiFetch(endpoint, {
   ...options,
-  timeoutMs: SCHOOL_LOCAL_REQUESTS_UNBOUNDED
+  timeoutMs: SCHOOL_QWEN_REQUESTS_UNBOUNDED
     ? null
     : SCHOOL_CLOUD_EVALUATOR_TIMEOUT_MS,
 });

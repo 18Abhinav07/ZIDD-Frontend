@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Cross2Icon, LightningBoltIcon, LockClosedIcon } from '@radix-ui/react-icons';
+import { isBetaBillingDisabled } from '@/lib/publicConfig.mjs';
 import type { PaywallDetail } from '@/types';
 import { PacksModal } from './PacksModal';
 
@@ -34,6 +35,7 @@ export function PaywallModal({
   confirming = false,
   error = null,
 }: PaywallModalProps) {
+  const billingDisabled = isBetaBillingDisabled();
   const [packsOpen, setPacksOpen] = useState(false);
   const [slowConfirming, setSlowConfirming] = useState(false);
   // Portal the overlay to <body> so `position: fixed` is viewport-relative, not
@@ -53,17 +55,19 @@ export function PaywallModal({
   // not call a recurring attempt a "module unlock".
   const isAttempt = paywall?.error === 'confirm_required' && paywall.scope === 'attempt';
   useEffect(() => {
-    if (!open || !confirming) {
+    if (billingDisabled || !open || !confirming) {
       setSlowConfirming(false);
       return;
     }
     const timeout = window.setTimeout(() => setSlowConfirming(true), 8000);
     return () => window.clearTimeout(timeout);
-  }, [confirming, open]);
+  }, [billingDisabled, confirming, open]);
 
   const handleClose = () => {
     if (!confirming) onClose();
   };
+
+  if (billingDisabled) return null;
 
   return (
     <>

@@ -13,6 +13,7 @@ import {
   SchoolStatusChip,
   schoolPrimaryActionClass,
 } from '@/components/school/SchoolPrimitives';
+import { useResolvedSchoolCoachIdentity } from '@/components/school/shell/SchoolCoachIdentityContext';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 import { resolveSchoolStateDestination } from '@/lib/schoolActivityPolicy';
 import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
@@ -66,6 +67,10 @@ export default function SchoolSupportPage() {
   const [loading, setLoading] = useState(true);
   const [continuing, setContinuing] = useState(false);
   const [error, setError] = useState('');
+  const coachIdentity = useResolvedSchoolCoachIdentity({
+    avatarId: snapshot?.supportPlan?.coach_avatar_id,
+    paletteId: snapshot?.supportPlan?.coach_palette_id,
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -124,10 +129,7 @@ export default function SchoolSupportPage() {
   if (loading) return <SchoolReportSkeleton />;
 
   const supportPlan = snapshot?.supportPlan ?? null;
-  const theme = getSchoolAvatarTheme(
-    supportPlan?.coach_avatar_id,
-    supportPlan?.coach_palette_id,
-  );
+  const theme = getSchoolAvatarTheme(coachIdentity.avatarId, coachIdentity.paletteId);
   const subjectLabel = supportPlan?.subject_id
     ? supportPlan.subject_id.charAt(0).toUpperCase() + supportPlan.subject_id.slice(1)
     : 'School';

@@ -7,10 +7,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { getAvatarScaleFactor } from '@/lib/avatarRegistry';
 import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
 import type { SchoolCoachHint, SchoolCoachTone } from '@/lib/schoolTeachingPresentation';
-import {
-  resolveSchoolCoachIdentity,
-  useSchoolShellCoachIdentity,
-} from '@/components/school/shell/SchoolCoachIdentityContext';
+import { useResolvedSchoolCoachIdentity } from '@/components/school/shell/SchoolCoachIdentityContext';
 import styles from './SchoolCoachPanel.module.css';
 
 type SchoolCoachVariant = 'immersive' | 'supporting' | 'inline';
@@ -38,8 +35,7 @@ export function SchoolCoachPanel({
   variant = 'supporting',
 }: SchoolCoachPanelProps) {
   const reduceMotion = useReducedMotion();
-  const shellIdentity = useSchoolShellCoachIdentity();
-  const coachIdentity = resolveSchoolCoachIdentity({ avatarId, paletteId }, shellIdentity);
+  const coachIdentity = useResolvedSchoolCoachIdentity({ avatarId, paletteId });
   const theme = getSchoolAvatarTheme(coachIdentity.avatarId, coachIdentity.paletteId);
   const { avatar } = theme;
   const avatarScale = getAvatarScaleFactor(avatar.url);
@@ -95,8 +91,8 @@ export function SchoolCoachPanel({
     );
   }
 
-  const showHintPrompt = Boolean(hint && hintState === 'available');
   const showHint = Boolean(hint && hintState === 'open');
+  const showHintButton = Boolean(hint && !showHint);
 
   return (
     <motion.div
@@ -127,46 +123,40 @@ export function SchoolCoachPanel({
       <div className={styles.dialogue} data-testid="school-coach-dialogue">
         <p className={styles.coachLabel}>Your coach</p>
 
-        <div className={styles.noteRow} role="status" aria-live={tone === 'neutral' ? 'off' : 'polite'}>
-          <p className={styles.note}>{note}</p>
-          {hint && hintState === 'dismissed' ? (
-            <button
-              type="button"
-              className={styles.hintReopen}
-              onClick={() => setHintState('open')}
-              aria-label="Open hint"
-              title="Open hint"
-            >
-              <Lightbulb size={17} aria-hidden="true" />
-            </button>
-          ) : null}
-        </div>
-
-        {showHintPrompt ? (
+        {showHintButton ? (
           <button
             type="button"
-            className={`${styles.hintPrompt} ${reduceMotion ? '' : styles.hintPulse}`}
+            className={styles.hintToggle}
             onClick={() => setHintState('open')}
+            aria-label="Show coach hint"
+            title="Show hint"
             aria-expanded="false"
             aria-controls="school-coach-hint"
           >
-            <Lightbulb size={18} aria-hidden="true" />
-            <span>I&apos;ve got a hint for you</span>
+            <Lightbulb size={17} aria-hidden="true" />
           </button>
         ) : null}
 
+        {showHint ? (
+          <button
+            type="button"
+            className={styles.hintClose}
+            onClick={() => setHintState('dismissed')}
+            aria-label="Close coach hint"
+            title="Close hint"
+            aria-expanded="true"
+            aria-controls="school-coach-hint"
+          >
+            <X size={15} aria-hidden="true" />
+          </button>
+        ) : null}
+
+        <div className={styles.noteRow} role="status" aria-live={tone === 'neutral' ? 'off' : 'polite'}>
+          <p className={styles.note}>{note}</p>
+        </div>
+
         {showHint && hint ? (
           <div id="school-coach-hint" className={styles.hintBody} role="status" aria-live="polite">
-            <button
-              type="button"
-              className={styles.hintClose}
-              onClick={() => setHintState('dismissed')}
-              aria-label="Close hint"
-              title="Close hint"
-            >
-              <X size={16} aria-hidden="true" />
-            </button>
-            <Lightbulb className={styles.hintIcon} size={18} aria-hidden="true" />
             <p>{hint.text}</p>
           </div>
         ) : null}

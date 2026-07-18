@@ -56,6 +56,27 @@ test('hidden and stale feedback never reaches the coach dialogue', () => {
   assert.equal(selectVisibleSchoolCoachFeedback(undefined, feedback), null);
 });
 
+test('a learning surface can keep previous scored feedback visible after advancing', () => {
+  const feedback = {
+    activity_id: 'activity-1',
+    message: 'You used the curtain clue to support your inference.',
+    result_visible: true,
+  };
+
+  assert.equal(
+    selectVisibleSchoolCoachFeedback('activity-2', feedback, { includePrevious: true }),
+    feedback,
+  );
+  assert.equal(
+    selectVisibleSchoolCoachFeedback(
+      'activity-2',
+      { ...feedback, result_visible: false },
+      { includePrevious: true },
+    ),
+    null,
+  );
+});
+
 test('empty backend copy falls back to learner-safe coach language', () => {
   const result = resolveSchoolCoachPresentation({ status: '', fallbackMessage: '' });
 

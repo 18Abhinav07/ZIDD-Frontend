@@ -14,6 +14,7 @@ import {
   schoolSecondaryActionClass,
 } from '@/components/school/SchoolPrimitives';
 import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
+import { useResolvedSchoolCoachIdentity } from '@/components/school/shell/SchoolCoachIdentityContext';
 import { placementEvaluatedClassLabel } from '@/lib/schoolPlacementReportPolicy';
 import {
   createLearnerSafeSkillLabeler,
@@ -82,7 +83,11 @@ export function ParentGrowthReport({
   onOpenLearnerView,
 }: ParentGrowthReportProps) {
   const identity = activeCoachIdentity ?? classMap ?? state;
-  const theme = getSchoolAvatarTheme(identity.coach_avatar_id, identity.coach_palette_id);
+  const coachIdentity = useResolvedSchoolCoachIdentity({
+    avatarId: identity.coach_avatar_id,
+    paletteId: identity.coach_palette_id,
+  });
+  const theme = getSchoolAvatarTheme(coachIdentity.avatarId, coachIdentity.paletteId);
   const activeGaps = curriculumSession?.memory_summary?.active_gaps ?? [];
   const strongSkillIds = curriculumSession?.memory_summary?.strong_skill_ids ?? [];
   const improvingSkillIds = curriculumSession?.memory_summary?.improving_skill_ids ?? [];
