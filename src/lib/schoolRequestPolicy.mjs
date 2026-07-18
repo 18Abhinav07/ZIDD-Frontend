@@ -1,7 +1,7 @@
 export const SCHOOL_READ_TIMEOUT_MS = 20_000;
 export const SCHOOL_CONTROL_TIMEOUT_MS = 30_000;
 export const SCHOOL_PROXY_REQUEST_TIMEOUT_MS = 30_000;
-export const SCHOOL_CLOUD_EVALUATOR_TIMEOUT_MS = 180_000;
+export const SCHOOL_CLOUD_EVALUATOR_TIMEOUT_MS = 10_000;
 
 const SCHOOL_EVALUATOR_PATHS = [
   /^placement\/[^/]+\/answer$/,

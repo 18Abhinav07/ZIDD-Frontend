@@ -113,14 +113,23 @@ export function schoolActivityLabel(kind: SchoolActivity['kind']) {
   }
 }
 
-function PendingEvaluation() {
+function PendingEvaluation({ onExit }: { onExit: () => void }) {
   return (
-    <section aria-hidden="true" className="px-5 py-12 sm:px-9 sm:py-16">
-      <div data-testid="school-tutor-message-skeleton" className="max-w-xl space-y-4">
-        <div className="h-7 w-2/3 animate-pulse rounded-lg bg-slate-100 motion-reduce:animate-none" />
-        <div className="h-4 w-full animate-pulse rounded-full bg-slate-200 motion-reduce:animate-none" />
-        <div className="h-4 w-5/6 animate-pulse rounded-full bg-slate-200 motion-reduce:animate-none" />
-        <div className="h-4 w-2/3 animate-pulse rounded-full bg-slate-200 motion-reduce:animate-none" />
+    <section role="status" aria-live="polite" className="px-5 py-9 sm:px-8 sm:py-12">
+      <div className="max-w-xl">
+        <h1 className="font-sans text-3xl font-bold leading-tight text-slate-950 sm:text-4xl">Your answer is saved</h1>
+        <p className="mt-4 text-base font-normal leading-7 text-slate-700">
+          Your place in this chapter is saved, and feedback will appear here.
+        </p>
+        <div aria-hidden="true" data-testid="school-tutor-message-skeleton" className="mt-8 space-y-4">
+          <div className="h-7 w-2/3 rounded-lg bg-slate-100 motion-safe:animate-pulse motion-reduce:animate-none" />
+          <div className="h-4 w-full rounded-full bg-slate-200 motion-safe:animate-pulse motion-reduce:animate-none" />
+          <div className="h-4 w-5/6 rounded-full bg-slate-200 motion-safe:animate-pulse motion-reduce:animate-none" />
+          <div className="h-4 w-2/3 rounded-full bg-slate-200 motion-safe:animate-pulse motion-reduce:animate-none" />
+        </div>
+        <button type="button" onClick={onExit} className={`mt-8 ${schoolSecondaryActionClass}`}>
+          <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" /> Return to chapter map
+        </button>
       </div>
     </section>
   );
@@ -339,7 +348,7 @@ export function SchoolActivityRenderer({
           ) : null}
         </section>
       ) : view.kind === 'pending' ? (
-        <PendingEvaluation />
+        <PendingEvaluation onExit={onExit} />
       ) : view.kind === 'support' ? (
         <section role="status" className="px-5 py-9 sm:px-8 sm:py-12">
           <h1 className="max-w-xl font-sans text-3xl font-bold leading-tight text-slate-950 sm:text-4xl">Continue from your chapter path</h1>

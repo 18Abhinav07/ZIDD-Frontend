@@ -326,7 +326,7 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
     teachingBlock: activity?.teaching_block,
     feedback: visibleFeedback?.message,
     pendingMessage: activityView.kind === 'pending'
-      ? 'I am reviewing your answer. Keep this page open while I prepare the next step.'
+      ? 'Your answer is saved. Your place in this chapter is saved, and feedback will appear here.'
       : null,
     transitionMessage,
     error,

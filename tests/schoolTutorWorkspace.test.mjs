@@ -137,11 +137,28 @@ test('answer submission keeps backend activity idempotency, local evaluator allo
   assert.doesNotMatch(workspace, /Promise\.race|setTimeout\(/);
 });
 
-test('pending evaluation uses a message skeleton and one stable pending label without a spinner', () => {
-  assert.match(renderer, /data-testid="school-tutor-message-skeleton"/);
-  assert.match(workspace, /I am reviewing your answer/);
-  assert.doesNotMatch(renderer, /pendingLabel=/);
-  assert.doesNotMatch(renderer, /Loader2/);
+test('pending evaluation confirms the saved answer and offers a safe chapter-map exit without advancing', () => {
+  const pendingEvaluation = renderer.match(
+    /function PendingEvaluation\(\{ onExit \}: \{ onExit: \(\) => void \}\) \{([\s\S]*?)\n\}/,
+  )?.[1] ?? '';
+  const pendingBranch = renderer.match(
+    /view\.kind === 'pending' \? \(([\s\S]*?)\) : view\.kind === 'support'/,
+  )?.[1] ?? '';
+
+  assert.match(pendingEvaluation, /role="status"/);
+  assert.match(pendingEvaluation, /aria-live="polite"/);
+  assert.match(pendingEvaluation, />Your answer is saved</);
+  assert.match(pendingEvaluation, /Your place in this chapter is saved[\s\S]*?feedback will appear here\./);
+  assert.match(pendingEvaluation, /data-testid="school-tutor-message-skeleton"/);
+  assert.match(pendingEvaluation, /animate-pulse/);
+  assert.match(pendingEvaluation, /motion-reduce:animate-none/);
+  assert.match(pendingEvaluation, /onClick=\{onExit\}/);
+  assert.match(pendingEvaluation, /Return to chapter map/);
+  assert.match(pendingBranch, /<PendingEvaluation onExit=\{onExit\} \/>/);
+  assert.doesNotMatch(pendingBranch, /ActivityCard|onSubmit|Continue|Check my answer/);
+  assert.match(workspace, /Your answer is saved\. Your place in this chapter is saved, and feedback will appear here\./);
+  assert.doesNotMatch([workspace, renderer].join('\n'), /Keep this page open/);
+  assert.doesNotMatch(renderer, /pendingLabel=|Loader2/);
 });
 
 test('paused masterclass and all tutor exits use backend-owned canonical destinations', () => {

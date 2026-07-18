@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const policyPath = 'src/lib/schoolRequestPolicy.mjs';
 
-test('School request policy leaves explicit local-Qwen requests unbounded without weakening Gemini deadlines', async () => {
+test('School request policy acknowledges cloud evaluator answers within 10 seconds and leaves local Qwen unbounded', async () => {
   assert.ok(fs.existsSync(policyPath), 'School request policy module must exist');
   const {
     SCHOOL_CLOUD_EVALUATOR_TIMEOUT_MS,
@@ -45,6 +45,5 @@ test('School request policy leaves explicit local-Qwen requests unbounded withou
 
   assert.ok(Number.isFinite(SCHOOL_PROXY_REQUEST_TIMEOUT_MS));
   assert.ok(SCHOOL_PROXY_REQUEST_TIMEOUT_MS > 0);
-  assert.ok(Number.isFinite(SCHOOL_CLOUD_EVALUATOR_TIMEOUT_MS));
-  assert.ok(SCHOOL_CLOUD_EVALUATOR_TIMEOUT_MS > SCHOOL_PROXY_REQUEST_TIMEOUT_MS);
+  assert.equal(SCHOOL_CLOUD_EVALUATOR_TIMEOUT_MS, 10_000);
 });
