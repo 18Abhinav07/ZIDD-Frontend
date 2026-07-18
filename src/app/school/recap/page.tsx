@@ -31,6 +31,7 @@ import {
   answerSchoolRecap,
   getActiveSchoolRecap,
   getSchoolState,
+  isSchoolEvaluatorPendingAnswer,
   startSchoolRecap,
   type SchoolRecapPath,
 } from '@/services/schoolRebuild';
@@ -175,7 +176,19 @@ export default function SchoolRecapPage() {
     setSubmitting(true);
     setError('');
     try {
-      setPath(await answerSchoolRecap(path.session_id, activity.activity_id, finalAnswer));
+      const answerResult = await answerSchoolRecap(path.session_id, activity.activity_id, finalAnswer);
+      if (isSchoolEvaluatorPendingAnswer(answerResult)) {
+        const recovery = await recoverSchoolAnswerState({
+          response: answerResult,
+          refreshState: () => getSchoolState({ force: true }),
+        });
+        setAnswer('');
+        setError('');
+        setAwaitingEvaluation(recovery.kind === 'pending');
+        void load({ background: true });
+        return;
+      }
+      setPath(answerResult);
       setAnswer('');
     } catch (err: unknown) {
       try {
@@ -185,6 +198,13 @@ export default function SchoolRecapPage() {
         });
         if (recovery.kind === 'pending') {
           setAwaitingEvaluation(true);
+          setAnswer('');
+          setError('');
+          void load({ background: true });
+          return;
+        }
+        if (recovery.kind === 'advanced') {
+          setAwaitingEvaluation(false);
           setAnswer('');
           setError('');
           void load({ background: true });

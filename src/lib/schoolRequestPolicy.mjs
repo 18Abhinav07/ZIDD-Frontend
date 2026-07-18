@@ -34,9 +34,35 @@ export function isUncertainSchoolAnswerError(error) {
     || SCHOOL_ANSWER_IN_PROGRESS_CODES.has(error.message);
 }
 
-export async function recoverSchoolAnswerState({ error, refreshState }) {
-  if (!isUncertainSchoolAnswerError(error)) return { kind: 'not_uncertain' };
+export function isSchoolEvaluatorPendingResponse(response) {
+  return Boolean(
+    response
+    && typeof response === 'object'
+    && response.status === 'awaiting_evaluation'
+    && typeof response.session_id === 'string'
+    && typeof response.activity_id === 'string'
+    && typeof response.state_url === 'string',
+  );
+}
+
+/**
+ * @template State
+ * @param {{
+ *   error?: unknown;
+ *   response?: unknown;
+ *   refreshState: () => Promise<State>;
+ * }} options
+ * @returns {Promise<
+ *   | { kind: 'not_uncertain' }
+ *   | { kind: 'pending'; state: State }
+ *   | { kind: 'advanced'; state: State }
+ * >}
+ */
+export async function recoverSchoolAnswerState({ error, response, refreshState }) {
+  if (!isUncertainSchoolAnswerError(error) && !isSchoolEvaluatorPendingResponse(response)) {
+    return { kind: 'not_uncertain' };
+  }
   const state = await refreshState();
   if (state?.status === 'awaiting_evaluation') return { kind: 'pending', state };
-  return { kind: 'not_pending', state };
+  return { kind: 'advanced', state };
 }

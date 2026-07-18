@@ -15,6 +15,8 @@ test('uncertain School evaluator responses refresh authoritative state before en
   for (const [surface, source] of Object.entries(pages)) {
     assert.match(source, /recoverSchoolAnswerState\(\{[\s\S]*?refreshState: \(\) => getSchoolState\(\{ force: true \}\)/, `${surface} must refresh School state after an uncertain answer result`);
     assert.match(source, /recovery\.kind === 'pending'/, `${surface} must only enter passive mode after state confirms it`);
+    assert.match(source, /recovery\.kind === 'advanced'/, `${surface} must treat an advanced authoritative state as recovery, not a retryable failure`);
+    assert.match(source, /response: answerResult/, `${surface} must recover a 202 evaluator acknowledgement before reading it as a resolved session`);
   }
 
   assert.match(pages.curriculum, /setSchoolStatus\(recovery\.state\.status\)/);

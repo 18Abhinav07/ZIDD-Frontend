@@ -24,6 +24,7 @@ import {
   answerSchoolPlacement,
   getSchoolPlacement,
   getSchoolState,
+  isSchoolEvaluatorPendingAnswer,
   startSchoolPlacement,
   type SchoolCoachIdentity,
   type SchoolPlacementResponse,
@@ -373,7 +374,25 @@ export default function SchoolPlacementPage() {
     setError('');
     let answerSaved = false;
     try {
-      const nextPlacement = await answerSchoolPlacement(placement.session_id, item.item_id, finalAnswer);
+      const answerResult = await answerSchoolPlacement(placement.session_id, item.item_id, finalAnswer);
+      if (isSchoolEvaluatorPendingAnswer(answerResult)) {
+        const recovery = await recoverSchoolAnswerState({
+          response: answerResult,
+          refreshState: () => getSchoolState({ force: true }),
+        });
+        if (recovery.kind === 'not_uncertain') throw new Error('school_state_unresolved');
+        applyStateIdentity(recovery.state);
+        setAnswerDraft({ itemId: null, value: '' });
+        setError('');
+        if (recovery.kind === 'pending') {
+          setAwaitingEvaluation(true);
+        } else {
+          setAwaitingEvaluation(false);
+        }
+        void load(true);
+        return;
+      }
+      const nextPlacement = answerResult;
       answerSaved = true;
       const decision = await reconcileMutation(nextPlacement);
       if (!['pending', 'recover', 'settling'].includes(decision.kind)) {
@@ -389,6 +408,14 @@ export default function SchoolPlacementPage() {
         if (recovery.kind === 'pending') {
           applyStateIdentity(recovery.state);
           setAwaitingEvaluation(true);
+          setError('');
+          void load(true);
+          return;
+        }
+        if (recovery.kind === 'advanced') {
+          applyStateIdentity(recovery.state);
+          setAwaitingEvaluation(false);
+          setAnswerDraft({ itemId: null, value: '' });
           setError('');
           void load(true);
           return;

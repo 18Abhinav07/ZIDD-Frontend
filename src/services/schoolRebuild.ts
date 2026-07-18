@@ -15,6 +15,7 @@ import {
   SCHOOL_CLOUD_EVALUATOR_TIMEOUT_MS,
   SCHOOL_CONTROL_TIMEOUT_MS,
   SCHOOL_READ_TIMEOUT_MS,
+  isSchoolEvaluatorPendingResponse,
 } from '@/lib/schoolRequestPolicy.mjs';
 
 export type TeachingLanguage = SchoolTeachingLanguage;
@@ -161,6 +162,21 @@ export interface SchoolState extends SchoolCoachIdentity {
   learner_message: string;
   parent_message: string;
   blocked_reason: string | null;
+}
+
+export interface SchoolEvaluatorPendingResponse {
+  status: 'awaiting_evaluation';
+  session_id: string;
+  activity_id: string;
+  state_url: string;
+}
+
+export type SchoolEvaluatorAnswerResult<Resolved> = Resolved | SchoolEvaluatorPendingResponse;
+
+export function isSchoolEvaluatorPendingAnswer(
+  result: unknown,
+): result is SchoolEvaluatorPendingResponse {
+  return isSchoolEvaluatorPendingResponse(result);
 }
 
 export type SchoolStateResponse = SchoolState | SchoolUnavailableState;
@@ -703,7 +719,7 @@ export async function answerSchoolPlacement(
   sessionId: string,
   itemId: string,
   answer: string,
-): Promise<SchoolPlacementResponse> {
+): Promise<SchoolEvaluatorAnswerResult<SchoolPlacementResponse>> {
   const result = await schoolEvaluatorFetch(`/school/placement/${sessionId}/answer`, {
     method: 'POST',
     body: JSON.stringify({ item_id: itemId, answer }),
@@ -744,7 +760,7 @@ export async function answerSchoolRecap(
   sessionId: string,
   activityId: string,
   answer: string,
-): Promise<SchoolRecapPath> {
+): Promise<SchoolEvaluatorAnswerResult<SchoolRecapPath>> {
   const result = await schoolEvaluatorFetch(`/school/recap/${sessionId}/answer`, {
     method: 'POST',
     body: JSON.stringify({ activity_id: activityId, answer }),
@@ -793,7 +809,7 @@ export async function answerSchoolCurriculum(
   sessionId: string,
   activityId: string,
   answer: string,
-): Promise<SchoolCurriculumSession> {
+): Promise<SchoolEvaluatorAnswerResult<SchoolCurriculumSession>> {
   const result = await schoolEvaluatorFetch(`/school/curriculum/${sessionId}/answer`, {
     method: 'POST',
     body: JSON.stringify({ activity_id: activityId, answer }),
@@ -823,7 +839,7 @@ export async function answerSchoolMasterclass(
   sessionId: string,
   activityId: string,
   answer: string,
-): Promise<SchoolMasterclassSession> {
+): Promise<SchoolEvaluatorAnswerResult<SchoolMasterclassSession>> {
   const result = await schoolEvaluatorFetch(`/school/masterclass/${sessionId}/answer`, {
     method: 'POST',
     body: JSON.stringify({ activity_id: activityId, answer }),

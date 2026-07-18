@@ -81,5 +81,32 @@ test('known in-progress responses and reloads preserve passive pending until aut
     error: new Error('request_timeout'),
     refreshState: async () => ({ status: 'in_progress', active_flow: 'placement' }),
   });
-  assert.equal(reloaded.kind, 'not_pending');
+  assert.equal(reloaded.kind, 'advanced');
+});
+
+test('a 202 acknowledgement or timed-out answer recovers through advanced authoritative School state', async () => {
+  const { recoverSchoolAnswerState } = await import(`../${policyPath}`);
+  const advancedState = {
+    status: 'in_progress',
+    active_flow: 'curriculum',
+    active_session_id: 'curriculum-2',
+  };
+  const pendingResponse = {
+    status: 'awaiting_evaluation',
+    session_id: 'curriculum-1',
+    activity_id: 'activity-1',
+    state_url: '/school/state',
+  };
+
+  const acknowledged = await recoverSchoolAnswerState({
+    response: pendingResponse,
+    refreshState: async () => advancedState,
+  });
+  const timedOut = await recoverSchoolAnswerState({
+    error: new Error('request_timeout'),
+    refreshState: async () => advancedState,
+  });
+
+  assert.deepEqual(acknowledged, { kind: 'advanced', state: advancedState });
+  assert.deepEqual(timedOut, { kind: 'advanced', state: advancedState });
 });

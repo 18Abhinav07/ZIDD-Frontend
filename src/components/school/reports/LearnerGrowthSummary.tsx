@@ -95,6 +95,7 @@ export function LearnerGrowthSummary({
     paletteId: identity.coach_palette_id,
   });
   const theme = getSchoolAvatarTheme(coachIdentity.avatarId, coachIdentity.paletteId);
+  const awaitingEvaluation = state.status === 'awaiting_evaluation';
   const completedChapters = classMap?.chapters.filter((chapter) => chapter.status === 'complete') ?? [];
   const activeChapter = selectLearnerPracticeChapter(classMap);
   const placementStillOwnsPath = state.unlock_state !== 'target_unlocked';
@@ -259,18 +260,24 @@ export function LearnerGrowthSummary({
         <section className="border-b border-slate-200 py-8" aria-labelledby="learner-next-heading">
           <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase text-[var(--school-accent-deep)]">Your next challenge</p>
+              <p className="text-[11px] font-semibold uppercase text-[var(--school-accent-deep)]">{awaitingEvaluation ? 'Saved answer' : 'Your next challenge'}</p>
               <h2 id="learner-next-heading" className="mt-2 break-words font-display text-[1.85rem] font-normal leading-[1.08] text-slate-950 sm:text-[2.15rem]">
-                {nextStepOverride?.heading ?? nextActionLabel(state.next_action)}
+                {awaitingEvaluation ? 'Your latest work is being reviewed' : nextStepOverride?.heading ?? nextActionLabel(state.next_action)}
               </h2>
               <p className="mt-3 max-w-[64ch] break-words text-sm leading-6 text-slate-600">
-                {nextStepOverride?.message || state.learner_message || 'Continue from the exact place saved in your learning path.'}
+                {awaitingEvaluation
+                  ? 'School is reviewing the latest saved work. This report will update when the next step is ready.'
+                  : nextStepOverride?.message || state.learner_message || 'Continue from the exact place saved in your learning path.'}
               </p>
             </div>
-            <button type="button" onClick={onNextAction} className={`${schoolPrimaryActionClass} w-full sm:w-auto`}>
-              {nextStepOverride?.actionLabel ?? nextActionLabel(state.next_action)}
-              <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
-            </button>
+            {awaitingEvaluation ? (
+              <p role="status" aria-live="polite" className="text-sm font-medium text-slate-600">Your place is saved.</p>
+            ) : (
+              <button type="button" onClick={onNextAction} className={`${schoolPrimaryActionClass} w-full sm:w-auto`}>
+                {nextStepOverride?.actionLabel ?? nextActionLabel(state.next_action)}
+                <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
+              </button>
+            )}
           </div>
         </section>
       </div>

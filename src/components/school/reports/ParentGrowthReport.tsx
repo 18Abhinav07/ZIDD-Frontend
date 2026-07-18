@@ -88,6 +88,7 @@ export function ParentGrowthReport({
     paletteId: identity.coach_palette_id,
   });
   const theme = getSchoolAvatarTheme(coachIdentity.avatarId, coachIdentity.paletteId);
+  const awaitingEvaluation = state.status === 'awaiting_evaluation';
   const activeGaps = curriculumSession?.memory_summary?.active_gaps ?? [];
   const strongSkillIds = curriculumSession?.memory_summary?.strong_skill_ids ?? [];
   const improvingSkillIds = curriculumSession?.memory_summary?.improving_skill_ids ?? [];
@@ -255,18 +256,24 @@ export function ParentGrowthReport({
         <section className="border-b border-slate-200 py-8" aria-labelledby="parent-week-heading">
           <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase text-[var(--school-accent-deep)]">This week</p>
+              <p className="text-[11px] font-semibold uppercase text-[var(--school-accent-deep)]">{awaitingEvaluation ? 'Saved answer' : 'This week'}</p>
               <h2 id="parent-week-heading" className="mt-2 break-words font-display text-[1.8rem] font-normal leading-[1.08] text-slate-950 sm:text-[2rem]">
-                {nextStepOverride?.heading ?? 'Recommended next action'}
+                {awaitingEvaluation ? 'The latest work is being reviewed' : nextStepOverride?.heading ?? 'Recommended next action'}
               </h2>
               <p className="mt-3 max-w-[64ch] break-words text-sm leading-6 text-slate-600">
-                {nextStepOverride?.message || state.parent_message || "Continue from the next step saved in the learner's path."}
+                {awaitingEvaluation
+                  ? 'School is reviewing the latest saved work. This report will update when the next step is ready.'
+                  : nextStepOverride?.message || state.parent_message || "Continue from the next step saved in the learner's path."}
               </p>
             </div>
-            <button type="button" onClick={onNextAction} className={`${schoolPrimaryActionClass} w-full sm:w-auto`}>
-              {nextStepOverride?.actionLabel ?? 'Open next step'}
-              <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
-            </button>
+            {awaitingEvaluation ? (
+              <p role="status" aria-live="polite" className="text-sm font-medium text-slate-600">The learner's place is saved.</p>
+            ) : (
+              <button type="button" onClick={onNextAction} className={`${schoolPrimaryActionClass} w-full sm:w-auto`}>
+                {nextStepOverride?.actionLabel ?? 'Open next step'}
+                <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
+              </button>
+            )}
           </div>
         </section>
       </div>

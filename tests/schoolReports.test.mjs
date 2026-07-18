@@ -260,6 +260,15 @@ test('report routes validate active placement continuation before exposing their
   assert.match(parentReport, /nextStepOverride/);
 });
 
+test('learner and parent reports become passive while School evaluation is awaiting', () => {
+  for (const report of [learnerReport, parentReport]) {
+    assert.match(report, /state\.status === 'awaiting_evaluation'/);
+    assert.match(report, /role="status"/);
+    assert.match(report, /School is reviewing the latest saved work/);
+    assert.match(report, /awaitingEvaluation \? \([\s\S]*?\) : \(/);
+  }
+});
+
 test('report routes fetch only recognized placement and unlocked active class evidence', () => {
   for (const route of [learnerRoute, parentRoute]) {
     assert.match(route, /\['below_target', 'target_ready', 'insufficient_evidence'\]\.includes\(state\.placement_status\)/);

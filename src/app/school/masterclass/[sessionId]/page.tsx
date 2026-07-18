@@ -41,6 +41,7 @@ import {
   getSchoolCurriculumSession,
   getSchoolMasterclass,
   getSchoolState,
+  isSchoolEvaluatorPendingAnswer,
   resumeSchoolCurriculumMasterclass,
   type SchoolCurriculumSession,
   type SchoolMasterclassSession,
@@ -213,11 +214,24 @@ export default function SchoolMasterclassPage() {
     setSubmitting(true);
     setError('');
     try {
-      const nextSession = await answerSchoolMasterclass(
+      const answerResult = await answerSchoolMasterclass(
         session.session_id,
         activity.activity_id,
         finalAnswer,
       );
+      if (isSchoolEvaluatorPendingAnswer(answerResult)) {
+        const recovery = await recoverSchoolAnswerState({
+          response: answerResult,
+          refreshState: () => getSchoolState({ force: true }),
+        });
+        if (recovery.kind === 'not_uncertain') throw new Error('school_state_unresolved');
+        setSchoolStatus(recovery.state.status);
+        setAnswer('');
+        setError('');
+        void load({ background: true });
+        return;
+      }
+      const nextSession = answerResult;
       if (
         nextSession.session_id !== session.session_id
         || nextSession.linked_curriculum_session_id !== session.linked_curriculum_session_id
@@ -234,6 +248,13 @@ export default function SchoolMasterclassPage() {
           refreshState: () => getSchoolState({ force: true }),
         });
         if (recovery.kind === 'pending') {
+          setSchoolStatus(recovery.state.status);
+          setAnswer('');
+          setError('');
+          void load({ background: true });
+          return;
+        }
+        if (recovery.kind === 'advanced') {
           setSchoolStatus(recovery.state.status);
           setAnswer('');
           setError('');

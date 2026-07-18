@@ -34,6 +34,7 @@ import {
   answerSchoolCurriculum,
   getSchoolCurriculumSession,
   getSchoolState,
+  isSchoolEvaluatorPendingAnswer,
   startSchoolCurriculumMasterclass,
   type SchoolCurriculumSession,
   type SchoolNextAction,
@@ -169,9 +170,23 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
     setSubmitting(true);
     setError('');
     try {
+      const answerResult = await answerSchoolCurriculum(session.session_id, activity.activity_id, finalAnswer);
+      if (isSchoolEvaluatorPendingAnswer(answerResult)) {
+        const recovery = await recoverSchoolAnswerState({
+          response: answerResult,
+          refreshState: () => getSchoolState({ force: true }),
+        });
+        if (recovery.kind === 'not_uncertain') throw new Error('school_state_unresolved');
+        setSchoolStatus(recovery.state.status);
+        setSchoolNextAction(recovery.state.next_action);
+        setAnswer('');
+        setError('');
+        void load({ background: true });
+        return;
+      }
       const refreshResult: { state: Awaited<ReturnType<typeof getSchoolState>> | null } = { state: null };
       const result = await runCurriculumMutation({
-        mutate: () => answerSchoolCurriculum(session.session_id, activity.activity_id, finalAnswer),
+        mutate: () => Promise.resolve(answerResult),
         refreshState: async () => {
           refreshResult.state = await getSchoolState({ force: true });
           return refreshResult.state.status;
@@ -204,6 +219,14 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
           refreshState: () => getSchoolState({ force: true }),
         });
         if (recovery.kind === 'pending') {
+          setSchoolStatus(recovery.state.status);
+          setSchoolNextAction(recovery.state.next_action);
+          setAnswer('');
+          setError('');
+          void load({ background: true });
+          return;
+        }
+        if (recovery.kind === 'advanced') {
           setSchoolStatus(recovery.state.status);
           setSchoolNextAction(recovery.state.next_action);
           setAnswer('');
