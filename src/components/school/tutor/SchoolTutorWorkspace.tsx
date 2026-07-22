@@ -19,7 +19,12 @@ import {
 } from '@/lib/schoolTeachingPresentation';
 import {
   CURRICULUM_REVALIDATE_MS,
+  createSchoolPendingEvaluationDraftStore,
+  curriculumAnswerCanContinueWithoutStateRefresh,
+  curriculumMasterclassAction,
   curriculumActivityView,
+  pendingCurriculumAnswerValue,
+  reconcilePendingCurriculumEvaluation,
   resolveSchoolPassiveStateDestination,
   resolveSchoolStateDestination,
   releaseSchoolTutorLoad,
@@ -28,13 +33,16 @@ import {
   schoolTutorLoadDecision,
   schoolTutorLoadOwnedBy,
   startSingleFlightRevalidation,
+  type PendingCurriculumEvaluation,
   type SchoolTutorLoadOwner,
 } from '@/lib/schoolActivityPolicy';
 import {
   answerSchoolCurriculum,
-  getSchoolCurriculumSession,
+  getSchoolCurriculumAnswerStatus,
+  getSchoolCurriculumWorkspace,
   getSchoolState,
   isSchoolEvaluatorPendingAnswer,
+  resumeSchoolCurriculumMasterclass,
   startSchoolCurriculumMasterclass,
   type SchoolCurriculumSession,
   type SchoolNextAction,
@@ -53,12 +61,28 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
   const [answer, setAnswer] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [pendingEvaluation, setPendingEvaluationState] = useState<PendingCurriculumEvaluation | null>(null);
   const [openingMasterclass, setOpeningMasterclass] = useState(false);
+  const [resumingMasterclass, setResumingMasterclass] = useState(false);
   const [error, setError] = useState('');
   const loadOwnerRef = useRef<SchoolTutorLoadOwner | null>(null);
   const loadRequestIdRef = useRef(0);
   const submitInFlightRef = useRef(false);
   const masterclassInFlightRef = useRef(false);
+  const pendingEvaluationRef = useRef<PendingCurriculumEvaluation | null>(null);
+  const pendingDraftStore = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      return createSchoolPendingEvaluationDraftStore(window.sessionStorage);
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const setPendingEvaluation = useCallback((next: PendingCurriculumEvaluation | null) => {
+    pendingEvaluationRef.current = next;
+    setPendingEvaluationState(next);
+  }, []);
 
   const load = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
     const decision = schoolTutorLoadDecision(loadOwnerRef.current, {
@@ -75,10 +99,7 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
     }
 
     try {
-      const [state, nextSession] = await Promise.all([
-        getSchoolState({ force: true }),
-        getSchoolCurriculumSession(sessionId),
-      ]);
+      const { state, session: nextSession } = await getSchoolCurriculumWorkspace(sessionId);
       if (!schoolTutorLoadOwnedBy(loadOwnerRef.current, requestOwner)) return;
       const destination = resolveSchoolStateDestination({
         nextAction: state.next_action,
@@ -104,6 +125,49 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
       })) {
         throw new Error('school_session_ownership_mismatch');
       }
+      const fetchedActivityId = nextSession.current_activity?.activity_id ?? null;
+      const observedPending = pendingEvaluationRef.current
+        ?? (state.status === 'awaiting_evaluation' && fetchedActivityId
+          ? {
+            activityId: fetchedActivityId,
+            stableActiveReads: 0,
+            retryAnswer: pendingDraftStore?.read({ sessionId, activityId: fetchedActivityId }) ?? undefined,
+          }
+          : null);
+      if (observedPending) {
+        const pendingResolution = reconcilePendingCurriculumEvaluation({
+          pending: observedPending,
+          schoolStatus: state.status,
+          fetchedActivityId,
+          fetchedSessionStatus: nextSession.status,
+        });
+        if (pendingResolution.kind === 'pending') {
+          setPendingEvaluation(pendingResolution.pending);
+          setSession(nextSession);
+          setSchoolStatus(state.status);
+          setSchoolNextAction(state.next_action);
+          setError('');
+          return;
+        }
+        const pendingAnswerValue = pendingCurriculumAnswerValue({
+          pending: observedPending,
+          resolution: pendingResolution,
+        });
+        if (pendingAnswerValue !== null) setAnswer(pendingAnswerValue);
+        if (pendingResolution.kind === 'retry') {
+          setPendingEvaluation(null);
+          setSession(nextSession);
+          setSchoolStatus(state.status);
+          setSchoolNextAction(state.next_action);
+          setError('We could not finish checking that answer. Please try again.');
+          return;
+        }
+        pendingDraftStore?.clear({
+          sessionId,
+          activityId: observedPending.activityId,
+        });
+        setPendingEvaluation(null);
+      }
       setSession(nextSession);
       setSchoolStatus(state.status);
       setSchoolNextAction(state.next_action);
@@ -124,7 +188,7 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
       loadOwnerRef.current = releaseSchoolTutorLoad(loadOwnerRef.current, requestOwner);
       if (!background && requestStillOwnsLoad) setLoading(false);
     }
-  }, [router, sessionId]);
+  }, [pendingDraftStore, router, sessionId, setPendingEvaluation]);
 
   useEffect(() => {
     void load();
@@ -132,23 +196,63 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
 
   const activity = session?.current_activity ?? null;
   const activityView = curriculumActivityView({
-    schoolStatus,
+    schoolStatus: pendingEvaluation ? 'awaiting_evaluation' : schoolStatus,
     sessionStatus: session?.status ?? null,
     phase: session?.phase ?? null,
     activityId: activity?.activity_id ?? null,
     canAnswer: activity?.can_answer === true,
   });
 
+  const pollPendingCurriculumAnswer = useCallback(async () => {
+    const pending = pendingEvaluationRef.current;
+    if (!pending) return;
+    const activityId = pending.activityId;
+    const result = await getSchoolCurriculumAnswerStatus(sessionId, activityId);
+    if (
+      pendingEvaluationRef.current?.activityId !== activityId
+    ) return;
+
+    if (result.status === 'awaiting_evaluation') return;
+    if (result.status === 'retry') {
+      setPendingEvaluation(null);
+      setAnswer(pending.retryAnswer ?? '');
+      setSchoolStatus('in_progress');
+      setSchoolNextAction(null);
+      setError('We could not finish checking that answer. Please try again.');
+      return;
+    }
+
+    const nextSession = result.session;
+    if (nextSession.session_id !== sessionId) {
+      throw new Error('school_session_ownership_mismatch');
+    }
+    pendingDraftStore?.clear({ sessionId, activityId });
+    setPendingEvaluation(null);
+    setAnswer('');
+    setSession(nextSession);
+    setSchoolStatus('in_progress');
+    setSchoolNextAction(null);
+    setError('');
+
+    if (!curriculumAnswerCanContinueWithoutStateRefresh({
+      sessionStatus: nextSession.status,
+      activityId: nextSession.current_activity?.activity_id ?? null,
+      canAnswer: nextSession.current_activity?.can_answer === true,
+    })) {
+      await load({ background: true });
+    }
+  }, [load, pendingDraftStore, sessionId, setPendingEvaluation]);
+
   useEffect(() => {
     if (!activityView.pollDue) return;
     const revalidator = startSingleFlightRevalidation({
       intervalMs: activityView.pollAfterMs ?? CURRICULUM_REVALIDATE_MS,
-      revalidate: () => load({ background: true }),
+      revalidate: pollPendingCurriculumAnswer,
       schedule: (callback, intervalMs) => window.setInterval(callback, intervalMs),
       cancelSchedule: (timer) => window.clearInterval(timer),
     });
     return () => revalidator.cancel();
-  }, [activityView.pollAfterMs, activityView.pollDue, load]);
+  }, [activityView.pollAfterMs, activityView.pollDue, pollPendingCurriculumAnswer]);
 
   const chapterMapHref = useMemo(() => session
     ? `/school/classes/${session.active_learning_class_no}/chapters/${session.chapter.chapter_id}`
@@ -169,19 +273,45 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
     submitInFlightRef.current = true;
     setSubmitting(true);
     setError('');
+    pendingDraftStore?.write({
+      sessionId: session.session_id,
+      activityId: activity.activity_id,
+      answer: finalAnswer,
+    });
     try {
       const answerResult = await answerSchoolCurriculum(session.session_id, activity.activity_id, finalAnswer);
       if (isSchoolEvaluatorPendingAnswer(answerResult)) {
-        const recovery = await recoverSchoolAnswerState({
-          response: answerResult,
-          refreshState: () => getSchoolState({ force: true }),
+        setSchoolStatus('awaiting_evaluation');
+        setSchoolNextAction(null);
+        setPendingEvaluation({
+          activityId: answerResult.activity_id,
+          stableActiveReads: 0,
+          retryAnswer: finalAnswer,
         });
-        if (recovery.kind === 'not_uncertain') throw new Error('school_state_unresolved');
-        setSchoolStatus(recovery.state.status);
-        setSchoolNextAction(recovery.state.next_action);
         setAnswer('');
         setError('');
-        void load({ background: true });
+        return;
+      }
+      pendingDraftStore?.clear({
+        sessionId: session.session_id,
+        activityId: activity.activity_id,
+      });
+      setPendingEvaluation(null);
+      if (curriculumAnswerCanContinueWithoutStateRefresh({
+        sessionStatus: answerResult.status,
+        activityId: answerResult.current_activity?.activity_id ?? null,
+        canAnswer: answerResult.current_activity?.can_answer === true,
+      })) {
+        if (answerResult.session_id !== sessionId) {
+          throw new Error('school_session_ownership_mismatch');
+        }
+        // The answer response was persisted transactionally. Let the learner
+        // continue immediately; a canonical state read is only needed when a
+        // response branches or completes the chapter.
+        setSession(answerResult);
+        setAnswer('');
+        setSchoolStatus('in_progress');
+        setError('');
         return;
       }
       const refreshResult: { state: Awaited<ReturnType<typeof getSchoolState>> | null } = { state: null };
@@ -218,9 +348,27 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
           error: err,
           refreshState: () => getSchoolState({ force: true }),
         });
+        if (recovery.kind === 'pending_unconfirmed') {
+          setSchoolStatus('awaiting_evaluation');
+          setSchoolNextAction(null);
+          setPendingEvaluation({
+            activityId: activity.activity_id,
+            stableActiveReads: 0,
+            retryAnswer: finalAnswer,
+          });
+          setAnswer('');
+          setError('');
+          void load({ background: true });
+          return;
+        }
         if (recovery.kind === 'pending') {
           setSchoolStatus(recovery.state.status);
           setSchoolNextAction(recovery.state.next_action);
+          setPendingEvaluation({
+            activityId: activity.activity_id,
+            stableActiveReads: 0,
+            retryAnswer: finalAnswer,
+          });
           setAnswer('');
           setError('');
           void load({ background: true });
@@ -229,7 +377,11 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
         if (recovery.kind === 'advanced') {
           setSchoolStatus(recovery.state.status);
           setSchoolNextAction(recovery.state.next_action);
-          setAnswer('');
+          setPendingEvaluation({
+            activityId: activity.activity_id,
+            stableActiveReads: 0,
+            retryAnswer: finalAnswer,
+          });
           setError('');
           void load({ background: true });
           return;
@@ -240,6 +392,10 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
       }
       const staleAnswer = err instanceof Error && err.message === 'stale_curriculum_answer';
       if (staleAnswer) {
+        pendingDraftStore?.clear({
+          sessionId: session.session_id,
+          activityId: activity.activity_id,
+        });
         setAnswer('');
         await load({ background: true });
       } else {
@@ -281,6 +437,44 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
     }
   };
 
+  const resumeMasterclass = async () => {
+    if (
+      !session?.active_interrupt
+      || schoolNextAction !== 'resume_masterclass'
+      || resumingMasterclass
+      || masterclassInFlightRef.current
+    ) return;
+    masterclassInFlightRef.current = true;
+    setResumingMasterclass(true);
+    setError('');
+    try {
+      const resumed = await resumeSchoolCurriculumMasterclass(session.session_id);
+      if (resumed.session_id !== session.session_id) {
+        throw new Error('school_session_ownership_mismatch');
+      }
+      setSession(resumed);
+      const state = await getSchoolState({ force: true });
+      setSchoolStatus(state.status);
+      setSchoolNextAction(state.next_action);
+      const destination = resolveSchoolStateDestination({
+        nextAction: state.next_action,
+        allowedNextActions: state.allowed_next_actions,
+        nextActionUrl: state.next_action_url,
+      });
+      if (!destination) throw new Error('school_state_unresolved');
+      if (destination !== `/school/session/${sessionId}`) {
+        router.push(destination);
+        return;
+      }
+      await load({ background: true });
+    } catch (err: unknown) {
+      setError(learnerSafeErrorMessage(err, 'Could not return to the chapter yet. Please retry.'));
+    } finally {
+      masterclassInFlightRef.current = false;
+      setResumingMasterclass(false);
+    }
+  };
+
   const coachIdentity = useResolvedSchoolCoachIdentity({
     avatarId: session?.coach_avatar_id,
     paletteId: session?.coach_palette_id,
@@ -315,9 +509,12 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
   }
 
   const currentLevel = session.levels[session.progress.current_level_index] ?? null;
+  const feedbackForCurrentLevel = activity?.level_id === session.last_feedback?.level_id
+    ? session.last_feedback
+    : null;
   const visibleFeedback = selectVisibleSchoolCoachFeedback(
     activity?.activity_id,
-    session.last_feedback,
+    feedbackForCurrentLevel,
     { includePrevious: true },
   );
   const feedbackIsFromPreviousActivity = Boolean(
@@ -330,31 +527,45 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
     : visibleFeedback?.correct === false
       ? 'warning'
       : 'neutral';
-  const coachStatus = visibleFeedback?.message
-    ? feedbackIsFromPreviousActivity
-      ? visibleFeedback.correct === true
-        ? 'Previous answer: what worked'
-        : visibleFeedback.correct === false
-          ? 'Previous answer: try this'
-          : 'Feedback on your previous answer'
-      : visibleFeedback.correct === true
-        ? 'What worked'
-        : visibleFeedback.correct === false
-          ? 'Try this next'
-          : 'Coach feedback'
-    : session.phase === 'paused_for_masterclass'
-    ? 'Focused practice'
+  const isSavingTeachingStep = activity?.interaction_type === 'continue';
+  const coachStatus = submitting
+    ? isSavingTeachingStep
+      ? 'Saving your progress'
+      : 'Checking your answer'
     : activityView.kind === 'pending'
       ? 'Reviewing your answer'
-      : activityView.kind === 'support'
-        ? 'Support is ready'
-        : activityView.kind === 'complete'
-          ? 'Chapter complete'
-          : activity
-            ? schoolActivityLabel(activity.kind)
-            : 'Your lesson';
+      : visibleFeedback?.message
+        ? feedbackIsFromPreviousActivity
+          ? visibleFeedback.correct === true
+                ? 'Previous answer: what worked'
+                : visibleFeedback.correct === false
+                  ? 'Previous answer: try this'
+                  : 'Coach note from the previous step'
+          : visibleFeedback.correct === true
+            ? 'What worked'
+            : visibleFeedback.correct === false
+              ? 'Try this next'
+              : 'Coach feedback'
+        : session.phase === 'paused_for_masterclass'
+          ? schoolNextAction === 'resume_masterclass'
+            ? 'Ready to return'
+            : 'Focused practice'
+          : activityView.kind === 'support'
+            ? 'Support is ready'
+            : activityView.kind === 'complete'
+              ? 'Chapter complete'
+              : activity
+                ? schoolActivityLabel(activity.kind)
+                : 'Your lesson';
+  const masterclassFocus = session.active_interrupt?.focus?.trim();
+  const learnableMasterclassFocus = masterclassFocus
+    ? `${masterclassFocus.slice(0, 1).toLowerCase()}${masterclassFocus.slice(1)}`
+    : 'build this skill';
   const transitionMessage = session.phase === 'paused_for_masterclass' && session.active_interrupt
-    ? `Your place in ${session.chapter.title} is saved. This short practice will strengthen ${session.active_interrupt.focus}, then bring you back here.`
+    && schoolNextAction === 'resume_masterclass'
+    ? `Your focused practice is complete. Return to ${session.chapter.title} at the saved lesson step.`
+    : session.phase === 'paused_for_masterclass' && session.active_interrupt
+    ? `Your place in ${session.chapter.title} is saved. This short practice will help you learn how to ${learnableMasterclassFocus}, then bring you back here.`
     : activityView.kind === 'support'
       ? 'Your answers and chapter place are saved. Continue from the chapter map with the support selected for you.'
       : activityView.kind === 'complete'
@@ -366,20 +577,27 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
     activityKey: activity?.activity_id || session.phase,
     teachingBlock: activity?.teaching_block,
     feedback: visibleFeedback?.message,
-    pendingMessage: activityView.kind === 'pending'
-      ? 'School is reviewing your answer. Feedback will appear here when the next step is ready.'
-      : null,
+    pendingMessage: submitting
+      ? isSavingTeachingStep
+        ? 'Saving this teaching step. Your chapter place is being saved.'
+        : 'Checking your answer. Your response is being saved.'
+      : activityView.kind === 'pending'
+        ? 'School is reviewing your answer. Feedback will appear here when the next step is ready.'
+        : null,
     transitionMessage,
     error,
     tone: feedbackTone,
   });
   const theme = getSchoolAvatarTheme(coachIdentity.avatarId, coachIdentity.paletteId);
-  const canStartMasterclass = schoolNextAction === 'start_masterclass';
+  const masterclassAction = curriculumMasterclassAction(schoolNextAction);
+  const showWorkspaceBack = activityView.kind === 'activity'
+    || (session.phase === 'paused_for_masterclass' && session.active_interrupt !== null);
 
   return (
     <SchoolLearningWorkspace
       title={activity?.title || session.chapter.title}
       onBack={() => router.push(chapterMapHref)}
+      showBack={showWorkspaceBack}
       coach={(
         <SchoolCoachPanel
           avatarId={coachIdentity.avatarId}
@@ -406,9 +624,11 @@ export function SchoolTutorWorkspace({ sessionId }: SchoolTutorWorkspaceProps) {
         answer={answer}
         submitting={submitting}
         openingMasterclass={openingMasterclass}
+        resumingMasterclass={resumingMasterclass}
         onAnswerChange={setAnswer}
         onSubmit={(value) => void submit(value)}
-        onOpenMasterclass={canStartMasterclass ? () => void openMasterclass() : undefined}
+        onOpenMasterclass={masterclassAction === 'start' ? () => void openMasterclass() : undefined}
+        onResumeMasterclass={masterclassAction === 'resume' ? () => void resumeMasterclass() : undefined}
         onExit={() => router.push(chapterMapHref)}
         onRetry={() => void load()}
       />

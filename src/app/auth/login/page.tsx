@@ -81,7 +81,9 @@ function LoginContent() {
     }
   };
 
-  const busy = Boolean(loadingAction) || routing || status === 'loading';
+  // A broken or stale passive session check must never prevent the learner
+  // from starting a fresh Google sign-in to recover their account.
+  const busy = Boolean(loadingAction) || routing;
   const existingUser = status === 'authenticated' ? session?.user : null;
   const initials = (existingUser?.name || existingUser?.email || 'Z')
     .trim()

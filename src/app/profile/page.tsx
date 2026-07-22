@@ -30,7 +30,7 @@ import {
   CareerContinuityPanel,
   careerEvidenceProvenance,
 } from '@/components/career/CareerContinuityPanel';
-import { canShowDevCreditGrant, devGrantCredits } from '@/services/billing';
+import { canShowDevCreditGrant, devGrantCredits, formatBetaExpiry } from '@/services/billing';
 import {
   getMe,
   getMeActivity,
@@ -44,7 +44,6 @@ import {
   type ModuleId,
 } from '@/services/me';
 import { useAppSession } from '@/components/shared/AppSessionProvider';
-import { isBetaBillingDisabled } from '@/lib/publicConfig.mjs';
 import { labelGdTopic } from '@/lib/gdTopics';
 import { careerCompetenceLabel, careerPracticeHref } from '@/lib/careerPathPresentation.mjs';
 
@@ -105,7 +104,6 @@ function careerModuleFromMemory(item: CareerMemoryItem): ModuleId | null {
 export default function ProfilePage() {
   const router = useRouter();
   const { loadBalance, loadMe } = useAppSession();
-  const billingDisabled = isBetaBillingDisabled();
   const [me, setMe] = useState<MeResponse | null>(null);
   const [activity, setActivity] = useState<MeActivity | null>(null);
   const [learningGraph, setLearningGraph] = useState<MeLearningGraph | null>(null);
@@ -261,6 +259,8 @@ export default function ProfilePage() {
   };
 
   const credits = me?.demo_unlimited ? '∞' : (me?.credits ?? '—');
+  const purchasesEnabled = me?.purchases_enabled === true;
+  const betaExpiry = formatBetaExpiry(me?.beta_expires_at);
   const displayName = me?.name?.trim() || me?.email?.split('@')[0] || 'Your profile';
   const primaryMotive = me?.onboarding?.primary_motive;
   const schoolProfile = me?.school_profile ?? {};
@@ -331,7 +331,7 @@ export default function ProfilePage() {
         </motion.div>
 
         <div className="mt-10 grid grid-cols-1 lg:grid-cols-3 gap-5">
-          <section className={`${billingDisabled ? 'lg:col-span-3' : 'lg:col-span-2'} rounded-[1.75rem] border border-slate-200/70 bg-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.04)]`}>
+          <section className="lg:col-span-2 rounded-[1.75rem] border border-slate-200/70 bg-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
             <div className="flex items-center gap-2 text-slate-500">
               <IdCard className="w-4 h-4" />
               <span className="text-[11px] font-bold uppercase tracking-[0.2em]">Account</span>
@@ -343,25 +343,25 @@ export default function ProfilePage() {
             </div>
           </section>
 
-          {!billingDisabled && (
-            <section className="rounded-[1.75rem] border border-slate-200/70 bg-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
-              <div className="flex items-center gap-2 text-slate-500">
-                <LightningBoltIcon className="w-4 h-4" />
-                <span className="text-[11px] font-bold uppercase tracking-[0.2em]">Wallet</span>
-              </div>
-              <p className="mt-4 font-display text-5xl leading-none">{credits}</p>
-              <p className="mt-1 text-xs text-slate-500 font-medium">credits available</p>
-              {mounted && canShowDevCreditGrant() && !me.demo_unlimited && (
-                <button
-                  onClick={topUp}
-                  disabled={granting}
-                  className="mt-5 inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.15em] text-indigo-600 hover:text-indigo-700 disabled:opacity-50 transition-colors"
-                >
-                  <PlusIcon className="w-3.5 h-3.5" /> {granting ? 'Adding...' : 'Add 500 (dev)'}
-                </button>
-              )}
-            </section>
-          )}
+          <section className="rounded-[1.75rem] border border-slate-200/70 bg-white p-6 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
+            <div className="flex items-center gap-2 text-slate-500">
+              <LightningBoltIcon className="w-4 h-4" />
+              <span className="text-[11px] font-bold uppercase tracking-[0.2em]">Wallet</span>
+            </div>
+            <p className="mt-4 font-display text-5xl leading-none">{credits}</p>
+            <p className="mt-1 text-xs text-slate-500 font-medium">
+              {betaExpiry ? `Beta access until ${betaExpiry}` : 'credits available'}
+            </p>
+            {mounted && purchasesEnabled && canShowDevCreditGrant() && !me.demo_unlimited && (
+              <button
+                onClick={topUp}
+                disabled={granting}
+                className="mt-5 inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.15em] text-indigo-600 hover:text-indigo-700 disabled:opacity-50 transition-colors"
+              >
+                <PlusIcon className="w-3.5 h-3.5" /> {granting ? 'Adding...' : 'Add 500 (dev)'}
+              </button>
+            )}
+          </section>
         </div>
 
         {activityError && (

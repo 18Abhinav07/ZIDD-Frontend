@@ -16,6 +16,7 @@ export interface SchoolLearningShellProps {
   coachAvatarId: string | null | undefined;
   coachPaletteId: string | null | undefined;
   onBack: () => void;
+  showBack?: boolean;
   backLabel?: string;
   children: ReactNode;
   progress?: ReactNode;
@@ -30,6 +31,7 @@ export function SchoolLearningShell({
   coachAvatarId,
   coachPaletteId,
   onBack,
+  showBack = true,
   backLabel = "Back to school path",
   children,
   progress,
@@ -44,6 +46,7 @@ export function SchoolLearningShell({
     <SchoolLearningWorkspace
       title={title}
       onBack={onBack}
+      showBack={showBack}
       coach={(
         <SchoolCoachPanel
           avatarId={coachIdentity.avatarId}
@@ -59,7 +62,7 @@ export function SchoolLearningShell({
       backLabel={backLabel}
       coachLabel="School learning coach"
       progressLabel="School learning progress"
-      workspaceLabel={title}
+      workspaceLabel="School learning activity"
       className="mode-school bg-background font-body"
       themeStyle={theme.style}
       rootDataAttributes={{ 'data-school-region': 'learning-shell' }}

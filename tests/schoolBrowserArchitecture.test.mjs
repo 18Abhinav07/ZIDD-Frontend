@@ -185,8 +185,19 @@ test('School proxy composes browser cancellation with a bounded upstream policy 
   assert.match(proxySource, /createUpstreamAbort\(request\.signal, timeoutMs\)/);
   assert.match(proxySource, /clearTimeout\(timeout\)/);
   assert.match(proxySource, /signal: upstreamAbort\.signal/);
-  assert.match(proxySource, /upstreamAbort\.abort\(reason\)/);
+  assert.match(proxySource, /function abort\(reason\?: unknown\)/);
+  assert.match(proxySource, /controller\.abort\(reason\)/);
   assert.match(proxySource, /upstreamAbort\.cleanup\(\)/);
+});
+
+test('School proxy fully reads bounded JSON responses before returning them to Next', () => {
+  const proxySource = fs.readFileSync(
+    path.join(REPO_ROOT, 'src/app/api/school/[...path]/route.ts'),
+    'utf8',
+  );
+  assert.match(proxySource, /await upstream\.arrayBuffer\(\)/);
+  assert.match(proxySource, /upstreamAbort\.cleanup\(\);[\s\S]*return new Response\(responseBody/);
+  assert.doesNotMatch(proxySource, /function forwardUpstreamBody/);
 });
 
 test('a nested School layout owns finite unavailable and failure states for every canonical route', () => {

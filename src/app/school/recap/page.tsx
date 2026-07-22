@@ -30,13 +30,14 @@ import {
 import {
   answerSchoolRecap,
   getActiveSchoolRecap,
+  getSchoolRecapAnswerStatus,
   getSchoolState,
   isSchoolEvaluatorPendingAnswer,
   startSchoolRecap,
   type SchoolRecapPath,
 } from '@/services/schoolRebuild';
 
-const RECAP_REVALIDATE_MS = 5_000;
+const RECAP_REVALIDATE_MS = 1_000;
 
 function activityLabel(kind: string) {
   if (kind === 'independent_check') return 'Try it yourself';
@@ -84,6 +85,10 @@ export default function SchoolRecapPage() {
   const lastFocusedActivityIdRef = useRef<string | null>(null);
   const submitInFlightRef = useRef(false);
   const startInFlightRef = useRef(false);
+  const pendingRecapAnswerRef = useRef<{
+    sessionId: string;
+    activityId: string;
+  } | null>(null);
 
   const load = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
     if (!background) {
@@ -106,9 +111,16 @@ export default function SchoolRecapPage() {
         const activePath = await getActiveSchoolRecap();
         if (activePath.session_id !== decision.sessionId) throw new Error('school_state_unresolved');
         setPath(activePath);
+        pendingRecapAnswerRef.current = stateAwaitingEvaluation && activePath.current_activity
+          ? {
+            sessionId: activePath.session_id,
+            activityId: activePath.current_activity.activity_id,
+          }
+          : null;
         setAwaitingEvaluation(stateAwaitingEvaluation);
         return;
       }
+      pendingRecapAnswerRef.current = null;
       if (decision.kind === 'start') {
         setCanStartRecap(true);
         setPath(null);
@@ -141,16 +153,51 @@ export default function SchoolRecapPage() {
     void load();
   }, [load]);
 
+  const pollPendingRecapAnswer = useCallback(async () => {
+    const pending = pendingRecapAnswerRef.current;
+    if (!pending) {
+      await load({ background: true });
+      return;
+    }
+    try {
+      const status = await getSchoolRecapAnswerStatus(
+        pending.sessionId,
+        pending.activityId,
+      );
+      if (status.status === 'awaiting_evaluation') return;
+      if (status.status === 'retry') {
+        pendingRecapAnswerRef.current = null;
+        setAwaitingEvaluation(false);
+        setError('Your answer was saved, but the review needs another try. Please answer the same activity again.');
+        await load({ background: true });
+        return;
+      }
+      if (status.session.session_id !== pending.sessionId) {
+        throw new Error('school_recap_lineage_mismatch');
+      }
+      pendingRecapAnswerRef.current = null;
+      setPath(status.session);
+      setAwaitingEvaluation(false);
+      setAnswer('');
+      setError('');
+    } catch (err: unknown) {
+      setError(learnerSafeErrorMessage(
+        err,
+        'Your answer is saved. Zidd is still checking the next step.',
+      ));
+    }
+  }, [load]);
+
   useEffect(() => {
     if (!awaitingEvaluation) return;
     const revalidator = startSingleFlightRevalidation({
       intervalMs: RECAP_REVALIDATE_MS,
-      revalidate: () => load({ background: true }),
+      revalidate: pollPendingRecapAnswer,
       schedule: (callback, intervalMs) => window.setInterval(callback, intervalMs),
       cancelSchedule: (timer) => window.clearInterval(timer),
     });
     return () => revalidator.cancel();
-  }, [awaitingEvaluation, load]);
+  }, [awaitingEvaluation, pollPendingRecapAnswer]);
 
   const begin = async () => {
     if (!canStartRecap || starting || startInFlightRef.current) return;
@@ -178,16 +225,16 @@ export default function SchoolRecapPage() {
     try {
       const answerResult = await answerSchoolRecap(path.session_id, activity.activity_id, finalAnswer);
       if (isSchoolEvaluatorPendingAnswer(answerResult)) {
-        const recovery = await recoverSchoolAnswerState({
-          response: answerResult,
-          refreshState: () => getSchoolState({ force: true }),
-        });
         setAnswer('');
         setError('');
-        setAwaitingEvaluation(recovery.kind === 'pending');
-        void load({ background: true });
+        pendingRecapAnswerRef.current = {
+          sessionId: answerResult.session_id,
+          activityId: answerResult.activity_id,
+        };
+        setAwaitingEvaluation(true);
         return;
       }
+      pendingRecapAnswerRef.current = null;
       setPath(answerResult);
       setAnswer('');
     } catch (err: unknown) {
@@ -196,11 +243,24 @@ export default function SchoolRecapPage() {
           error: err,
           refreshState: () => getSchoolState({ force: true }),
         });
-        if (recovery.kind === 'pending') {
+        if (recovery.kind === 'pending_unconfirmed') {
+          pendingRecapAnswerRef.current = {
+            sessionId: path.session_id,
+            activityId: activity.activity_id,
+          };
           setAwaitingEvaluation(true);
           setAnswer('');
           setError('');
-          void load({ background: true });
+          return;
+        }
+        if (recovery.kind === 'pending') {
+          pendingRecapAnswerRef.current = {
+            sessionId: path.session_id,
+            activityId: activity.activity_id,
+          };
+          setAwaitingEvaluation(true);
+          setAnswer('');
+          setError('');
           return;
         }
         if (recovery.kind === 'advanced') {

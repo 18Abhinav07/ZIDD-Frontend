@@ -132,10 +132,12 @@ export function humanizeReportActivityType(activityType) {
  * @returns {string}
  */
 export function describeSavedAttempts(attempts, attemptType) {
+  // The profile stores a cumulative count plus only the most recent activity
+  // type. Calling the whole total a chapter/guided/review count would make a
+  // learner-facing claim the evidence cannot prove.
+  void attemptType;
   const count = Math.max(0, Number.isFinite(attempts) ? Math.trunc(attempts) : 0);
-  const kind = humanizeReportActivityType(attemptType);
-  const noun = /\bcheck$/i.test(kind) ? kind : `${kind} check`;
-  return `${count} saved ${noun}${count === 1 ? '' : 's'}`;
+  return `${count} saved learning check${count === 1 ? '' : 's'}`;
 }
 
 /**
@@ -235,4 +237,51 @@ export function selectParentNextChapter(classMap, curriculumSession) {
     return curriculumSession.next_available_chapter;
   }
   return classMap?.chapters.find((chapter) => chapter.status === 'ready') ?? null;
+}
+
+/**
+ * The first ready chapter can follow either a completed chapter or a completed
+ * readiness path. Parent-facing copy must preserve that distinction so the
+ * report never invents chapter progress for a learner who has only completed
+ * prerequisite work.
+ *
+ * @param {{
+ *   readinessPathComplete: boolean,
+ *   hasCompletedChapter: boolean,
+ *   currentClassNo: number,
+ *   nextChapterTitle: string,
+ * }} evidence
+ * @returns {string}
+ */
+export function describeParentReadyChapter({
+  readinessPathComplete,
+  hasCompletedChapter,
+  currentClassNo,
+  nextChapterTitle,
+}) {
+  if (readinessPathComplete && !hasCompletedChapter) {
+    return `The prerequisite readiness path is complete. ${nextChapterTitle} is the first available Class ${currentClassNo} chapter.`;
+  }
+  return `The previous chapter is complete. ${nextChapterTitle} is the next available Class ${currentClassNo} chapter.`;
+}
+
+/**
+ * Recap can unlock the target class before every monitored skill is fully
+ * certified. Those residual skills become a target-class watchlist, not an
+ * active pause or a claim that the recap failed.
+ *
+ * @param {{
+ *   readinessPathComplete: boolean,
+ *   currentClassNo: number,
+ *   focusCount: number,
+ * }} evidence
+ * @returns {{ title: string, detail: string } | null}
+ */
+export function describeParentRecapWatchlist({ readinessPathComplete, currentClassNo, focusCount }) {
+  if (!readinessPathComplete || focusCount < 1) return null;
+  const noun = focusCount === 1 ? 'skill will' : 'skills will';
+  return {
+    title: `${focusCount} ${noun} be watched in Class ${currentClassNo}`,
+    detail: `The readiness path unlocked Class ${currentClassNo}. These skills will be checked again in chapter work; they are not a current learning pause.`,
+  };
 }

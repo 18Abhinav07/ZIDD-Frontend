@@ -88,6 +88,7 @@ export default function SessionPage({ params }: { params: { id: string } }) {
     requestedReviewMode
     && requestedReviewNode
     && requestedReviewNode === persistedReviewNode
+    && (state?.status === 'ended' || state?.session_over)
   );
   const reviewNode = reviewMode ? requestedReviewNode : '';
 

@@ -2,7 +2,7 @@
 // dedicated raw fetch for /session/start that can read structured paywall bodies
 // (the Next session proxy normalizes handled backend 402s to 200 so the browser
 // console does not report a false failed-resource error).
-import { apiFetch, getAuthCacheKey, getAuthHeaders } from '@/services/api';
+import { apiFetch, apiFetchResponse, getAuthCacheKey, getAuthHeaders } from '@/services/api';
 import { invalidateProgressionCache } from '@/services/progression';
 import type {
   CreditsBalance,
@@ -27,6 +27,80 @@ let balanceRequest: { authKey: string; promise: Promise<CreditsBalance> } | null
 export function invalidateBalanceCache() {
   cachedBalance = null;
   balanceRequest = null;
+}
+
+export type PaywallRequestResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; paywall: PaywallDetail };
+
+function isPaywallDetail(value: unknown): value is PaywallDetail {
+  if (!value || typeof value !== 'object') return false;
+  const detail = value as Record<string, unknown>;
+  if (
+    (detail.error !== 'confirm_required' && detail.error !== 'insufficient_credits')
+    || typeof detail.cost !== 'number'
+    || typeof detail.balance !== 'number'
+    || (detail.scope !== undefined && typeof detail.scope !== 'string')
+    || (detail.ref_id !== undefined && typeof detail.ref_id !== 'string')
+  ) {
+    return false;
+  }
+  return detail.error !== 'insufficient_credits' || Array.isArray(detail.packs);
+}
+
+// A durable scope is always submitted to the server first. The caller only
+// receives the structured 402 fields that the server returned; it does not
+// invent a local quote or price-confirmation step.
+export async function postJsonWithPaywall<T>(
+  endpoint: string,
+  body: Record<string, unknown>,
+  options: { timeoutMs?: number } = {},
+): Promise<PaywallRequestResult<T>> {
+  const response = await apiFetchResponse(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    timeoutMs: options.timeoutMs ?? 20_000,
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  const paywall = response.status === 402
+    ? payload?.detail ?? payload
+    : payload?.ok === false
+      ? payload?.paywall
+      : null;
+  if (isPaywallDetail(paywall)) return { ok: false, paywall };
+  if (!response.ok) {
+    const detail = payload?.detail;
+    const code = detail && typeof detail === 'object' && typeof detail.code === 'string'
+      ? detail.code
+      : null;
+    throw new Error(code ?? (typeof detail === 'string' ? detail : `API Error: ${response.status}`));
+  }
+  return { ok: true, data: payload as T };
+}
+
+export function billingScopeLabel(scope: string | undefined): 'test attempt' | 'skill' | 'chapter' | 'learning item' {
+  switch (scope) {
+    case 'career_test_attempt':
+    case 'attempt':
+      return 'test attempt';
+    case 'career_prep_skill':
+    case 'career_communication_module':
+    case 'feature':
+      return 'skill';
+    case 'school_chapter':
+      return 'chapter';
+    default:
+      return 'learning item';
+  }
+}
+
+export function formatBetaExpiry(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const expiresAt = new Date(value);
+  if (Number.isNaN(expiresAt.valueOf())) return null;
+  return new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short' }).format(expiresAt);
 }
 
 export async function getBalance(options: { force?: boolean } = {}): Promise<CreditsBalance> {
@@ -278,8 +352,8 @@ async function readStartSessionResponse(response: Response): Promise<StartSessio
   if (response.status === 402) {
     const body = await response.json().catch(() => ({}));
     // FastAPI wraps the raised detail under `detail`.
-    const detail = body?.detail as PaywallDetail | undefined;
-    if (detail && typeof detail === 'object' && 'error' in detail) {
+    const detail = body?.detail;
+    if (isPaywallDetail(detail)) {
       return { ok: false, paywall: detail };
     }
     // Defensive: a 402 without the expected structured detail.
@@ -310,9 +384,9 @@ async function readStartSessionResponse(response: Response): Promise<StartSessio
     data?.ok === false &&
     data?.paywall &&
     typeof data.paywall === 'object' &&
-    'error' in data.paywall
+    isPaywallDetail(data.paywall)
   ) {
-    return { ok: false, paywall: data.paywall as PaywallDetail };
+    return { ok: false, paywall: data.paywall };
   }
   if (
     data?.ok === false &&

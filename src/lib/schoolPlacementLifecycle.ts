@@ -112,10 +112,6 @@ export function resolveSchoolPlacementMutation(
   }
 
   const terminalStateMatches = (
-    placement.status === 'insufficient_evidence'
-    && state.status === 'insufficient_evidence'
-    && state.next_action === 'finish_placement'
-  ) || (
     placement.status === 'in_progress'
     && ['resume_placement', 'finish_placement'].includes(state.next_action ?? '')
   );

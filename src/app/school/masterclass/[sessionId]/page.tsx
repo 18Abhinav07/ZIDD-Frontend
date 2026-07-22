@@ -15,7 +15,10 @@ import {
 } from '@/components/school/SchoolPrimitives';
 import { SchoolSupportActivity } from '@/components/school/support/SchoolSupportActivity';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
-import { recoverSchoolAnswerState } from '@/lib/schoolRequestPolicy.mjs';
+import {
+  isTransientSchoolStateRefreshError,
+  recoverSchoolAnswerState,
+} from '@/lib/schoolRequestPolicy.mjs';
 import {
   resolveSchoolCoachPresentation,
   selectVisibleSchoolCoachFeedback,
@@ -40,11 +43,13 @@ import {
   answerSchoolMasterclass,
   getSchoolCurriculumSession,
   getSchoolMasterclass,
+  getSchoolMasterclassAnswerStatus,
   getSchoolState,
   isSchoolEvaluatorPendingAnswer,
   resumeSchoolCurriculumMasterclass,
   type SchoolCurriculumSession,
   type SchoolMasterclassSession,
+  type SchoolState,
   type SchoolStateStatus,
 } from '@/services/schoolRebuild';
 
@@ -106,11 +111,16 @@ export default function SchoolMasterclassPage() {
   const [error, setError] = useState('');
   const loadOwnerRef = useRef<SchoolTutorLoadOwner | null>(null);
   const loadRequestIdRef = useRef(0);
+  const curriculumRef = useRef<SchoolCurriculumSession | null>(null);
   const submitInFlightRef = useRef(false);
   const actionInFlightRef = useRef(false);
   const questionHeadingRef = useRef<HTMLHeadingElement | null>(null);
   const lastFocusedActivityIdRef = useRef<string | null>(null);
   const abandonDialogRef = useRef<HTMLDialogElement | null>(null);
+  const pendingMasterclassAnswerRef = useRef<{
+    sessionId: string;
+    activityId: string;
+  } | null>(null);
 
   const load = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
     const decision = schoolTutorLoadDecision(loadOwnerRef.current, {
@@ -126,12 +136,20 @@ export default function SchoolMasterclassPage() {
       setError('');
     }
     try {
-      const [state, nextSession] = await Promise.all([
-        getSchoolState({ force: true }),
-        getSchoolMasterclass(sessionId),
-      ]);
+      // Initial loads resolve route authority before reading child state. A
+      // pending poll can overlap those two read-only requests, but it still
+      // applies neither response until the state route is approved below.
+      let state: SchoolState;
+      let prefetchedSession: SchoolMasterclassSession | null = null;
+      if (!background) {
+        state = await getSchoolState({ force: true });
+      } else {
+        [state, prefetchedSession] = await Promise.all([
+          getSchoolState({ force: true }),
+          getSchoolMasterclass(sessionId),
+        ]);
+      }
       if (!schoolTutorLoadOwnedBy(loadOwnerRef.current, requestOwner)) return;
-      if (nextSession.session_id !== sessionId) throw new Error('school_masterclass_lineage_mismatch');
       const destination = resolveSchoolStateDestination({
         nextAction: state.next_action,
         allowedNextActions: state.allowed_next_actions,
@@ -148,21 +166,43 @@ export default function SchoolMasterclassPage() {
         return;
       }
 
-      const linkedCurriculum = await getSchoolCurriculumSession(nextSession.linked_curriculum_session_id);
+      const nextSession = prefetchedSession ?? await getSchoolMasterclass(sessionId);
+      if (!schoolTutorLoadOwnedBy(loadOwnerRef.current, requestOwner)) return;
+      if (nextSession.session_id !== sessionId) throw new Error('school_masterclass_lineage_mismatch');
+
+      const cachedCurriculum = background
+        && curriculumRef.current?.session_id === nextSession.linked_curriculum_session_id
+        ? curriculumRef.current
+        : null;
+      const linkedCurriculum = nextSession.linked_curriculum ?? cachedCurriculum ?? await getSchoolCurriculumSession(nextSession.linked_curriculum_session_id);
       if (!schoolTutorLoadOwnedBy(loadOwnerRef.current, requestOwner)) return;
       if (!lineageForSessions(nextSession, linkedCurriculum)) {
         throw new Error('school_masterclass_lineage_mismatch');
       }
 
       setSession(nextSession);
+      curriculumRef.current = linkedCurriculum;
       setCurriculum(linkedCurriculum);
       setSchoolStatus(state.status);
+      pendingMasterclassAnswerRef.current = (
+        state.status === 'awaiting_evaluation'
+        && nextSession.current_activity
+      )
+        ? {
+          sessionId: nextSession.session_id,
+          activityId: nextSession.current_activity.activity_id,
+        }
+        : null;
       setError('');
     } catch (err: unknown) {
       if (!schoolTutorLoadOwnedBy(loadOwnerRef.current, requestOwner)) return;
       const lineageMismatch = err instanceof Error && err.message === 'school_masterclass_lineage_mismatch';
+      if (background && !lineageMismatch && isTransientSchoolStateRefreshError(err)) {
+        return;
+      }
       if (!background || lineageMismatch) {
         setSession(null);
+        curriculumRef.current = null;
         setCurriculum(null);
         setSchoolStatus(null);
       }
@@ -188,16 +228,58 @@ export default function SchoolMasterclassPage() {
     canAnswer: activity?.can_answer === true,
   });
 
+  const pollPendingMasterclassAnswer = useCallback(async () => {
+    const pending = pendingMasterclassAnswerRef.current;
+    if (!pending) {
+      await load({ background: true });
+      return;
+    }
+    try {
+      const status = await getSchoolMasterclassAnswerStatus(
+        pending.sessionId,
+        pending.activityId,
+      );
+      if (status.status === 'awaiting_evaluation') return;
+      if (status.status === 'retry') {
+        pendingMasterclassAnswerRef.current = null;
+        setSchoolStatus(null);
+        setError('Your answer was saved, but the review needs another try. Please answer the same activity again.');
+        return;
+      }
+      const nextSession = status.session;
+      const linkedCurriculum = nextSession.linked_curriculum ?? curriculumRef.current;
+      if (
+        nextSession.session_id !== pending.sessionId
+        || !linkedCurriculum
+        || !lineageForSessions(nextSession, linkedCurriculum)
+      ) {
+        throw new Error('school_masterclass_lineage_mismatch');
+      }
+      pendingMasterclassAnswerRef.current = null;
+      setSession(nextSession);
+      curriculumRef.current = linkedCurriculum;
+      setCurriculum(linkedCurriculum);
+      setSchoolStatus(nextSession.status === 'active' ? 'in_progress' : null);
+      setAnswer('');
+      setError('');
+    } catch (err: unknown) {
+      setError(learnerSafeErrorMessage(
+        err,
+        'Your answer is saved. Zidd is still checking the next step.',
+      ));
+    }
+  }, [load]);
+
   useEffect(() => {
     if (!activityView.pollDue) return;
     const revalidator = startSingleFlightRevalidation({
       intervalMs: activityView.pollAfterMs ?? CURRICULUM_REVALIDATE_MS,
-      revalidate: () => load({ background: true }),
+      revalidate: pollPendingMasterclassAnswer,
       schedule: (callback, intervalMs) => window.setInterval(callback, intervalMs),
       cancelSchedule: (timer) => window.clearInterval(timer),
     });
     return () => revalidator.cancel();
-  }, [activityView.pollAfterMs, activityView.pollDue, load]);
+  }, [activityView.pollAfterMs, activityView.pollDue, pollPendingMasterclassAnswer]);
 
   const submit = async (value?: string) => {
     const finalAnswer = value ?? answer;
@@ -220,15 +302,13 @@ export default function SchoolMasterclassPage() {
         finalAnswer,
       );
       if (isSchoolEvaluatorPendingAnswer(answerResult)) {
-        const recovery = await recoverSchoolAnswerState({
-          response: answerResult,
-          refreshState: () => getSchoolState({ force: true }),
-        });
-        if (recovery.kind === 'not_uncertain') throw new Error('school_state_unresolved');
-        setSchoolStatus(recovery.state.status);
+        pendingMasterclassAnswerRef.current = {
+          sessionId: answerResult.session_id,
+          activityId: answerResult.activity_id,
+        };
+        setSchoolStatus('awaiting_evaluation');
         setAnswer('');
         setError('');
-        void load({ background: true });
         return;
       }
       const nextSession = answerResult;
@@ -239,6 +319,7 @@ export default function SchoolMasterclassPage() {
       ) {
         throw new Error('school_masterclass_lineage_mismatch');
       }
+      pendingMasterclassAnswerRef.current = null;
       setSession(nextSession);
       setAnswer('');
     } catch (err: unknown) {
@@ -248,13 +329,27 @@ export default function SchoolMasterclassPage() {
           refreshState: () => getSchoolState({ force: true }),
         });
         if (recovery.kind === 'pending') {
-          setSchoolStatus(recovery.state.status);
+          pendingMasterclassAnswerRef.current = {
+            sessionId: session.session_id,
+            activityId: activity.activity_id,
+          };
+          setSchoolStatus('awaiting_evaluation');
           setAnswer('');
           setError('');
-          void load({ background: true });
+          return;
+        }
+        if (recovery.kind === 'pending_unconfirmed') {
+          pendingMasterclassAnswerRef.current = {
+            sessionId: session.session_id,
+            activityId: activity.activity_id,
+          };
+          setSchoolStatus('awaiting_evaluation');
+          setAnswer('');
+          setError('');
           return;
         }
         if (recovery.kind === 'advanced') {
+          pendingMasterclassAnswerRef.current = null;
           setSchoolStatus(recovery.state.status);
           setAnswer('');
           setError('');
@@ -335,22 +430,26 @@ export default function SchoolMasterclassPage() {
     && visibleFeedback.activity_id !== activity.activity_id,
   );
   const coachPresentation = resolveSchoolCoachPresentation({
-    status: visibleFeedback
-      ? feedbackIsFromPreviousActivity
-        ? visibleFeedback.correct ? 'Previous answer: what worked' : 'Previous answer: try this'
-        : visibleFeedback.correct ? 'What worked' : 'Try this next'
-      : session?.status === 'complete'
-        ? 'Ready to return'
-        : activityView.kind === 'pending'
-          ? 'Reviewing your answer'
-          : 'One skill at a time',
+    status: submitting
+      ? 'Checking your answer'
+      : activityView.kind === 'pending'
+        ? 'Reviewing your answer'
+        : visibleFeedback
+          ? feedbackIsFromPreviousActivity
+            ? visibleFeedback.correct ? 'Previous answer: what worked' : 'Previous answer: try this'
+            : visibleFeedback.correct ? 'What worked' : 'Try this next'
+          : session?.status === 'complete'
+            ? 'Ready to return'
+            : 'One skill at a time',
     fallbackMessage: activity?.focus || session?.focus || 'Your chapter place is saved while we strengthen this skill.',
     activityKey: activity?.activity_id || session?.status || sessionId,
     teachingBlock: activity?.teaching_block,
     feedback: visibleFeedback?.message,
-    pendingMessage: activityView.kind === 'pending' || submitting
-      ? 'School is reviewing your answer. The next step will appear here when it is ready.'
-      : null,
+    pendingMessage: submitting
+      ? 'Checking your answer. Your response is being saved.'
+      : activityView.kind === 'pending'
+        ? 'School is reviewing your answer. The next step will appear here when it is ready.'
+        : null,
     transitionMessage: session?.status === 'complete'
       ? `This focused practice is complete. Return to ${curriculum?.chapter.title || 'your chapter'} at the saved lesson step.`
       : session?.status === 'abandoned'
@@ -416,6 +515,7 @@ export default function SchoolMasterclassPage() {
       coachAvatarId={session?.coach_avatar_id}
       coachPaletteId={session?.coach_palette_id}
       onBack={handleShellBack}
+      showBack={session?.status === 'active'}
       backLabel={session?.status === 'active' ? 'Leave focused practice' : 'Return to chapter'}
       progress={session && curriculum ? <MasterclassProgress session={session} curriculum={curriculum} /> : undefined}
     >

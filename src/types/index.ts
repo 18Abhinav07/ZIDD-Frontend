@@ -333,6 +333,11 @@ export interface TranscriptResponse {
 export interface CreditsBalance {
   user_id: string;
   credits: number;
+  beta_credits: number;
+  paid_credits: number;
+  promo_credits: number;
+  beta_expires_at: string | null;
+  purchases_enabled: boolean;
   demo_unlimited: boolean;
   name?: string; // profile display name, so the dashboard greets like the coach
   active_module?: string;
@@ -381,14 +386,18 @@ export interface ConfirmRequiredPaywall {
   error: 'confirm_required';
   cost: number;
   balance: number;
-  scope: string;
-  ref_id: string;
+  // Scope/ref are additive on older Career servers. The UI can still show a
+  // truthful generic label while a rolling backend deployment catches up.
+  scope?: string;
+  ref_id?: string;
 }
 
 export interface InsufficientCreditsPaywall {
   error: 'insufficient_credits';
   cost: number;
   balance: number;
+  scope?: string;
+  ref_id?: string;
   packs: PackInfo[];
 }
 

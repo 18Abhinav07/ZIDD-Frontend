@@ -11,6 +11,7 @@ interface SchoolLearningWorkspaceProps {
   coach: ReactNode;
   progress?: ReactNode;
   actions?: ReactNode;
+  showBack?: boolean;
   backLabel?: string;
   coachLabel?: string;
   progressLabel?: string;
@@ -27,6 +28,7 @@ export function SchoolLearningWorkspace({
   coach,
   progress,
   actions,
+  showBack = true,
   backLabel = 'Back to School path',
   coachLabel = 'School learning coach',
   progressLabel = 'Lesson progress',
@@ -47,10 +49,12 @@ export function SchoolLearningWorkspace({
           aria-label={`${workspaceLabel}: ${title}`}
           data-school-region="activity-surface"
         >
-          <div className={styles.utilityRow}>
-            <button type="button" onClick={onBack} className={styles.backButton} aria-label={backLabel} title={backLabel}>
-              <ArrowLeft size={18} aria-hidden="true" />
-            </button>
+          <div className={`${styles.utilityRow} ${showBack ? '' : styles.utilityRowWithoutBack}`}>
+            {showBack && onBack ? (
+              <button type="button" onClick={onBack} className={styles.backButton} aria-label={backLabel} title={backLabel}>
+                <ArrowLeft size={18} aria-hidden="true" />
+              </button>
+            ) : null}
             {progress ? (
               <div className={styles.progress} aria-label={progressLabel}>
                 {progress}

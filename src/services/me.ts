@@ -35,6 +35,11 @@ export interface MeResponse {
   email?: string | null;
   google_sub?: string | null;
   credits: number;
+  beta_credits: number;
+  paid_credits: number;
+  promo_credits: number;
+  beta_expires_at: string | null;
+  purchases_enabled: boolean;
   demo_unlimited: boolean;
   onboarding: OnboardingSummary;
   school_profile: SchoolProfile;

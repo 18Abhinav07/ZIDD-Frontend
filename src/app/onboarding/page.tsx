@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
@@ -18,6 +19,8 @@ import {
   getOnboardingState,
   saveOnboardingDraft,
 } from '@/services/onboarding';
+import { getRandomAvatar, AvatarData } from '@/lib/avatars';
+import { getAvatarScaleClass } from '@/lib/avatarRegistry';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 
 function cn(...inputs: ClassValue[]) {
@@ -67,6 +70,11 @@ export default function OnboardingPage() {
   const [saving, setSaving] = useState(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
+  const [welcomeAvatar, setWelcomeAvatar] = useState<AvatarData | null>(null);
+
+  useEffect(() => {
+    setWelcomeAvatar(getRandomAvatar());
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -236,6 +244,26 @@ export default function OnboardingPage() {
                 <p className="mt-3 text-sm leading-relaxed text-slate-500">
                   This name appears across your dashboard and profile. Your Google email stays attached to the account.
                 </p>
+                {welcomeAvatar ? (
+                  <div className="relative mt-7 h-32 overflow-hidden rounded-xl" style={{ backgroundColor: welcomeAvatar.bg }}>
+                    <motion.div
+                      key={welcomeAvatar.id}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="absolute inset-0"
+                    >
+                      <Image
+                        src={welcomeAvatar.url}
+                        alt="A Zidd learning coach"
+                        fill
+                        sizes="160px"
+                        className={`object-contain object-bottom ${getAvatarScaleClass(welcomeAvatar.url)}`}
+                        priority
+                      />
+                    </motion.div>
+                  </div>
+                ) : <div aria-hidden="true" className="mt-7 h-32 rounded-xl bg-slate-200" />}
                 <label className="mt-10 block">
                   <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Username</span>
                   <div className="mt-3 flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 focus-within:border-indigo-300 focus-within:ring-4 focus-within:ring-indigo-50">

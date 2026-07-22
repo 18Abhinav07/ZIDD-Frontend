@@ -5,11 +5,15 @@ import { useParams, useRouter } from 'next/navigation';
 import { ExclamationTriangleIcon, ReloadIcon } from '@radix-ui/react-icons';
 import { SchoolLevelMapSkeleton } from '@/components/learning/LearningSkeletons';
 import { SchoolLevelMap } from '@/components/school/catalog/SchoolLevelMap';
+import { PaywallModal } from '@/components/billing/PaywallModal';
+import { useAppSession } from '@/components/shared/AppSessionProvider';
+import type { PaywallDetail } from '@/types';
 import { SchoolPageHeading, schoolPrimaryActionClass } from '@/components/school/SchoolPrimitives';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 import {
   resolveSchoolMapDestination,
   resolveSchoolStateDestination,
+  canStartSchoolChapter,
 } from '@/lib/schoolActivityPolicy';
 import {
   createSchoolRouteLoadSingleFlight,
@@ -79,6 +83,7 @@ async function loadSchoolChapter(classNo: number, chapterId: string): Promise<Sc
 export default function SchoolChapterPage() {
   const params = useParams<{ classNo: string; chapterId: string }>();
   const router = useRouter();
+  const { balance, loadBalance } = useAppSession();
   const classNo = Number(params.classNo);
   const chapterId = params.chapterId;
   const clientStartIdRef = useRef<string | null>(null);
@@ -86,6 +91,7 @@ export default function SchoolChapterPage() {
   const [snapshot, setSnapshot] = useState<SchoolChapterSnapshot | null>(null);
   const [error, setError] = useState('');
   const [starting, setStarting] = useState(false);
+  const [paywall, setPaywall] = useState<PaywallDetail | null>(null);
   const mountedRef = useRef(false);
   const loadRequestIdRef = useRef(0);
   const loadOwnerRef = useRef<SchoolRouteLoadOwner | null>(null);
@@ -152,12 +158,21 @@ export default function SchoolChapterPage() {
     };
   }, [load]);
 
-  const continueChapter = async () => {
+  const continueChapter = async (confirm = false) => {
     if (!snapshot || snapshot.stateAction?.action !== 'start_curriculum' || starting) return;
     setStarting(true);
     setError('');
     try {
-      await startSchoolCurriculum(snapshot.chapter.chapter_id, clientStartIdRef.current!);
+      const result = await startSchoolCurriculum(
+        snapshot.chapter.chapter_id,
+        clientStartIdRef.current!,
+        { confirm },
+      );
+      if (!result.ok) {
+        setPaywall(result.paywall);
+        return;
+      }
+      void loadBalance(true).catch(() => null);
       const state = await getSchoolState({ force: true });
       const destination = resolveSchoolStateDestination({
         nextAction: state.next_action,
@@ -173,9 +188,12 @@ export default function SchoolChapterPage() {
     }
   };
 
-  const chapterHref = `/school/classes/${classNo}/chapters/${chapterId}`;
-  const authorizedChapterAction = snapshot?.stateAction?.action === 'start_curriculum'
-    && snapshot.stateAction.href === chapterHref
+  const authorizedChapterAction = snapshot && canStartSchoolChapter({
+    action: snapshot.stateAction?.action ?? null,
+    actionHref: snapshot.stateAction?.href ?? null,
+    classNo,
+    chapterStatus: snapshot.chapter.status,
+  })
     ? { label: 'Start chapter', onSelect: () => void continueChapter() }
     : snapshot?.stateAction?.action === 'resume_curriculum'
       && snapshot.activeSessionId !== null
@@ -223,6 +241,13 @@ export default function SchoolChapterPage() {
           </section>
         </main>
       ) : <SchoolLevelMapSkeleton />}
+      <PaywallModal
+        paywall={paywall}
+        onClose={() => setPaywall(null)}
+        onConfirm={() => continueChapter(true)}
+        purchasesEnabled={balance?.purchases_enabled}
+        onBalanceChange={() => void loadBalance(true).catch(() => null)}
+      />
     </div>
   );
 }

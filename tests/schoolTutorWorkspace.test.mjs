@@ -10,15 +10,15 @@ const renderer = read('src/components/school/tutor/SchoolActivityRenderer.tsx');
 const progress = read('src/components/school/tutor/SchoolProgressRail.tsx');
 const resolver = read('src/app/school/curriculum/page.tsx');
 const service = read('src/services/schoolRebuild.ts');
+const learningShell = read('src/components/school/SchoolLearningShell.tsx');
 
 test('canonical School tutor route delegates the requested session to the tutor workspace', () => {
   assert.match(route, /useParams<\{ sessionId: string \}>/);
   assert.match(route, /<SchoolTutorWorkspace sessionId={params\.sessionId} \/>/);
 });
 
-test('tutor workspace loads backend state and the exact curriculum session, then fails closed on ownership drift', () => {
-  assert.match(workspace, /getSchoolState\(\{ force: true \}\)/);
-  assert.match(workspace, /getSchoolCurriculumSession\(sessionId\)/);
+test('tutor workspace loads one backend-owned curriculum workspace snapshot, then fails closed on ownership drift', () => {
+  assert.match(workspace, /getSchoolCurriculumWorkspace\(sessionId\)/);
   assert.match(workspace, /schoolTutorLoadDecision/);
   assert.match(workspace, /schoolTutorLoadOwnedBy/);
   assert.match(workspace, /releaseSchoolTutorLoad/);
@@ -27,6 +27,18 @@ test('tutor workspace loads backend state and the exact curriculum session, then
   assert.match(workspace, /school_session_ownership_mismatch/);
   assert.match(workspace, /nextSession\.session_id !== sessionId/);
   assert.match(workspace, /<SchoolTutorSkeleton/);
+});
+
+test('expired curriculum snapshots redirect from the canonical workspace state before rendering a stale session', () => {
+  assert.match(
+    workspace,
+    /const \{ state, session: nextSession \} = await getSchoolCurriculumWorkspace\(sessionId\);/,
+  );
+  assert.match(
+    workspace,
+    /if \(destination !== `\/school\/session\/\$\{sessionId\}`\) \{[\s\S]{0,120}router\.replace\(destination\);[\s\S]{0,120}return;/,
+  );
+  assert.doesNotMatch(workspace, /const \[state, nextSession\] = await Promise\.all\(/);
 });
 
 test('workspace composes the shared coach, activity, and chapter progress regions', () => {
@@ -40,6 +52,11 @@ test('workspace composes the shared coach, activity, and chapter progress region
   assert.match(progress, /role="progressbar"/);
   assert.doesNotMatch(workspace, /const learnerStage =|eyebrow=/);
   assert.match(workspace, /title={activity\?\.title \|\| session\.chapter\.title}/);
+});
+
+test('shared learning shell keeps a stable activity landmark instead of repeating the lesson title', () => {
+  assert.match(learningShell, /workspaceLabel="School learning activity"/);
+  assert.doesNotMatch(learningShell, /workspaceLabel=\{title\}/);
 });
 
 test('activity renderer translates engine activity kinds and renders the complete backend learner response', () => {
@@ -63,17 +80,32 @@ test('activity renderer translates engine activity kinds and renders the complet
   assert.match(workspace, /teachingBlock: activity\?\.teaching_block/);
   assert.match(
     workspace,
-    /selectVisibleSchoolCoachFeedback\([\s\S]{0,120}activity\?\.activity_id,[\s\S]{0,120}session\.last_feedback,[\s\S]{0,120}includePrevious: true/,
+    /selectVisibleSchoolCoachFeedback\([\s\S]{0,120}activity\?\.activity_id,[\s\S]{0,120}feedbackForCurrentLevel,[\s\S]{0,120}includePrevious: true/,
   );
   assert.match(workspace, /feedback: visibleFeedback\?\.message/);
   assert.match(workspace, /Previous answer: what worked/);
   assert.match(workspace, /Previous answer: try this/);
+  assert.match(workspace, /Coach note from the previous step/);
+  assert.doesNotMatch(workspace, /Feedback on your previous answer/);
 
   assert.doesNotMatch(renderer, /\{activity\.kind\}/);
   assert.doesNotMatch(renderer, /kind\.replaceAll/);
   assert.doesNotMatch(renderer, /memory_summary/);
   assert.doesNotMatch(renderer, /\bEMA\b|evidence field|certification/i);
   assert.match(workspace, /resolveSchoolCoachPresentation/);
+});
+
+test('previous answer feedback stays within the current curriculum level', () => {
+  assert.match(
+    workspace,
+    /const feedbackForCurrentLevel = activity\?\.level_id === session\.last_feedback\?\.level_id\s*\?\s*session\.last_feedback\s*:\s*null;/,
+    'same-level feedback remains available to the previous-answer presentation',
+  );
+  assert.match(
+    workspace,
+    /selectVisibleSchoolCoachFeedback\([\s\S]{0,120}activity\?\.activity_id,[\s\S]{0,120}feedbackForCurrentLevel,[\s\S]{0,120}includePrevious: true/,
+    'feedback from a different level is hidden before previous-answer selection',
+  );
 });
 
 test('v2 explicit Continue steps preserve answer interactions and suppress stale non-scored feedback', () => {
@@ -114,7 +146,7 @@ test('v2 explicit Continue steps preserve answer interactions and suppress stale
     /\{isContinueOnlyActivity \? \(([\s\S]*?)\) : canSubmit && activity\.options\?\.length \? \(/,
   )?.[1] ?? '';
   assert.match(continueBranch, /onSubmit\(TEACHING_STEP_ACKNOWLEDGEMENT\)/);
-  assert.match(continueBranch, />Continue</);
+  assert.match(continueBranch, /'Saving your progress' : 'Continue'/);
   assert.doesNotMatch(continueBranch, /<input|<textarea|Think and answer|Your answer|Check my answer/);
   assert.match(workspace, /feedback: visibleFeedback\?\.message/);
 });
@@ -132,8 +164,10 @@ test('answer submission keeps backend activity idempotency, local evaluator allo
   assert.match(workspace, /runCurriculumMutation/);
   assert.match(workspace, /curriculumActivityView/);
   assert.match(workspace, /startSingleFlightRevalidation/);
-  assert.match(service, /answerSchoolCurriculum[\s\S]*?schoolEvaluatorFetch\(/);
-  assert.match(service, /schoolEvaluatorFetch[\s\S]*?SCHOOL_QWEN_REQUESTS_UNBOUNDED[\s\S]*?null/);
+  assert.match(workspace, /getSchoolCurriculumAnswerStatus/);
+  assert.match(workspace, /revalidate: pollPendingCurriculumAnswer/);
+  assert.match(service, /answerSchoolCurriculum[\s\S]*?schoolControlFetch\(/);
+  assert.match(service, /schoolControlFetch[\s\S]*?SCHOOL_QWEN_REQUESTS_UNBOUNDED[\s\S]*?null/);
   assert.doesNotMatch(workspace, /Promise\.race|setTimeout\(/);
 });
 
@@ -161,16 +195,54 @@ test('authoritative pending evaluation offers a safe chapter-map exit without ad
   assert.doesNotMatch(renderer, /pendingLabel=|Loader2/);
 });
 
+test('saving an answer does not masquerade as model review', () => {
+  assert.match(
+    workspace,
+    /const coachStatus = submitting[\s\S]*?'Checking your answer'[\s\S]*?: activityView\.kind === 'pending'[\s\S]*?'Reviewing your answer'/,
+  );
+  assert.match(
+    workspace,
+    /pendingMessage: submitting[\s\S]*?'Checking your answer\. Your response is being saved\.'[\s\S]*?: activityView\.kind === 'pending'[\s\S]*?'School is reviewing your answer\. Feedback will appear here when the next step is ready\.'/,
+  );
+});
+
+test('saving a teaching acknowledgement does not pretend it is an answer evaluation', () => {
+  assert.match(
+    workspace,
+    /const isSavingTeachingStep = activity\?\.interaction_type === 'continue';/,
+  );
+  assert.match(
+    workspace,
+    /isSavingTeachingStep[\s\S]*?'Saving your progress'[\s\S]*?: 'Checking your answer'/,
+  );
+  assert.match(
+    workspace,
+    /isSavingTeachingStep[\s\S]*?'Saving this teaching step\. Your chapter place is being saved\.'[\s\S]*?: 'Checking your answer\. Your response is being saved\.'/,
+  );
+  assert.match(
+    renderer,
+    /\{submitting \? 'Saving your progress' : 'Continue'\}/,
+  );
+});
+
 test('paused masterclass and all tutor exits use backend-owned canonical destinations', () => {
   assert.match(workspace, /active_interrupt\.masterclass_session_id/);
   assert.match(workspace, /setSchoolNextAction\(state\.next_action\)/);
   assert.match(workspace, /schoolNextAction !== 'start_masterclass'/);
-  assert.match(workspace, /canStartMasterclass/);
+  assert.match(workspace, /curriculumMasterclassAction\(schoolNextAction\)/);
+  assert.match(workspace, /masterclassAction === 'start'/);
+  assert.match(workspace, /masterclassAction === 'resume'/);
   assert.match(workspace, /resolveSchoolStateDestination/);
   assert.match(workspace, /router\.push\(destination\)/);
   assert.match(workspace, /startSchoolCurriculumMasterclass\(session\.session_id\)/);
+  assert.match(workspace, /resumeSchoolCurriculumMasterclass\(session\.session_id\)/);
+  assert.match(workspace, /schoolNextAction === 'resume_masterclass'/);
+  assert.match(workspace, /help you learn how to \$\{learnableMasterclassFocus\}/);
+  assert.doesNotMatch(workspace, /will strengthen \$\{session\.active_interrupt\.focus\}/);
   assert.match(workspace, /router\.push\(chapterMapHref\)/);
   assert.match(renderer, /onOpenMasterclass/);
+  assert.match(renderer, /onResumeMasterclass/);
+  assert.match(renderer, /'Return to chapter'/);
   assert.match(renderer, /onOpenMasterclass \? \(/);
   assert.match(renderer, /onExit/);
 });

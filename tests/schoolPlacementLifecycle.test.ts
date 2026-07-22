@@ -123,6 +123,25 @@ test('time-capped placement returns directly to its saved resumable state', asyn
   });
 });
 
+test('nonresumable insufficient evidence keeps settling until the canonical next action is ready', async () => {
+  const { resolveSchoolPlacementMutation } = await loadLifecycle();
+  const exhaustedPlacement = {
+    ...interactivePlacement,
+    status: 'insufficient_evidence',
+    next_item: null,
+  } as const;
+
+  assert.deepEqual(resolveSchoolPlacementMutation(exhaustedPlacement, {
+    ...baseState,
+    status: 'insufficient_evidence',
+    next_action: 'finish_placement',
+    allowed_next_actions: ['finish_placement'],
+  }), {
+    kind: 'settling',
+    reportAvailable: false,
+  });
+});
+
 test('answer drafts are visible only for the authored item that owns them', async () => {
   const { visiblePlacementAnswer } = await loadLifecycle();
   const draft = { itemId: 'item-a', value: 'saved answer' };

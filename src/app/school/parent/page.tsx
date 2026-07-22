@@ -100,6 +100,25 @@ async function loadParentReportSnapshot(): Promise<ParentReportSnapshot> {
         }))
       : Promise.resolve({ value: null })
   );
+  // The recap endpoint intentionally returns the most recent path, including a
+  // completed one. Keep that evidence on the parent report after the learner
+  // has entered the target class; otherwise the report loses the work that
+  // unlocked the class.
+  const shouldLoadRecap = state.active_flow === 'recap'
+    || (
+      state.placement_status === 'below_target'
+      && state.unlock_state === 'target_unlocked'
+    );
+  const recapPromise: Promise<ParentEvidence<SchoolRecapPath>> = shouldLoadRecap
+    ? getActiveSchoolRecap()
+      .then((value) => ({ value }))
+      .catch(() => ({
+        value: null,
+        limitation: state.active_flow === 'recap'
+          ? 'The current readiness-path record is temporarily unavailable, so its progress is not shown.'
+          : 'The completed readiness-path record is temporarily unavailable, so the foundation progress is not shown.',
+      }))
+    : Promise.resolve({ value: null });
   const learningPromise: Promise<ParentEvidence<{
     curriculumSession: SchoolCurriculumSession | null;
     recapSession: SchoolRecapPath | null;
@@ -135,7 +154,11 @@ async function loadParentReportSnapshot(): Promise<ParentReportSnapshot> {
         };
       }
       if (state.active_flow === 'recap') {
-        const recapSession = await getActiveSchoolRecap();
+        const recap = await recapPromise;
+        const recapSession = recap.value;
+        if (!recapSession) {
+          throw new Error('school_recap_session_unavailable');
+        }
         if (recapSession.session_id !== state.active_session_id) {
           throw new Error('school_recap_session_mismatch');
         }
@@ -184,9 +207,10 @@ async function loadParentReportSnapshot(): Promise<ParentReportSnapshot> {
   const activePlacementPromise = state.active_flow === 'placement' && state.active_session_id
     ? getSchoolPlacement(state.active_session_id).catch(() => null)
     : Promise.resolve(null);
-  const [placement, classMap, learning, learnerName, activePlacement] = await Promise.all([
+  const [placement, classMap, recap, learning, learnerName, activePlacement] = await Promise.all([
     placementPromise,
     classMapPromise,
+    recapPromise,
     learningPromise,
     learnerNamePromise,
     activePlacementPromise,
@@ -196,12 +220,12 @@ async function loadParentReportSnapshot(): Promise<ParentReportSnapshot> {
     placementReport: placement.value,
     classMap: classMap.value,
     curriculumSession: learning.value?.curriculumSession ?? null,
-    recapSession: learning.value?.recapSession ?? null,
+    recapSession: recap.value ?? learning.value?.recapSession ?? null,
     supportPlan: learning.value?.supportPlan ?? null,
     activeCoachIdentity: learning.value?.activeCoachIdentity ?? null,
     learnerName,
     nextStepOverride: reportPlacementContinuationOverride(state, activePlacement),
-    limitations: [placement.limitation, classMap.limitation, learning.limitation]
+    limitations: [placement.limitation, classMap.limitation, recap.limitation, learning.limitation]
       .filter((value): value is string => Boolean(value)),
   };
 }

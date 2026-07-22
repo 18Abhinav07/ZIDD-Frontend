@@ -1,4 +1,7 @@
-export const CURRICULUM_REVALIDATE_MS = 5_000;
+// Cloud semantic answers are durable before the worker completes. Poll quickly
+// enough that a completed result feels immediate, while keeping the loop
+// single-flight so an individual learner cannot fan out read requests.
+export const CURRICULUM_REVALIDATE_MS = 1_000;
 
 export interface SchoolTutorLoadOwner {
   sessionId: string;
@@ -88,6 +91,14 @@ export function completedMasterclassReturnAction(
   return lineage === 'active' ? 'resume' : 'route';
 }
 
+export function curriculumMasterclassAction(
+  nextAction: string | null,
+): 'start' | 'resume' | null {
+  if (nextAction === 'start_masterclass') return 'start';
+  if (nextAction === 'resume_masterclass') return 'resume';
+  return null;
+}
+
 export function schoolMasterclassShellBackAction(
   status: 'active' | 'complete' | 'abandoned' | null,
   lineage: SchoolMasterclassLineage,
@@ -146,6 +157,23 @@ export function resolveSchoolMapDestination(input: {
   ) return null;
 
   return `/school/classes/${classNo}`;
+}
+
+/**
+ * A chapter map may be browsed freely, but starting a lesson is still owned by
+ * the canonical School state. The state action targets the class map rather
+ * than a deep chapter URL, so the selected chapter must separately be the
+ * backend-marked ready chapter.
+ */
+export function canStartSchoolChapter(input: {
+  action: string | null;
+  actionHref: string | null;
+  classNo: number;
+  chapterStatus: string;
+}): boolean {
+  return input.action === 'start_curriculum'
+    && input.actionHref === `/school/classes/${input.classNo}`
+    && input.chapterStatus === 'ready';
 }
 
 export function resolveSchoolPassiveStateDestination<Action extends string>(input: {
@@ -268,6 +296,132 @@ export function curriculumActivityView(input: CurriculumViewInput): CurriculumAc
     return { kind: 'complete', canSubmit: false, pollDue: false, pollAfterMs: null };
   }
   return { kind: 'recover', canSubmit: false, pollDue: false, pollAfterMs: null };
+}
+
+/**
+ * A persisted curriculum response is already authoritative for the normal
+ * next-activity transition. Avoid serially fetching global School state before
+ * showing that next activity. Terminal and branch states still require the
+ * canonical state read because they can route outside this session.
+ */
+export function curriculumAnswerCanContinueWithoutStateRefresh(input: {
+  sessionStatus: string;
+  activityId: string | null;
+  canAnswer: boolean;
+}): boolean {
+  return input.sessionStatus === 'active'
+    && input.activityId !== null
+    && input.canAnswer;
+}
+
+export interface PendingCurriculumEvaluation {
+  activityId: string;
+  stableActiveReads: number;
+  /** Retained only until this exact activity resolves or becomes retryable. */
+  retryAnswer?: string;
+}
+
+interface SchoolPendingEvaluationDraftStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+const PENDING_CURRICULUM_ANSWER_STORAGE_PREFIX = 'zidd.school.pending-curriculum-answer.v1';
+
+function pendingCurriculumAnswerStorageKey(input: {
+  sessionId: string;
+  activityId: string;
+}) {
+  return [
+    PENDING_CURRICULUM_ANSWER_STORAGE_PREFIX,
+    encodeURIComponent(input.sessionId),
+    encodeURIComponent(input.activityId),
+  ].join(':');
+}
+
+/**
+ * Keep a learner's submitted answer through the short durable-evaluator window.
+ * The value is session-scoped, never resubmitted automatically, and only becomes
+ * visible again when the same authored activity is explicitly retryable.
+ */
+export function createSchoolPendingEvaluationDraftStore(
+  storage: SchoolPendingEvaluationDraftStorage,
+) {
+  return {
+    read(input: { sessionId: string; activityId: string }): string | null {
+      try {
+        const value = storage.getItem(pendingCurriculumAnswerStorageKey(input));
+        return value?.trim() ? value : null;
+      } catch {
+        return null;
+      }
+    },
+    write(input: { sessionId: string; activityId: string; answer: string }) {
+      try {
+        storage.setItem(pendingCurriculumAnswerStorageKey(input), input.answer);
+      } catch {
+        // Storage is best-effort. The durable backend job remains authoritative.
+      }
+    },
+    clear(input: { sessionId: string; activityId: string }) {
+      try {
+        storage.removeItem(pendingCurriculumAnswerStorageKey(input));
+      } catch {
+        // A blocked storage area must never interrupt a lesson transition.
+      }
+    },
+  };
+}
+
+export type PendingCurriculumEvaluationResolution =
+  | { kind: 'pending'; pending: PendingCurriculumEvaluation }
+  | { kind: 'resolved' }
+  | { kind: 'retry' };
+
+/**
+ * Reconcile the state/session split read that follows a queued evaluator answer.
+ * The state endpoint can observe the completed job milliseconds before the
+ * session endpoint observes its transitioned activity. Keep the learner passive
+ * through one such mixed snapshot; a second stable old activity is a failed job
+ * and must be deliberately retryable instead of leaving the lesson stuck.
+ */
+export function reconcilePendingCurriculumEvaluation(input: {
+  pending: PendingCurriculumEvaluation;
+  schoolStatus: string | null;
+  fetchedActivityId: string | null;
+  fetchedSessionStatus: string | null;
+}): PendingCurriculumEvaluationResolution {
+  if (input.schoolStatus === 'awaiting_evaluation') {
+    return { kind: 'pending', pending: input.pending };
+  }
+  if (
+    input.fetchedSessionStatus !== 'active'
+    || input.fetchedActivityId !== input.pending.activityId
+  ) {
+    return { kind: 'resolved' };
+  }
+  const stableActiveReads = input.pending.stableActiveReads + 1;
+  if (stableActiveReads < 2) {
+    return {
+      kind: 'pending',
+      pending: { ...input.pending, stableActiveReads },
+    };
+  }
+  return { kind: 'retry' };
+}
+
+/**
+ * Keep a draft only when an uncertain request never became a committed answer.
+ * A confirmed activity transition must never prefill the next learner task.
+ */
+export function pendingCurriculumAnswerValue(input: {
+  pending: PendingCurriculumEvaluation;
+  resolution: PendingCurriculumEvaluationResolution;
+}): string | null {
+  if (input.resolution.kind === 'pending') return null;
+  if (input.resolution.kind === 'resolved') return '';
+  return input.pending.retryAnswer ?? '';
 }
 
 export async function runCurriculumMutation<Session, State>(options: {

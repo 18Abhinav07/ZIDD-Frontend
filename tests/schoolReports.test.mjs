@@ -4,6 +4,8 @@ import test from 'node:test';
 import {
   createLearnerSafeSkillLabeler,
   describeSavedAttempts,
+  describeParentReadyChapter,
+  describeParentRecapWatchlist,
   groupSkillEvidenceByLabel,
   humanizeReportActivityType,
   reportPlacementContinuationOverride,
@@ -42,12 +44,12 @@ test('report skill labels come from authored level copy and never expose engine 
   assert.equal(labelSkill('unknown.internal_skill_id'), 'Current learning skill');
 });
 
-test('saved evidence copy stays grammatical for singular and repeated attempts', () => {
-  assert.equal(describeSavedAttempts(1, 'guided_check'), '1 saved guided practice check');
-  assert.equal(describeSavedAttempts(3, 'guided_check'), '3 saved guided practice checks');
+test('saved evidence copy stays truthful when the stored count spans activity types', () => {
+  assert.equal(describeSavedAttempts(1, 'guided_check'), '1 saved learning check');
+  assert.equal(describeSavedAttempts(3, 'guided_check'), '3 saved learning checks');
   assert.equal(describeSavedAttempts(2, ''), '2 saved learning checks');
-  assert.equal(describeSavedAttempts(2, 'v2_review'), '2 saved review checks');
-  assert.equal(describeSavedAttempts(1, 'v2_independent_application'), '1 saved independent application check');
+  assert.equal(describeSavedAttempts(2, 'v2_review'), '2 saved learning checks');
+  assert.equal(describeSavedAttempts(1, 'v2_independent_application'), '1 saved learning check');
 });
 
 test('report activity labels never expose version prefixes or snake case', () => {
@@ -204,7 +206,47 @@ test('completed curriculum exposes its persisted next chapter without relabeling
   assert.equal(selectParentCurrentChapter(classMap), null);
   assert.equal(selectParentNextChapter(classMap, curriculumSession)?.chapter_id, 'chapter-next');
   assert.match(parentReport, /Ready for \$\{nextChapterTitle\}/);
-  assert.match(parentReport, /The previous chapter is complete/);
+  assert.equal(describeParentReadyChapter({
+    readinessPathComplete: false,
+    currentClassNo: 5,
+    nextChapterTitle: 'Next chapter',
+  }), 'The previous chapter is complete. Next chapter is the next available Class 5 chapter.');
+});
+
+test('readiness-path completion is not mislabeled as a completed chapter', () => {
+  assert.equal(describeParentReadyChapter({
+    readinessPathComplete: true,
+    hasCompletedChapter: false,
+    currentClassNo: 5,
+    nextChapterTitle: 'Papa\'s Spectacles',
+  }), 'The prerequisite readiness path is complete. Papa\'s Spectacles is the first available Class 5 chapter.');
+  assert.match(parentReport, /describeParentReadyChapter/);
+  assert.match(parentReport, /Foundations rebuilt/);
+  assert.match(parentReport, /recapSession\?\.progress\.completed_modules/);
+  assert.match(parentReport, /const isActiveRecap = state\.active_flow === 'recap'/);
+  assert.match(parentReport, /const recapModule = isActiveRecap/);
+  assert.match(parentReport, /const currentClassNo = isActiveRecap/);
+});
+
+test('completed chapter progress takes precedence over historical readiness-path context', () => {
+  assert.equal(describeParentReadyChapter({
+    readinessPathComplete: true,
+    hasCompletedChapter: true,
+    currentClassNo: 5,
+    nextChapterTitle: 'Gone with the Scooter',
+  }), 'The previous chapter is complete. Gone with the Scooter is the next available Class 5 chapter.');
+});
+
+test('residual recap skills are framed as a target-class watchlist, not an active failure', () => {
+  assert.deepEqual(describeParentRecapWatchlist({
+    readinessPathComplete: true,
+    currentClassNo: 5,
+    focusCount: 3,
+  }), {
+    title: '3 skills will be watched in Class 5',
+    detail: 'The readiness path unlocked Class 5. These skills will be checked again in chapter work; they are not a current learning pause.',
+  });
+  assert.match(parentReport, /describeParentRecapWatchlist/);
 });
 
 test('completed-only class map keeps history out of current practice and current chapter', () => {
@@ -299,6 +341,15 @@ test('report routes fetch only recognized placement and unlocked active class ev
     assert.match(route, /createSchoolRouteLoadSingleFlight/);
     assert.match(route, /schoolRouteLoadDisposition/);
   }
+});
+
+test('parent reports retain the completed readiness path after target-class unlock', () => {
+  assert.match(parentRoute, /const shouldLoadRecap = state\.active_flow === 'recap'/);
+  assert.match(parentRoute, /state\.placement_status === 'below_target'/);
+  assert.match(parentRoute, /state\.unlock_state === 'target_unlocked'/);
+  assert.match(parentRoute, /getActiveSchoolRecap\(\)/);
+  assert.match(parentRoute, /recapSession: recap\.value \?\? learning\.value\?\.recapSession \?\? null/);
+  assert.match(parentRoute, /recap\.limitation/);
 });
 
 test('active support reports consume support-plan evidence and its persisted coach identity', () => {
@@ -448,6 +499,14 @@ test('missing evidence stays honest without developer-facing synthesis', () => {
   assert.match(parentReport, /Some evidence is unavailable/);
   assert.doesNotMatch(parentReport, /engine-owned|seven-day learning-event|Cross-session recurring-gap|lifetime total/i);
   assert.doesNotMatch(parentReport, /weekly_score|recurrence_count|lifetime_masterclass_count/);
+});
+
+test('a target class opened with a watchlist is described as supported access, not blanket readiness', () => {
+  const schoolRebuild = read('src/services/schoolRebuild.ts');
+
+  assert.match(schoolRebuild, /deviation_note:\s*string/);
+  assert.match(placementReportRoute, /report\.deviation_note/);
+  assert.match(placementReportRoute, /Class \$\{report\.target_class_no\} is open/);
 });
 
 test('report production uses shared editorial primitives, Radix icons, and stable theme roles', () => {

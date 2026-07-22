@@ -23,6 +23,7 @@ import {
   abandonSchoolPlacement,
   answerSchoolPlacement,
   getSchoolPlacement,
+  getSchoolPlacementAnswerStatus,
   getSchoolState,
   isSchoolEvaluatorPendingAnswer,
   startSchoolPlacement,
@@ -31,7 +32,7 @@ import {
   type SchoolState,
 } from '@/services/schoolRebuild';
 
-const PLACEMENT_REVALIDATE_MS = 5_000;
+const PLACEMENT_REVALIDATE_MS = 1_000;
 const PLACEMENT_TERMINAL_SETTLING_MAX_POLLS = 6;
 
 function isPlacementDestination(destination: string) {
@@ -79,6 +80,10 @@ export default function SchoolPlacementPage() {
   const abandoningRef = useRef(false);
   const terminalSettlingPlacementRef = useRef<SchoolPlacementResponse | null>(null);
   const terminalSettlingPollsRef = useRef(0);
+  const pendingPlacementAnswerRef = useRef<{
+    sessionId: string;
+    activityId: string;
+  } | null>(null);
 
   const clearTerminalSettling = useCallback(() => {
     terminalSettlingPlacementRef.current = null;
@@ -97,6 +102,7 @@ export default function SchoolPlacementPage() {
 
   const enterPlacementRecovery = useCallback((message: string) => {
     clearTerminalSettling();
+    pendingPlacementAnswerRef.current = null;
     setAwaitingEvaluation(false);
     setPlacementRecoveryRequired(true);
     setPlacementLoadFailed(false);
@@ -106,7 +112,10 @@ export default function SchoolPlacementPage() {
     setStateMessage(message);
   }, [clearTerminalSettling]);
 
-  const load = useCallback(async (background = false) => {
+  const load = useCallback(async (
+    background = false,
+    hydrateActivePlacement = false,
+  ) => {
     const requestId = loadRequestIdRef.current + 1;
     loadRequestIdRef.current = requestId;
     if (!background) {
@@ -144,9 +153,16 @@ export default function SchoolPlacementPage() {
           throw new Error('school_placement_identity_mismatch');
         }
         setPlacement(pendingPlacement);
+        pendingPlacementAnswerRef.current = pendingPlacement.next_item
+          ? {
+            sessionId: pendingPlacement.session_id,
+            activityId: pendingPlacement.next_item.item_id,
+          }
+          : null;
         setAwaitingEvaluation(true);
         return;
       }
+      pendingPlacementAnswerRef.current = null;
 
       const destination = resolveSchoolStateDestination({
         nextAction: state.next_action,
@@ -222,8 +238,30 @@ export default function SchoolPlacementPage() {
         setCanStartPlacement(true);
         return;
       }
+      if (state.next_action === 'resume_placement') {
+        if (hydrateActivePlacement && state.active_session_id) {
+          const resumedPlacement = await getSchoolPlacement(state.active_session_id);
+          if (!mountedRef.current || loadRequestIdRef.current !== requestId) return;
+          if (
+            resumedPlacement.session_id !== state.active_session_id
+            || resumedPlacement.profile_version_id !== state.profile_version_id
+          ) {
+            throw new Error('school_placement_identity_mismatch');
+          }
+          clearTerminalSettling();
+          setPlacement(resumedPlacement);
+          setAwaitingEvaluation(false);
+          setCanResumePlacement(true);
+          return;
+        }
+        clearTerminalSettling();
+        setPlacement(null);
+        setAwaitingEvaluation(false);
+        setCanResumePlacement(true);
+        return;
+      }
       if (
-        !['resume_placement', 'finish_placement'].includes(state.next_action ?? '')
+        state.next_action !== 'finish_placement'
         || !state.active_session_id
       ) {
         throw new Error('school_state_unresolved');
@@ -238,11 +276,6 @@ export default function SchoolPlacementPage() {
       }
       setPlacement(activePlacement);
       setAwaitingEvaluation(false);
-      setCanResumePlacement(
-        state.next_action === 'resume_placement'
-        && activePlacement.status === 'insufficient_evidence'
-        && activePlacement.next_item === null,
-      );
     } catch (err: unknown) {
       if (!mountedRef.current || loadRequestIdRef.current !== requestId) return;
       if (background) {
@@ -272,18 +305,8 @@ export default function SchoolPlacementPage() {
     };
   }, [load]);
 
-  useEffect(() => {
-    if (!awaitingEvaluation) return;
-    const revalidator = startSingleFlightRevalidation({
-      intervalMs: PLACEMENT_REVALIDATE_MS,
-      revalidate: () => load(true),
-      schedule: (callback, intervalMs) => window.setInterval(callback, intervalMs),
-      cancelSchedule: (timer) => window.clearInterval(timer),
-    });
-    return () => revalidator.cancel();
-  }, [awaitingEvaluation, load]);
-
-  const reconcileMutation = async (nextPlacement: SchoolPlacementResponse) => {
+  const reconcileMutation = useCallback(async (nextPlacement: SchoolPlacementResponse) => {
+    pendingPlacementAnswerRef.current = null;
     setCanStartPlacement(false);
     setCanResumePlacement(false);
     setAwaitingEvaluation(false);
@@ -328,7 +351,54 @@ export default function SchoolPlacementPage() {
     }
 
     return decision;
-  };
+  }, [applyStateIdentity, clearTerminalSettling, enterPlacementRecovery, router]);
+
+  const pollPendingPlacementAnswer = useCallback(async () => {
+    const pending = pendingPlacementAnswerRef.current;
+    if (!pending) {
+      // Only a terminal report can enter this branch. The answer itself has
+      // already resolved, so this is no longer an evaluator-status poll.
+      await load(true, true);
+      return;
+    }
+    try {
+      const status = await getSchoolPlacementAnswerStatus(
+        pending.sessionId,
+        pending.activityId,
+      );
+      if (status.status === 'awaiting_evaluation') return;
+      if (status.status === 'retry') {
+        pendingPlacementAnswerRef.current = null;
+        setAwaitingEvaluation(false);
+        setError('Your answer was saved, but the review needs another try. Please answer the same question again.');
+        await load(true, true);
+        return;
+      }
+      if (status.session.session_id !== pending.sessionId) {
+        throw new Error('school_placement_identity_mismatch');
+      }
+      const decision = await reconcileMutation(status.session);
+      if (!['pending', 'recover', 'settling'].includes(decision.kind)) {
+        setAnswerDraft({ itemId: null, value: '' });
+      }
+    } catch (err: unknown) {
+      setStateMessage(learnerSafeErrorMessage(
+        err,
+        'Your answer is saved. Zidd is still checking the next step.',
+      ));
+    }
+  }, [load, reconcileMutation]);
+
+  useEffect(() => {
+    if (!awaitingEvaluation) return;
+    const revalidator = startSingleFlightRevalidation({
+      intervalMs: PLACEMENT_REVALIDATE_MS,
+      revalidate: pollPendingPlacementAnswer,
+      schedule: (callback, intervalMs) => window.setInterval(callback, intervalMs),
+      cancelSchedule: (timer) => window.clearInterval(timer),
+    });
+    return () => revalidator.cancel();
+  }, [awaitingEvaluation, pollPendingPlacementAnswer]);
 
   const begin = async () => {
     if ((!canStartPlacement && !canResumePlacement) || startingRef.current) return;
@@ -336,8 +406,6 @@ export default function SchoolPlacementPage() {
     startingRef.current = true;
     setStarting(true);
     setError('');
-    setCanStartPlacement(false);
-    setCanResumePlacement(false);
     setAnswerDraft({ itemId: null, value: '' });
     let started = false;
     try {
@@ -376,20 +444,13 @@ export default function SchoolPlacementPage() {
     try {
       const answerResult = await answerSchoolPlacement(placement.session_id, item.item_id, finalAnswer);
       if (isSchoolEvaluatorPendingAnswer(answerResult)) {
-        const recovery = await recoverSchoolAnswerState({
-          response: answerResult,
-          refreshState: () => getSchoolState({ force: true }),
-        });
-        if (recovery.kind === 'not_uncertain') throw new Error('school_state_unresolved');
-        applyStateIdentity(recovery.state);
         setAnswerDraft({ itemId: null, value: '' });
         setError('');
-        if (recovery.kind === 'pending') {
-          setAwaitingEvaluation(true);
-        } else {
-          setAwaitingEvaluation(false);
-        }
-        void load(true);
+        pendingPlacementAnswerRef.current = {
+          sessionId: answerResult.session_id,
+          activityId: answerResult.activity_id,
+        };
+        setAwaitingEvaluation(true);
         return;
       }
       const nextPlacement = answerResult;
@@ -405,11 +466,22 @@ export default function SchoolPlacementPage() {
           error: err,
           refreshState: () => getSchoolState({ force: true }),
         });
-        if (recovery.kind === 'pending') {
-          applyStateIdentity(recovery.state);
+        if (recovery.kind === 'pending_unconfirmed') {
+          setAnswerDraft({ itemId: null, value: '' });
+          pendingPlacementAnswerRef.current = item
+            ? { sessionId: placement.session_id, activityId: item.item_id }
+            : null;
           setAwaitingEvaluation(true);
           setError('');
-          void load(true);
+          return;
+        }
+        if (recovery.kind === 'pending') {
+          applyStateIdentity(recovery.state);
+          pendingPlacementAnswerRef.current = item
+            ? { sessionId: placement.session_id, activityId: item.item_id }
+            : null;
+          setAwaitingEvaluation(true);
+          setError('');
           return;
         }
         if (recovery.kind === 'advanced') {
@@ -417,7 +489,7 @@ export default function SchoolPlacementPage() {
           setAwaitingEvaluation(false);
           setAnswerDraft({ itemId: null, value: '' });
           setError('');
-          void load(true);
+          void load(true, true);
           return;
         }
       } catch (refreshError: unknown) {

@@ -13,10 +13,29 @@ test('School teaching uses its canonical two-region workspace', () => {
   assert.match(shell, /data-school-region="activity-surface"/);
   assert.match(shell, /actions\?: ReactNode/);
   assert.match(shell, /aria-label="Activity controls"/);
+  assert.match(shell, /showBack\?: boolean/);
+  assert.match(shell, /showBack && onBack/);
   assert.doesNotMatch(shell, /grid-cols-\[.*_.*_.*/);
   assert.match(learning, /SchoolLearningWorkspace/);
   assert.match(tutor, /SchoolLearningWorkspace/);
   assert.doesNotMatch(learning + tutor, /components\/learning\/LearningWorkspace/);
+});
+
+test('terminal focused practice exposes one primary return action', () => {
+  const masterclass = read('src/app/school/masterclass/[sessionId]/page.tsx');
+
+  assert.match(masterclass, /showBack=\{session\?\.status === 'active'\}/);
+  assert.match(masterclass, /onClick=\{returnFromComplete\}/);
+});
+
+test('terminal curriculum states expose their map exit once in the activity surface', () => {
+  const tutor = read('src/components/school/tutor/SchoolTutorWorkspace.tsx');
+
+  assert.match(
+    tutor,
+    /const showWorkspaceBack = activityView\.kind === 'activity'\s*\|\| \(session\.phase === 'paused_for_masterclass' && session\.active_interrupt !== null\);/,
+  );
+  assert.match(tutor, /<SchoolLearningWorkspace[\s\S]{0,240}showBack=\{showWorkspaceBack\}/);
 });
 
 test('lesson progress is compact and options remain scannable', () => {

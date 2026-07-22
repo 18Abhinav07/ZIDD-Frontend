@@ -184,7 +184,7 @@ export function AppHeader({
         ) : <span />}
 
         <nav className="col-start-2 flex items-center justify-self-end gap-3 md:col-start-3" aria-label="Account navigation">
-          {authenticated && showCredits && !schoolControls && <CreditsBadge />}
+          {authenticated && showCredits && <CreditsBadge />}
           {authenticated && <button
             onClick={navigateProfile}
             disabled={pendingNav !== null}
@@ -203,7 +203,6 @@ export function AppHeader({
                   fill
                   sizes="36px"
                   className="object-cover object-top scale-[1.2] translate-y-1"
-                  unoptimized
                 />
               ) : (
                 <span className="absolute inset-0 grid place-items-center text-xs font-semibold text-slate-700">

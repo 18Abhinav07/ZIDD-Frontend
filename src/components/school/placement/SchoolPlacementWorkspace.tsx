@@ -317,19 +317,28 @@ export function SchoolPlacementActivity({
   }
 
   if (!placement) {
+    const resumingPlacement = canResumePlacement;
     return (
       <main className="mx-auto flex min-h-[calc(100dvh-64px)] w-full max-w-[900px] items-center px-4 py-10 sm:px-7 sm:py-14 lg:px-10">
         <section className="w-full min-w-0">
-          <p className="font-mono text-[10px] font-semibold uppercase text-[var(--school-accent-deep)]">Find the right first step</p>
+          <p className="font-mono text-[10px] font-semibold uppercase text-[var(--school-accent-deep)]">
+            {resumingPlacement ? 'Your saved starting point' : 'Find the right first step'}
+          </p>
           <h1 className="mt-3 max-w-[650px] font-display text-[3rem] font-normal leading-[0.98] text-slate-950 sm:text-[4rem]">
-            A starting point, not a test.
+            {resumingPlacement ? 'Continue your saved check.' : 'A starting point, not a test.'}
           </h1>
           <p className="mt-5 max-w-[620px] text-sm leading-6 text-[var(--school-muted)] sm:text-base sm:leading-7">
-            A few reading and writing prompts help choose where Class {targetClassNo ?? 'your class'} learning should begin. We look for useful evidence, not marks.
+            {resumingPlacement
+              ? stateMessage || 'Your previous answers are safe. Continue with one unused question so Zidd can finish choosing the right learning path.'
+              : <>A few reading and writing prompts help choose where Class {targetClassNo ?? 'your class'} learning should begin. We look for useful evidence, not marks.</>}
           </p>
           {error ? <p role="alert" className="mt-4 max-w-xl text-sm font-semibold text-red-800">{error}</p> : null}
           <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-            {canStartPlacement ? (
+            {resumingPlacement ? (
+              <ActionButton icon={starting ? <ClockIcon className="h-4 w-4" /> : <ArrowRightIcon className="h-4 w-4" />} onClick={onResume} disabled={starting}>
+                <span className="min-w-[8rem] text-center">{starting ? 'Preparing next question' : 'Continue readiness check'}</span>
+              </ActionButton>
+            ) : canStartPlacement ? (
               <ActionButton icon={<MagicWandIcon className="h-4 w-4" />} onClick={onBegin} disabled={starting}>
                 <span className="min-w-[8rem] text-center">{starting ? 'Starting safely' : 'Begin'}</span>
                 {!starting ? <ArrowRightIcon className="h-4 w-4" /> : null}
@@ -343,7 +352,7 @@ export function SchoolPlacementActivity({
           </div>
           <p className="mt-5 flex items-center gap-2 text-[11px] text-slate-500">
             <ClockIcon className="h-4 w-4 flex-none" aria-hidden="true" />
-            <span>About 8 minutes. Pause whenever you need.</span>
+            <span>{resumingPlacement ? 'Your previous answers stay safe. You can pause again whenever needed.' : 'About 8 minutes. Pause whenever you need.'}</span>
           </p>
         </section>
       </main>

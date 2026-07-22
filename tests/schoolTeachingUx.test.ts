@@ -91,6 +91,15 @@ test('continue-only teaching uses a full-width instruction panel', () => {
   );
 });
 
+test('chapter checks describe the authored response action instead of calling every item an own-words answer', () => {
+  assert.match(tutorActivity, /function chapterCheckInstruction\(/);
+  assert.match(tutorActivity, /case 'single_choice':[\s\S]*?Choose the answer that fits best\./);
+  assert.match(tutorActivity, /case 'ordering':[\s\S]*?Put the items in the requested order\./);
+  assert.match(tutorActivity, /case 'sentence_completion':[\s\S]*?Complete the sentence with the best answer\./);
+  assert.match(tutorActivity, /case 'paragraph_text':[\s\S]*?Use your own words and include the detail the question asks for\./);
+  assert.doesNotMatch(tutorActivity, /Answer this chapter challenge in your own words\./);
+});
+
 test('Learning Back and progress strips stay compact without repeating stage content', () => {
   const backButtonRule = workspaceStyles.match(/\.backButton \{[\s\S]*?\n\}/)?.[0] ?? '';
 

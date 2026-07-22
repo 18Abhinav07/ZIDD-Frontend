@@ -7,6 +7,7 @@ import {
   getSchoolAvatarTheme,
   getSchoolAvatarThemeForAvatar,
   SCHOOL_AVATAR_PALETTES,
+  SCHOOL_CANONICAL_PALETTE,
   SCHOOL_FALLBACK_PALETTE,
   type SchoolThemeVariable,
 } from '../src/lib/schoolTheme.ts';
@@ -38,7 +39,7 @@ test('theme selection is deterministic for persisted identity', () => {
   assert.deepEqual(first.style, second.style);
 });
 
-test('every coach avatar has distinct accessible School palette tokens', () => {
+test('every coach avatar keeps one accessible School control palette', () => {
   assert.deepEqual(
     Object.keys(SCHOOL_AVATAR_PALETTES).sort(),
     COACH_AVATARS.map((avatar) => avatar.id).sort(),
@@ -48,7 +49,7 @@ test('every coach avatar has distinct accessible School palette tokens', () => {
   for (const avatar of COACH_AVATARS) {
     const theme = getSchoolAvatarThemeForAvatar(avatar);
     assert.equal(theme.avatar.id, avatar.id);
-    assert.deepEqual(theme.roles, SCHOOL_AVATAR_PALETTES[avatar.id]);
+    assert.deepEqual(theme.roles, SCHOOL_CANONICAL_PALETTE);
     assert.notEqual(theme.roles.accent, avatar.bg, `${avatar.id} must not expose its raw avatar color as UI accent`);
     accents.add(theme.roles.accent);
     assert.ok(
@@ -56,7 +57,7 @@ test('every coach avatar has distinct accessible School palette tokens', () => {
       `${avatar.id} accent must keep readable action text`,
     );
   }
-  assert.equal(accents.size, COACH_AVATARS.length);
+  assert.equal(accents.size, 1);
 });
 
 test('theme output contains only supported readable roles and CSS variables', () => {

@@ -92,6 +92,8 @@ test('level statuses remain descriptive while actions require explicit state aut
 test('direct chapter maps remain browseable while actions retain exact School state authority', () => {
   assert.match(route, /resolveSchoolMapDestination/);
   assert.doesNotMatch(route, /destination !== `\/school\/classes\/\$\{classNo\}\/chapters\/\$\{chapterId\}`/);
-  assert.match(route, /snapshot\?\.stateAction\?\.action === 'start_curriculum'/);
+  assert.match(route, /canStartSchoolChapter/);
+  assert.match(route, /chapterStatus: snapshot\.chapter\.status/);
+  assert.doesNotMatch(route, /snapshot\.stateAction\.href === chapterHref/);
   assert.match(route, /snapshot\.chapter\.active_session_id === snapshot\.activeSessionId/);
 });

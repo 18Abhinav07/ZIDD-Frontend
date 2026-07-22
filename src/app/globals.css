@@ -60,11 +60,11 @@
     --school-surface-soft: #F1F5F9;
     --school-ink: #1E293B;
     --school-muted: #64748B;
-    --school-accent: #334155;
-    --school-accent-deep: #1E293B;
-    --school-accent-soft: #F1F5F9;
-    --school-accent-border: #CBD5E1;
-    --school-on-accent: #FFFDF8;
+    --school-accent: #555BD8;
+    --school-accent-deep: #4248BB;
+    --school-accent-soft: #EFEFFD;
+    --school-accent-border: #D4D5FA;
+    --school-on-accent: #FFFFFF;
     --color-background: var(--school-canvas);
     --color-foreground: var(--school-ink);
     --color-primary: var(--school-accent);

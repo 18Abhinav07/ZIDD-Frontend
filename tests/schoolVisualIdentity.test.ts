@@ -100,6 +100,18 @@ test('School coach sizing uses the shared avatar padding registry', () => {
   assert.match(coachPanel, /Math\.min\(avatarScale, 1\.12\)/);
 });
 
+test('first-time onboarding introduces a randomly selected avatar with its own palette', () => {
+  const onboarding = fs.readFileSync('src/app/onboarding/page.tsx', 'utf8');
+
+  assert.match(onboarding, /import Image from 'next\/image';/);
+  assert.match(onboarding, /getRandomAvatar, AvatarData/);
+  assert.match(onboarding, /const \[welcomeAvatar, setWelcomeAvatar\] = useState<AvatarData \| null>\(null\)/);
+  assert.match(onboarding, /setWelcomeAvatar\(getRandomAvatar\(\)\)/);
+  assert.match(onboarding, /style=\{\{ backgroundColor: welcomeAvatar\.bg \}\}/);
+  assert.match(onboarding, /src=\{welcomeAvatar\.url\}/);
+  assert.match(onboarding, /getAvatarScaleClass\(welcomeAvatar\.url\)/);
+});
+
 test('coach hints use one integrated card control instead of a nested callout', () => {
   const coachPanel = fs.readFileSync('src/components/school/SchoolCoachPanel.tsx', 'utf8');
   const coachCss = fs.readFileSync('src/components/school/SchoolCoachPanel.module.css', 'utf8');
@@ -173,10 +185,10 @@ test('canonical School presentation is scoped to its own shell and design tokens
   const layout = fs.readFileSync('src/app/school/layout.tsx', 'utf8');
 
   for (const token of [
-    '--school-canvas: #fbfaf7',
-    '--school-paper: #fffefb',
-    '--school-ink: #121a2d',
-    '--school-navy: #10182d',
+    '--school-canvas: #f6f8fb',
+    '--school-paper: #fcfdfe',
+    '--school-ink: #1e293b',
+    '--school-navy: #111827',
     '--school-accent: #555bd8',
     '--school-accent-dark: #4248bb',
   ]) {
@@ -193,6 +205,9 @@ test('canonical School presentation is scoped to its own shell and design tokens
   assert.doesNotMatch(shell, /AVATAR_PATHS/);
   assert.match(appHeader, /authSession\?\.user\?\.image \|\| null/);
   assert.match(appHeader, /profileInitial/);
+  const profileImageElement = appHeader.match(/<Image\s+[\s\S]*?src=\{profileImage\}[\s\S]*?\/>/);
+  assert.ok(profileImageElement, 'AppHeader should render the authenticated profile image');
+  assert.doesNotMatch(profileImageElement[0], /\bunoptimized\b/);
   assert.match(appHeader, /aria-label=\{menuOpen \? 'Close menu' : 'Open menu'\}/);
   assert.match(layout, /SchoolShell/);
   assert.doesNotMatch(layout, /AppHeader/);

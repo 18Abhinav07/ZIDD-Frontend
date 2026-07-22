@@ -2,8 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   authorizedSchoolActions,
+  canStartSchoolChapter,
   completedMasterclassReturnAction,
+  createSchoolPendingEvaluationDraftStore,
+  curriculumAnswerCanContinueWithoutStateRefresh,
+  curriculumMasterclassAction,
   curriculumActivityView,
+  pendingCurriculumAnswerValue,
+  reconcilePendingCurriculumEvaluation,
   releaseSchoolTutorLoad,
   placementLoadDecision,
   recapLoadDecision,
@@ -61,6 +67,12 @@ test('school navigation accepts the canonical start masterclass action', () => {
   }), '/school/session/curriculum-1');
 });
 
+test('curriculum distinguishes opening focused practice from resuming a completed visit', () => {
+  assert.equal(curriculumMasterclassAction('start_masterclass'), 'start');
+  assert.equal(curriculumMasterclassAction('resume_masterclass'), 'resume');
+  assert.equal(curriculumMasterclassAction('resume_curriculum'), null);
+});
+
 test('school navigation canonicalizes readiness aliases to the rendered placement routes', () => {
   assert.equal(resolveSchoolStateDestination({
     nextAction: 'start_placement',
@@ -93,6 +105,33 @@ test('school state action preserves the exact validated backend action and URL',
     allowedNextActions: [],
     nextActionUrl: '/school/classes/5',
   }), null);
+});
+
+test('a target-class start action may begin only the ready chapter from its class map', () => {
+  assert.equal(canStartSchoolChapter({
+    action: 'start_curriculum',
+    actionHref: '/school/classes/5',
+    classNo: 5,
+    chapterStatus: 'ready',
+  }), true);
+  assert.equal(canStartSchoolChapter({
+    action: 'start_curriculum',
+    actionHref: '/school/classes/5',
+    classNo: 5,
+    chapterStatus: 'locked',
+  }), false);
+  assert.equal(canStartSchoolChapter({
+    action: 'resume_curriculum',
+    actionHref: '/school/classes/5',
+    classNo: 5,
+    chapterStatus: 'ready',
+  }), false);
+  assert.equal(canStartSchoolChapter({
+    action: 'start_curriculum',
+    actionHref: '/school/classes/4',
+    classNo: 5,
+    chapterStatus: 'ready',
+  }), false);
 });
 
 test('school navigation fails closed for an unapproved or external destination', () => {
@@ -214,8 +253,98 @@ test('pending curriculum is passive and schedules revalidation', () => {
     kind: 'pending',
     canSubmit: false,
     pollDue: true,
-    pollAfterMs: 5_000,
+    pollAfterMs: 1_000,
   });
+});
+
+test('queued curriculum evaluation stays passive across one split-read race, then resolves or releases retry', () => {
+  const queued = { activityId: 'activity-1', stableActiveReads: 0 } as const;
+
+  assert.deepEqual(reconcilePendingCurriculumEvaluation({
+    pending: queued,
+    schoolStatus: 'awaiting_evaluation',
+    fetchedActivityId: 'activity-1',
+    fetchedSessionStatus: 'active',
+  }), {
+    kind: 'pending',
+    pending: queued,
+  });
+
+  assert.deepEqual(reconcilePendingCurriculumEvaluation({
+    pending: queued,
+    schoolStatus: 'in_progress',
+    fetchedActivityId: 'activity-1',
+    fetchedSessionStatus: 'active',
+  }), {
+    kind: 'pending',
+    pending: { activityId: 'activity-1', stableActiveReads: 1 },
+  });
+
+  assert.deepEqual(reconcilePendingCurriculumEvaluation({
+    pending: { activityId: 'activity-1', stableActiveReads: 1 },
+    schoolStatus: 'in_progress',
+    fetchedActivityId: 'activity-1',
+    fetchedSessionStatus: 'active',
+  }), { kind: 'retry' });
+
+  assert.deepEqual(reconcilePendingCurriculumEvaluation({
+    pending: queued,
+    schoolStatus: 'in_progress',
+    fetchedActivityId: 'activity-2',
+    fetchedSessionStatus: 'active',
+  }), { kind: 'resolved' });
+});
+
+test('an unconfirmed evaluator timeout retains a draft only when the original activity is still retryable', () => {
+  const pending = {
+    activityId: 'activity-1',
+    stableActiveReads: 1,
+    retryAnswer: 'I used the clue from the passage.',
+  } as const;
+  const retry = reconcilePendingCurriculumEvaluation({
+    pending,
+    schoolStatus: 'in_progress',
+    fetchedActivityId: 'activity-1',
+    fetchedSessionStatus: 'active',
+  });
+  const resolved = reconcilePendingCurriculumEvaluation({
+    pending,
+    schoolStatus: 'in_progress',
+    fetchedActivityId: 'activity-2',
+    fetchedSessionStatus: 'active',
+  });
+
+  assert.equal(pendingCurriculumAnswerValue({ pending, resolution: retry }), pending.retryAnswer);
+  assert.equal(pendingCurriculumAnswerValue({ pending, resolution: resolved }), '');
+  assert.equal(
+    pendingCurriculumAnswerValue({
+      pending,
+      resolution: {
+        kind: 'pending',
+        pending: { ...pending, stableActiveReads: 1 },
+      },
+    }),
+    null,
+  );
+});
+
+test('queued evaluator answer drafts are scoped to the exact lesson activity and can be cleared after transition', () => {
+  const values = new Map<string, string>();
+  const store = createSchoolPendingEvaluationDraftStore({
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key),
+  });
+  const first = { sessionId: 'session-1', activityId: 'activity-1' };
+  const second = { sessionId: 'session-1', activityId: 'activity-2' };
+
+  store.write({ ...first, answer: 'I used the clue from the passage.' });
+
+  assert.equal(store.read(first), 'I used the clue from the passage.');
+  assert.equal(store.read(second), null);
+
+  store.clear(first);
+  assert.equal(store.read(first), null);
 });
 
 test('curriculum completion requires explicit status and phase', () => {
@@ -259,6 +388,30 @@ test('successful curriculum mutation is committed before refresh and retained on
   assert.equal(visibleSession, nextSession);
   assert.equal(result.nextSession, nextSession);
   assert.equal(result.refreshFailed, true);
+});
+
+test('an ordinary resolved curriculum answer does not need a second state read', () => {
+  assert.equal(curriculumAnswerCanContinueWithoutStateRefresh({
+    sessionStatus: 'active',
+    activityId: 'guided-2',
+    canAnswer: true,
+  }), true);
+
+  assert.equal(curriculumAnswerCanContinueWithoutStateRefresh({
+    sessionStatus: 'paused_for_masterclass',
+    activityId: null,
+    canAnswer: false,
+  }), false);
+  assert.equal(curriculumAnswerCanContinueWithoutStateRefresh({
+    sessionStatus: 'complete',
+    activityId: null,
+    canAnswer: false,
+  }), false);
+  assert.equal(curriculumAnswerCanContinueWithoutStateRefresh({
+    sessionStatus: 'active',
+    activityId: null,
+    canAnswer: false,
+  }), false);
 });
 
 test('null primary with nonempty allowed actions fails closed', () => {

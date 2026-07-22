@@ -161,6 +161,59 @@ test('insufficient evidence continues the same session when the backend authoriz
   assert.doesNotMatch(terminal, /backend has no additional question/);
 });
 
+test('resumable placement state is rendered before fetching a terminal placement session', () => {
+  const resumeBranch = pageSource.indexOf("if (state.next_action === 'resume_placement')");
+  const placementFetch = pageSource.indexOf('const activePlacement = await getSchoolPlacement');
+
+  assert.ok(resumeBranch >= 0, 'resume state needs an explicit branch');
+  assert.ok(placementFetch >= 0, 'active placements still need a canonical fetch');
+  assert.ok(
+    resumeBranch < placementFetch,
+    'a terminal insufficient-evidence session must not be fetched as active before resume',
+  );
+});
+
+test('a queued placement answer resolves through its compact status before one canonical reconciliation', () => {
+  assert.match(pageSource, /getSchoolPlacementAnswerStatus/);
+  assert.match(pageSource, /pendingPlacementAnswerRef/);
+  assert.match(pageSource, /const pollPendingPlacementAnswer = useCallback/);
+  assert.match(pageSource, /revalidate: pollPendingPlacementAnswer/);
+  assert.doesNotMatch(
+    pageSource,
+    /revalidate: \(\) => load\(true, true\)/,
+    'a queued evaluator must not rebuild placement and global School state on every poll',
+  );
+  assert.match(pageSource, /const decision = await reconcileMutation\(status\.session\)/);
+  assert.match(pageSource, /if \(status\.status === 'retry'\)/);
+});
+
+test('a backend-authorized resume is actionable even before a terminal placement payload is loaded', () => {
+  const source = fs.readFileSync(workspacePath, 'utf8');
+  const emptyPlacement = source.match(
+    /if \(!placement\) \{([\s\S]*?)\n  if \(item\) \{/,
+  )?.[1] ?? '';
+
+  assert.match(emptyPlacement, /canResumePlacement/);
+  assert.match(emptyPlacement, /onResume/);
+  assert.match(emptyPlacement, /Continue readiness check/);
+});
+
+test('placement keeps its start or resume intent visible while the start request is pending', () => {
+  const beginStart = pageSource.indexOf('  const begin = async () => {');
+  const startRequest = pageSource.indexOf('const nextPlacement = await startSchoolPlacement();', beginStart);
+  const beginEnd = pageSource.indexOf('\n  const submit = async () => {', beginStart);
+  const begin = pageSource.slice(beginStart, beginEnd);
+  const workspace = fs.readFileSync(workspacePath, 'utf8');
+
+  assert.ok(beginStart >= 0 && startRequest > beginStart && beginEnd > startRequest);
+  assert.doesNotMatch(
+    begin.slice(0, startRequest),
+    /setCanStartPlacement\(false\)|setCanResumePlacement\(false\)/,
+    'startingRef already fences duplicate clicks; clearing the flags here turns a saved resume into a misleading refresh state',
+  );
+  assert.match(workspace, /disabled=\{starting\}/, 'the visible action remains non-interactive while its request is in flight');
+});
+
 test('placement report leads with the exact conclusion and progressively discloses evidence', () => {
   const source = fs.readFileSync(reportPath, 'utf8');
 

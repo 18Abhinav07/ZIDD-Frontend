@@ -74,9 +74,11 @@ interface SchoolActivityRendererProps {
   answer: string;
   submitting: boolean;
   openingMasterclass: boolean;
+  resumingMasterclass: boolean;
   onAnswerChange: (answer: string) => void;
   onSubmit: (answer?: string) => void;
   onOpenMasterclass?: () => void;
+  onResumeMasterclass?: () => void;
   onExit: () => void;
   onRetry: () => void;
 }
@@ -110,6 +112,35 @@ export function schoolActivityLabel(kind: SchoolActivity['kind']) {
       return 'Get extra support';
     case 'chapter_check':
       return 'Chapter challenge';
+  }
+}
+
+function chapterCheckInstruction(activity: SchoolActivity): string | null {
+  if (activity.kind !== 'chapter_check') return null;
+
+  switch (activity.interaction_type) {
+    case 'single_choice':
+    case 'multi_select':
+    case 'classification':
+      return 'Choose the answer that fits best.';
+    case 'ordering':
+      return 'Put the items in the requested order.';
+    case 'matching':
+      return 'Match each item with the best partner.';
+    case 'cloze':
+    case 'sentence_completion':
+      return 'Complete the sentence with the best answer.';
+    case 'paragraph_text':
+    case 'summary':
+    case 'reflection':
+    case 'creative_continuation':
+    case 'dialogue':
+      return 'Use your own words and include the detail the question asks for.';
+    case 'short_text':
+    case 'evidence_text':
+      return 'Write a complete answer to the question.';
+    default:
+      return activity.options?.length ? 'Choose the answer that fits best.' : null;
   }
 }
 
@@ -153,6 +184,7 @@ function ActivityCard({
   const questionHeadingRef = useRef<HTMLHeadingElement | null>(null);
   const isContinueOnlyActivity = activity.interaction_type === 'continue';
   const sourceDetails = sourceReferenceDetails(activity.source_reference);
+  const chapterInstruction = chapterCheckInstruction(activity);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => questionHeadingRef.current?.focus({ preventScroll: true }));
@@ -184,8 +216,8 @@ function ActivityCard({
           >
             {activity.prompt}
           </h1>
-          {activity.kind === 'chapter_check' ? (
-            <p className="mt-3 text-xs font-semibold text-[var(--school-accent-deep)]">Answer this chapter challenge in your own words.</p>
+          {chapterInstruction ? (
+            <p className="mt-3 text-xs font-semibold text-[var(--school-accent-deep)]">{chapterInstruction}</p>
           ) : null}
           {sourceDetails ? (
             <details data-testid="school-tutor-source-details" className="mt-7 max-w-xl border-t border-[var(--school-line)]">
@@ -224,7 +256,7 @@ function ActivityCard({
             className={`${schoolPrimaryActionClass} w-full sm:w-auto`}
           >
             <PlayIcon className="h-4 w-4" aria-hidden="true" />
-            <span>Continue</span>
+            <span>{submitting ? 'Saving your progress' : 'Continue'}</span>
           </button>
         </div>
       ) : canSubmit && activity.options?.length ? (
@@ -322,9 +354,11 @@ export function SchoolActivityRenderer({
   answer,
   submitting,
   openingMasterclass,
+  resumingMasterclass,
   onAnswerChange,
   onSubmit,
   onOpenMasterclass,
+  onResumeMasterclass,
   onExit,
   onRetry,
 }: SchoolActivityRendererProps) {
@@ -334,8 +368,20 @@ export function SchoolActivityRenderer({
     <div className="flex min-h-full flex-col">
       {session.phase === 'paused_for_masterclass' && session.active_interrupt ? (
         <section data-testid="school-tutor-masterclass-handoff" className="px-5 py-9 sm:px-8 sm:py-12">
-          <h1 className="max-w-xl break-words font-sans text-3xl font-bold leading-tight text-slate-950 sm:text-4xl">Focused practice is ready</h1>
-          {onOpenMasterclass ? (
+          <h1 className="max-w-xl break-words font-sans text-3xl font-bold leading-tight text-slate-950 sm:text-4xl">
+            {onResumeMasterclass ? 'Return to your chapter' : 'Focused practice is ready'}
+          </h1>
+          {onResumeMasterclass ? (
+            <button
+              type="button"
+              onClick={onResumeMasterclass}
+              disabled={resumingMasterclass}
+              className={`mt-8 ${schoolPrimaryActionClass}`}
+            >
+              <PlayIcon className="h-4 w-4" aria-hidden="true" />
+              {resumingMasterclass ? 'Returning to chapter' : 'Return to chapter'}
+            </button>
+          ) : onOpenMasterclass ? (
             <button
               type="button"
               onClick={onOpenMasterclass}

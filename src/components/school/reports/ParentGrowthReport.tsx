@@ -18,6 +18,8 @@ import { useResolvedSchoolCoachIdentity } from '@/components/school/shell/School
 import { placementEvaluatedClassLabel } from '@/lib/schoolPlacementReportPolicy';
 import {
   createLearnerSafeSkillLabeler,
+  describeParentReadyChapter,
+  describeParentRecapWatchlist,
   describeSavedAttempts,
   groupSkillEvidenceByLabel,
   resolveParentCurrentClassNo,
@@ -106,24 +108,63 @@ export function ParentGrowthReport({
   const completedChapters = classMap?.chapters.filter((chapter) => chapter.status === 'complete') ?? [];
   const activeMapChapter = selectParentCurrentChapter(classMap);
   const nextMapChapter = selectParentNextChapter(classMap, curriculumSession);
-  const recapModule = recapSession?.modules[recapSession.current_module_index] ?? null;
+  // A completed recap is historical evidence. It must not replace the saved
+  // target-class position just because the parent report keeps it for growth
+  // history.
+  const isActiveRecap = state.active_flow === 'recap'
+    && recapSession?.session_id === state.active_session_id;
+  const recapModule = isActiveRecap
+    ? recapSession?.modules[recapSession.current_module_index] ?? null
+    : null;
   const currentChapterTitle = activeMapChapter?.title
     ?? (curriculumSession?.status !== 'complete' ? curriculumSession?.chapter.title : null)
     ?? null;
   const currentLearningTitle = currentChapterTitle ?? recapModule?.title ?? null;
   const nextChapterTitle = !currentLearningTitle ? nextMapChapter?.title ?? null : null;
-  const currentClassNo = recapSession?.active_learning_class_no
-    ?? resolveParentCurrentClassNo({ curriculumSession, classMap, state });
+  const currentClassNo = isActiveRecap
+    ? recapSession?.active_learning_class_no
+      ?? resolveParentCurrentClassNo({ curriculumSession, classMap, state })
+    : resolveParentCurrentClassNo({ curriculumSession, classMap, state });
   const placementEvidence = placementReport?.evidence_summary;
   const placementIsConclusive = placementReport?.placement_status !== 'insufficient_evidence';
   const readinessPathComplete = placementReport?.placement_status === 'below_target'
     && state.unlock_state === 'target_unlocked';
+  const nextChapterDetail = nextChapterTitle && currentClassNo
+    ? describeParentReadyChapter({
+      readinessPathComplete,
+      hasCompletedChapter: completedChapters.length > 0,
+      currentClassNo,
+      nextChapterTitle,
+    })
+    : null;
   const confirmedSkillCount = classMap?.recent_growth.strong_count ?? strongSkillIds.length;
+  const completedFoundationCount = recapSession?.status === 'complete'
+    ? recapSession?.progress.completed_modules ?? 0
+    : 0;
+  const headlineSkillMetric = completedFoundationCount > 0
+    ? {
+      label: 'Foundations rebuilt',
+      value: completedFoundationCount,
+    }
+    : {
+      label: 'Confirmed skills',
+      value: confirmedSkillCount,
+    };
   const currentFocusCount = Math.max(
     classMap?.recent_growth.active_focus_count ?? activeGaps.length,
     supportPlan?.focus ? 1 : 0,
   );
   const improvingCount = classMap?.recent_growth.improving_count ?? improvingSkillIds.length;
+  const recapWatchlist = !supportPlan?.focus
+    && cappedEvents.length === 0
+    && activeGaps.length === 0
+    && currentClassNo !== null
+    ? describeParentRecapWatchlist({
+      readinessPathComplete,
+      currentClassNo,
+      focusCount: currentFocusCount,
+    })
+    : null;
 
   const changeTitle = latestAssessment?.passed && curriculumSession
     ? `${curriculumSession.chapter.title} chapter check passed`
@@ -139,9 +180,9 @@ export function ParentGrowthReport({
     : improvingEvidenceRows[0]
     ? `${improvingEvidenceRows[0].label} is improving across ${describeSavedAttempts(improvingEvidenceRows[0].attempts, improvingEvidenceRows[0].last_attempt_type)}.`
     : improvingSkillIds.length > 0
-      ? `Recent saved class evidence identifies ${labelSkill(improvingSkillIds[0])} as improving${improvingSkillIds.length > 1 ? `, with ${improvingSkillIds.length - 1} more improving skill${improvingSkillIds.length === 2 ? '' : 's'}` : ''}.`
+      ? `Recent saved learning evidence identifies ${labelSkill(improvingSkillIds[0])} as improving${improvingSkillIds.length > 1 ? `, with ${improvingSkillIds.length - 1} more improving skill${improvingSkillIds.length === 2 ? '' : 's'}` : ''}.`
     : improvingCount > 0
-      ? 'This count comes from recent saved class evidence.'
+      ? 'This count comes from recent saved learning evidence.'
     : completedChapters.length > 0
       ? 'Completed chapter records are included in the class map.'
       : 'The report will wait for new saved evidence before describing progress.';
@@ -154,6 +195,8 @@ export function ParentGrowthReport({
       ? activeGaps[0].skill_label || labelSkill(activeGaps[0].skill_id)
       : recapModule
         ? recapModule.focus
+      : recapWatchlist
+        ? recapWatchlist.title
       : currentFocusCount > 0
         ? `${currentFocusCount} ${currentFocusCount === 1 ? 'skill needs' : 'skills need'} continued practice`
         : 'No current support need is confirmed';
@@ -165,6 +208,8 @@ export function ParentGrowthReport({
       ? activeGaps[0].gap
       : recapModule
         ? `The readiness path paused at ${recapModule.title}. The saved module focus is ${recapModule.focus}.`
+      : recapWatchlist
+        ? recapWatchlist.detail
       : currentFocusCount > 0
         ? 'The class map records these as current focus areas without naming unsupported details.'
         : 'New chapter evidence will update this section when a support need appears.';
@@ -207,8 +252,8 @@ export function ParentGrowthReport({
                   ? recapModule
                     ? `The saved School state places the learner in a Class ${currentClassNo} readiness module, with ${recapModule.focus} as the current focus.`
                     : `The saved School state places the learner in Class ${currentClassNo}, with ${currentLearningTitle} as the current chapter.`
-                  : nextChapterTitle && currentClassNo
-                    ? `The previous chapter is complete. ${nextChapterTitle} is the next available Class ${currentClassNo} chapter.`
+                  : nextChapterDetail
+                    ? nextChapterDetail
                   : currentClassNo
                     ? `Saved current-learning evidence identifies Class ${currentClassNo}, but no current chapter is available.`
                     : 'This report will not treat the target class as active until the saved School state unlocks it.'}
@@ -228,8 +273,8 @@ export function ParentGrowthReport({
                 <dd className="mt-1 font-display text-2xl font-normal tabular-nums text-slate-950">{classMap ? completedChapters.length : '-'}</dd>
               </div>
               <div className="py-4 sm:pl-5">
-                <dt className="text-xs text-slate-500">Confirmed skills</dt>
-                <dd className="mt-1 font-display text-2xl font-normal tabular-nums text-slate-950">{classMap || curriculumSession ? confirmedSkillCount : '-'}</dd>
+                <dt className="text-xs text-slate-500">{headlineSkillMetric.label}</dt>
+                <dd className="mt-1 font-display text-2xl font-normal tabular-nums text-slate-950">{classMap || curriculumSession ? headlineSkillMetric.value : '-'}</dd>
               </div>
             </dl>
           </div>

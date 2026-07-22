@@ -74,10 +74,15 @@ const getHeaders = async (forceAuth = false) => {
   };
 };
 
-type ApiFetchOptions = RequestInit & { timeoutMs?: number | null };
+export type ApiFetchOptions = RequestInit & { timeoutMs?: number | null };
 const DEFAULT_API_TIMEOUT_MS = 20_000;
 
-export async function apiFetch(endpoint: string, options: ApiFetchOptions = {}) {
+/**
+ * Run an authenticated request and return the raw response after the shared
+ * one-time token refresh policy. Callers that own a structured non-2xx body
+ * (for example a 402 paywall) can inspect it without giving up auth recovery.
+ */
+export async function apiFetchResponse(endpoint: string, options: ApiFetchOptions = {}): Promise<Response> {
   const { timeoutMs = DEFAULT_API_TIMEOUT_MS, signal, ...fetchOptions } = options;
   const controller = new AbortController();
   const timeout = timeoutMs !== null
@@ -123,6 +128,12 @@ export async function apiFetch(endpoint: string, options: ApiFetchOptions = {}) 
     await signOut({ callbackUrl: '/auth/login' });
     throw new Error('Unauthorized');
   }
+
+  return response;
+}
+
+export async function apiFetch(endpoint: string, options: ApiFetchOptions = {}) {
+  const response = await apiFetchResponse(endpoint, options);
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));

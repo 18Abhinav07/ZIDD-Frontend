@@ -44,6 +44,10 @@
   border-bottom: 1px solid var(--school-line);
 }
 
+.utilityRowWithoutBack {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .backButton {
   display: inline-grid;
   width: 44px;
@@ -98,6 +102,10 @@
 
   .utilityRow {
     padding-inline: 24px;
+  }
+
+  .utilityRowWithoutBack {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 }
 

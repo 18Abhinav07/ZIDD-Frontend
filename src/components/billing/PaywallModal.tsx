@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Cross2Icon, LightningBoltIcon, LockClosedIcon } from '@radix-ui/react-icons';
-import { isBetaBillingDisabled } from '@/lib/publicConfig.mjs';
 import type { PaywallDetail } from '@/types';
+import { billingScopeLabel } from '@/services/billing';
+import { useAppSession } from '@/components/shared/AppSessionProvider';
 import { PacksModal } from './PacksModal';
 
 interface PaywallModalProps {
@@ -23,6 +24,8 @@ interface PaywallModalProps {
   // Caller-visible failure from the gated action. Kept in the modal so a
   // confirm timeout/error does not disappear behind the overlay.
   error?: string | null;
+  purchasesEnabled?: boolean;
+  allowConfirmation?: boolean;
 }
 
 const fmt = (n: number) => n.toLocaleString('en-IN');
@@ -34,8 +37,14 @@ export function PaywallModal({
   onBalanceChange,
   confirming = false,
   error = null,
+  purchasesEnabled,
+  allowConfirmation = true,
 }: PaywallModalProps) {
-  const billingDisabled = isBetaBillingDisabled();
+  const { balance: walletBalance, me } = useAppSession();
+  const purchasesAllowed = purchasesEnabled
+    ?? walletBalance?.purchases_enabled
+    ?? me?.purchases_enabled
+    ?? false;
   const [packsOpen, setPacksOpen] = useState(false);
   const [slowConfirming, setSlowConfirming] = useState(false);
   // Portal the overlay to <body> so `position: fixed` is viewport-relative, not
@@ -49,25 +58,19 @@ export function PaywallModal({
   const cost = paywall?.cost ?? 0;
   const balance = paywall?.balance ?? 0;
   const shortfall = insufficient ? Math.max(0, cost - balance) : 0;
-  // scope distinguishes the two archetypes: "attempt" is the recurring per-try
-  // meter (interview/GD), "feature" is the one-time module-wide unlock
-  // (communication). Only the confirm_required body carries scope. The copy must
-  // not call a recurring attempt a "module unlock".
-  const isAttempt = paywall?.error === 'confirm_required' && paywall.scope === 'attempt';
+  const itemLabel = billingScopeLabel(paywall?.scope);
   useEffect(() => {
-    if (billingDisabled || !open || !confirming) {
+    if (!open || !confirming) {
       setSlowConfirming(false);
       return;
     }
     const timeout = window.setTimeout(() => setSlowConfirming(true), 8000);
     return () => window.clearTimeout(timeout);
-  }, [billingDisabled, confirming, open]);
+  }, [confirming, open]);
 
   const handleClose = () => {
     if (!confirming) onClose();
   };
-
-  if (billingDisabled) return null;
 
   return (
     <>
@@ -101,15 +104,13 @@ export function PaywallModal({
               <div className="flex items-center gap-2 mb-1">
                 <LockClosedIcon className="text-accent w-4 h-4" />
                 <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-500">
-                  {insufficient ? 'Not enough credits' : isAttempt ? 'Confirm attempt' : 'Confirm unlock'}
+                  {insufficient ? 'Not enough credits' : `Start ${itemLabel}`}
                 </span>
               </div>
               <h2 className="text-xl font-bold tracking-tight text-slate-900 mb-4">
                 {insufficient
                   ? 'Top up to continue'
-                  : isAttempt
-                    ? 'Start this attempt'
-                    : 'Unlock this module'}
+                  : `Start this ${itemLabel}`}
               </h2>
 
               {/* Cost / balance summary */}
@@ -137,30 +138,24 @@ export function PaywallModal({
                     credit{shortfall === 1 ? '' : 's'} to continue. Grab a pack, then
                     we&apos;ll start your session.
                   </p>
-                  <button
-                    onClick={() => setPacksOpen(true)}
-                    className="w-full px-5 py-3 rounded-full bg-accent text-white text-sm font-bold tracking-wide shadow-sm hover:opacity-90 transition-all active:scale-[0.98]"
-                  >
-                    Buy credits
-                  </button>
+                  {purchasesAllowed ? (
+                    <button
+                      onClick={() => setPacksOpen(true)}
+                      className="w-full px-5 py-3 rounded-full bg-accent text-white text-sm font-bold tracking-wide shadow-sm hover:opacity-90 transition-all active:scale-[0.98]"
+                    >
+                      Buy credits
+                    </button>
+                  ) : (
+                    <p className="rounded-[1rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
+                      New credit packs are unavailable during beta. Your current balance stays visible in your wallet.
+                    </p>
+                  )}
                 </>
-              ) : (
+              ) : allowConfirmation ? (
                 <>
                   <p className="text-sm text-slate-600 leading-relaxed mb-5">
-                    {isAttempt ? (
-                      <>
-                        This attempt spends{' '}
-                        <span className="font-bold text-slate-900">{fmt(cost)} credits</span>.
-                        Practice runs are free for your first couple of tries, then each
-                        scored attempt is metered. Start?
-                      </>
-                    ) : (
-                      <>
-                        Unlocking this module spends{' '}
-                        <span className="font-bold text-slate-900">{fmt(cost)} credits</span>{' '}
-                        once — you&apos;ll keep full access to every lesson inside it. Continue?
-                      </>
-                    )}
+                    Starting this {itemLabel} spends{' '}
+                    <span className="font-bold text-slate-900">{fmt(cost)} credits</span>. Continue?
                   </p>
                   {confirming && (
                     <div className="mb-5 rounded-[1rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold leading-relaxed text-slate-600" aria-live="polite">
@@ -186,6 +181,10 @@ export function PaywallModal({
                     </button>
                   </div>
                 </>
+              ) : (
+                <p className="text-sm text-slate-600 leading-relaxed">
+                  This {itemLabel} requires {fmt(cost)} credits. Your current balance is shown above.
+                </p>
               )}
             </motion.div>
           </motion.div>
@@ -200,6 +199,7 @@ export function PaywallModal({
       <PacksModal
         open={packsOpen}
         initialPacks={insufficient ? paywall.packs : undefined}
+        purchasesEnabled={purchasesAllowed}
         onClose={() => setPacksOpen(false)}
         onPurchased={(granted) => {
           onBalanceChange?.();

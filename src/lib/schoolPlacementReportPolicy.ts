@@ -64,7 +64,8 @@ interface PlacementContinuationSession {
 
 interface PlacementLearningPath {
   unlock_state: string;
-  active_learning_class_no: number;
+  active_learning_class_no: number | null;
+  target_class_no?: number;
 }
 
 interface PlacementEvaluatedClass {
@@ -151,7 +152,11 @@ export function placementLearningPathDetail(report: PlacementLearningPath): {
   }
   return {
     label: 'Learning begins in',
-    value: `Class ${report.active_learning_class_no}`,
+    value: report.active_learning_class_no !== null
+      ? `Class ${report.active_learning_class_no}`
+      : report.target_class_no !== undefined
+        ? `Class ${report.target_class_no}`
+        : 'Your target class',
   };
 }
 

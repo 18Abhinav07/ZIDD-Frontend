@@ -66,7 +66,11 @@ function placementBasisCopy(scoringSource: string) {
 }
 
 function conclusionLabel(report: SchoolPlacementReport) {
-  if (report.placement_status === 'target_ready') return `Ready for Class ${report.target_class_no}`;
+  if (report.placement_status === 'target_ready') {
+    return report.deviation_note
+      ? `Class ${report.target_class_no} is open`
+      : `Ready for Class ${report.target_class_no}`;
+  }
   if (report.placement_status === 'below_target') return 'A foundation path comes first';
   if (report.placement_status === 'insufficient_evidence') return 'More evidence is needed';
   return 'Starting point paused';
@@ -175,6 +179,11 @@ function PlacementReportContent({
           <h2 id="placement-evidence-title" className="mt-3 break-words font-display text-[1.9rem] font-normal leading-[1.08] text-slate-950 sm:text-[2.4rem] lg:text-[2.65rem]">
             What the evidence supports
           </h2>
+          {report.deviation_note ? (
+            <p className="mt-5 border-y border-[var(--school-line)] py-4 text-sm leading-6 text-slate-600">
+              {report.deviation_note}
+            </p>
+          ) : null}
           {leadEvidence.rows.length > 0 ? (
             <ol className="mt-7 border-t border-[var(--school-line)]">
               {leadEvidence.rows.map((row, index) => (

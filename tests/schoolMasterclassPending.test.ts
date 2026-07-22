@@ -20,7 +20,7 @@ test('authoritative awaiting evaluation overrides a stale answerable masterclass
     kind: 'pending',
     canSubmit: false,
     pollDue: true,
-    pollAfterMs: 5_000,
+    pollAfterMs: 1_000,
   });
 });
 
@@ -55,6 +55,10 @@ test('masterclass page retains backend status, polls single-flight, and gates su
     'setSchoolStatus(state.status)',
     'masterclassActivityView({',
     'startSingleFlightRevalidation({',
+    'getSchoolMasterclassAnswerStatus',
+    'pendingMasterclassAnswerRef',
+    'pollPendingMasterclassAnswer',
+    'revalidate: pollPendingMasterclassAnswer',
     'load({ background: true })',
     '!activityView.canSubmit',
     'canAnswer={activityView.canSubmit}',
@@ -65,13 +69,47 @@ test('masterclass page retains backend status, polls single-flight, and gates su
     'recoverSchoolAnswerState({',
     'refreshState: () => getSchoolState({ force: true })',
     "recovery.kind === 'pending'",
+    "recovery.kind === 'pending_unconfirmed'",
+    "setSchoolStatus('awaiting_evaluation')",
     'setSchoolStatus(recovery.state.status)',
   ]) {
     assert.ok(page.includes(contract), `masterclass pending contract missing ${contract}`);
   }
 
   assert.match(page, /resolveSchoolStateDestination\([\s\S]*?\?\? resolveSchoolPassiveStateDestination\(/);
-  assert.match(page, /recoverSchoolAnswerState\(\{[\s\S]*?refreshState: \(\) => getSchoolState\(\{ force: true \}\)[\s\S]*?recovery\.kind === 'pending'[\s\S]*?setError\(''\)[\s\S]*?load\(\{ background: true }\)/);
+  assert.match(page, /recoverSchoolAnswerState\(\{[\s\S]*?refreshState: \(\) => getSchoolState\(\{ force: true \}\)[\s\S]*?recovery\.kind === 'pending'[\s\S]*?pendingMasterclassAnswerRef\.current[\s\S]*?setError\(''\)[\s\S]*?return;/);
+});
+
+test('masterclass initial loads refresh backend route authority before rendering a child session', async () => {
+  const page = await readFile('src/app/school/masterclass/[sessionId]/page.tsx', 'utf8');
+
+  assert.match(
+    page,
+    /if \(!background\) \{\s*state = await getSchoolState\(\{ force: true \}\);[\s\S]*?if \(destination !== `\/school\/masterclass\/\$\{sessionId\}`\) \{[\s\S]*?router\.replace\(destination\);[\s\S]*?return;[\s\S]*?const nextSession = prefetchedSession \?\? await getSchoolMasterclass\(sessionId\);/,
+  );
+});
+
+test('pending masterclass polling uses compact answer status and reuses the verified linked chapter', async () => {
+  const page = await readFile('src/app/school/masterclass/[sessionId]/page.tsx', 'utf8');
+
+  assert.match(
+    page,
+    /const pollPendingMasterclassAnswer = useCallback/,
+  );
+  assert.match(
+    page,
+    /getSchoolMasterclassAnswerStatus\(/,
+  );
+  assert.match(
+    page,
+    /const linkedCurriculum = nextSession\.linked_curriculum \?\? curriculumRef\.current;/,
+  );
+  assert.match(
+    page,
+    /setSchoolStatus\(nextSession\.status === 'active' \? 'in_progress' : null\);/,
+  );
+  assert.match(page, /revalidate: pollPendingMasterclassAnswer/);
+  assert.doesNotMatch(page, /revalidate: \(\) => load\(\{ background: true \}\)/);
 });
 
 test('masterclass heading focus preserves the learner viewport position', async () => {

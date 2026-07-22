@@ -7,7 +7,6 @@ import { Cross2Icon, LightningBoltIcon } from '@radix-ui/react-icons';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import type { PackInfo } from '@/types';
-import { isBetaBillingDisabled } from '@/lib/publicConfig.mjs';
 import { getPacks, createOrder } from '@/services/billing';
 import { loadRazorpay, openCheckout } from '@/lib/razorpay';
 
@@ -26,6 +25,7 @@ interface PacksModalProps {
   // Optional pre-fetched packs (e.g. from a 402 insufficient_credits body) so
   // we skip a redundant getPacks() round-trip.
   initialPacks?: PackInfo[];
+  purchasesEnabled?: boolean;
 }
 
 const formatPrice = (paise: number) =>
@@ -36,8 +36,7 @@ const formatPrice = (paise: number) =>
 const perCreditPaise = (p: PackInfo) => (p.credits > 0 ? p.price_paise / p.credits : Infinity);
 const formatPerCredit = (p: PackInfo) => `₹${(perCreditPaise(p) / 100).toFixed(2)}/credit`;
 
-export function PacksModal({ open, onClose, onPurchased, initialPacks }: PacksModalProps) {
-  const billingDisabled = isBetaBillingDisabled();
+export function PacksModal({ open, onClose, onPurchased, initialPacks, purchasesEnabled = true }: PacksModalProps) {
   const [packs, setPacks] = useState<PackInfo[]>(initialPacks ?? []);
   const [loading, setLoading] = useState(!initialPacks);
   const [error, setError] = useState('');
@@ -51,7 +50,7 @@ export function PacksModal({ open, onClose, onPurchased, initialPacks }: PacksMo
   useEffect(() => setMounted(true), []);
 
   useEffect(() => {
-    if (billingDisabled || !open) return;
+    if (!purchasesEnabled || !open) return;
     if (initialPacks && initialPacks.length > 0) {
       setPacks(initialPacks);
       setLoading(false);
@@ -72,10 +71,10 @@ export function PacksModal({ open, onClose, onPurchased, initialPacks }: PacksMo
     return () => {
       cancelled = true;
     };
-  }, [billingDisabled, open, initialPacks]);
+  }, [purchasesEnabled, open, initialPacks]);
 
   const handleBuy = async (pack: PackInfo) => {
-    if (billingDisabled) return;
+    if (!purchasesEnabled) return;
     setError('');
     setBuyingId(pack.id);
     try {
@@ -115,7 +114,7 @@ export function PacksModal({ open, onClose, onPurchased, initialPacks }: PacksMo
       ? packs.reduce((best, p) => (perCreditPaise(p) < perCreditPaise(best) ? p : best), packs[0]).id
       : null;
 
-  if (billingDisabled) return null;
+  if (!purchasesEnabled) return null;
   if (!mounted) return null;
 
   return createPortal(

@@ -71,34 +71,6 @@ function createUpstreamAbort(requestSignal: AbortSignal, timeoutMs: number | nul
   return { signal: controller.signal, abort, cleanup };
 }
 
-function forwardUpstreamBody(
-  body: ReadableStream<Uint8Array>,
-  upstreamAbort: UpstreamAbort,
-): ReadableStream<Uint8Array> {
-  const reader = body.getReader();
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {
-        const chunk = await reader.read();
-        if (chunk.done) {
-          upstreamAbort.cleanup();
-          controller.close();
-          return;
-        }
-        controller.enqueue(chunk.value);
-      } catch (error) {
-        upstreamAbort.cleanup();
-        controller.error(error);
-      }
-    },
-    async cancel(reason) {
-      upstreamAbort.abort(reason);
-      await reader.cancel(reason).catch(() => undefined);
-      upstreamAbort.cleanup();
-    },
-  });
-}
-
 function backendUrlFor(request: NextRequest, path: string[]): string {
   if (!BACKEND_URL) {
     throw new Error('BACKEND_INTERNAL_URL is required for School proxying');
@@ -145,10 +117,11 @@ async function proxySchool(request: NextRequest, context: RouteContext): Promise
       cache: 'no-store',
       signal: upstreamAbort.signal,
     });
-    const responseBody = upstream.body
-      ? forwardUpstreamBody(upstream.body, upstreamAbort)
-      : null;
-    if (!upstream.body) upstreamAbort.cleanup();
+    // School responses are bounded JSON documents. Buffer them before handing
+    // them back to Next so a completed FastAPI response cannot remain open in
+    // the browser proxy until its deadline expires.
+    const responseBody = method === 'HEAD' ? null : await upstream.arrayBuffer();
+    upstreamAbort.cleanup();
     return new Response(responseBody, {
       status: upstream.status,
       statusText: upstream.statusText,

@@ -5,6 +5,9 @@ import { useParams, useRouter } from 'next/navigation';
 import { ExclamationTriangleIcon, ReloadIcon } from '@radix-ui/react-icons';
 import { SchoolMapSkeleton } from '@/components/learning/LearningSkeletons';
 import { SchoolChapterMap } from '@/components/school/catalog/SchoolChapterMap';
+import { PaywallModal } from '@/components/billing/PaywallModal';
+import { useAppSession } from '@/components/shared/AppSessionProvider';
+import type { PaywallDetail } from '@/types';
 import {
   SchoolPageHeading,
   schoolPrimaryActionClass,
@@ -92,10 +95,12 @@ async function loadSchoolClass(classNo: number): Promise<SchoolClassLoadResult> 
 export default function SchoolClassPage() {
   const params = useParams<{ classNo: string }>();
   const router = useRouter();
+  const { balance, loadBalance } = useAppSession();
   const classNo = Number(params.classNo);
   const [snapshot, setSnapshot] = useState<SchoolClassSnapshot | null>(null);
   const [error, setError] = useState('');
   const [starting, setStarting] = useState(false);
+  const [paywall, setPaywall] = useState<PaywallDetail | null>(null);
   const clientStartIdRef = useRef<string | null>(null);
   if (!clientStartIdRef.current) clientStartIdRef.current = crypto.randomUUID();
   const mountedRef = useRef(false);
@@ -164,7 +169,7 @@ export default function SchoolClassPage() {
     };
   }, [load]);
 
-  const startAuthorizedChapter = async () => {
+  const startAuthorizedChapter = async (confirm = false) => {
     const chapterId = snapshot?.schoolClass.active_chapter_id;
     if (
       !snapshot
@@ -175,7 +180,12 @@ export default function SchoolClassPage() {
     setStarting(true);
     setError('');
     try {
-      await startSchoolCurriculum(chapterId, clientStartIdRef.current!);
+      const result = await startSchoolCurriculum(chapterId, clientStartIdRef.current!, { confirm });
+      if (!result.ok) {
+        setPaywall(result.paywall);
+        return;
+      }
+      void loadBalance(true).catch(() => null);
       const state = await getSchoolState({ force: true });
       const destination = resolveSchoolStateDestination({
         nextAction: state.next_action,
@@ -252,6 +262,13 @@ export default function SchoolClassPage() {
           </section>
         </main>
       ) : <SchoolMapSkeleton />}
+      <PaywallModal
+        paywall={paywall}
+        onClose={() => setPaywall(null)}
+        onConfirm={() => startAuthorizedChapter(true)}
+        purchasesEnabled={balance?.purchases_enabled}
+        onBalanceChange={() => void loadBalance(true).catch(() => null)}
+      />
     </div>
   );
 }

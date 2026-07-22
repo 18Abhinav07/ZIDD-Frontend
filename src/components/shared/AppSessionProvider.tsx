@@ -26,7 +26,6 @@ import {
 } from '@/services/billing';
 import { invalidateProgressionCache } from '@/services/progression';
 import { invalidateSchoolRebuildCache } from '@/services/schoolRebuild';
-import { isBetaBillingDisabled } from '@/lib/publicConfig.mjs';
 import type { CreditsBalance } from '@/types';
 
 interface AppSessionContextValue {
@@ -47,7 +46,6 @@ let lastObservedAccessToken: string | null | undefined;
 
 export function AppSessionProvider({ children }: { children: ReactNode }) {
   const { data: authSession, status } = useSession();
-  const billingDisabled = isBetaBillingDisabled();
   const [me, setMe] = useState<MeResponse | null>(null);
   const [activity, setActivity] = useState<MeActivity | null>(null);
   const [balance, setBalance] = useState<CreditsBalance | null>(null);
@@ -101,15 +99,6 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const loadBalance = useCallback(async (force = false) => {
-    if (billingDisabled) {
-      const betaBalance: CreditsBalance = {
-        user_id: authSession?.user?.email ?? 'free-beta',
-        credits: 0,
-        demo_unlimited: true,
-      };
-      setBalance(betaBalance);
-      return betaBalance;
-    }
     if (force) invalidateBalanceCache();
     setLoadingBalance(true);
     try {
@@ -119,7 +108,7 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoadingBalance(false);
     }
-  }, [authSession?.user?.email, billingDisabled]);
+  }, []);
 
   useEffect(() => {
     const accessToken = authSession?.accessToken ?? null;
@@ -135,9 +124,7 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
         }
       }
       void loadMe(accountChanged && !firstObservation).catch(() => null);
-      if (!billingDisabled) {
-        void loadBalance(accountChanged && !firstObservation).catch(() => null);
-      }
+      void loadBalance(accountChanged && !firstObservation).catch(() => null);
       return;
     }
     if (status === 'unauthenticated') {
@@ -147,7 +134,6 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
     }
   }, [
     authSession?.accessToken,
-    billingDisabled,
     clearAccountScopedCaches,
     clearAppSession,
     clearLocalState,

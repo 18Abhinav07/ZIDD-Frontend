@@ -100,6 +100,11 @@ test('masterclass shows linked lesson context and preserves resume and abandon m
     assert.ok(masterclass.includes(contract), `masterclass contract missing ${contract}`);
   }
 
+  assert.match(
+    masterclass,
+    /submitting[\s\S]*?\? 'Checking your answer\. Your response is being saved\.'[\s\S]*?: activityView\.kind === 'pending'[\s\S]*?\? 'School is reviewing your answer\. The next step will appear here when it is ready\.'/,
+  );
+
   assert.ok(!masterclass.includes('Loader2'));
   assert.ok(!masterclass.includes('animate-spin'));
   assert.ok(!masterclass.includes('Chapter detour'));

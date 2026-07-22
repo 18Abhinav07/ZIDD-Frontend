@@ -1,4 +1,6 @@
 import { apiFetch, getAuthCacheKey } from '@/services/api';
+import { invalidateBalanceCache, postJsonWithPaywall } from '@/services/billing';
+import type { PaywallDetail } from '@/types';
 import {
   SchoolStateRequestCache,
   type SchoolLoadScope,
@@ -12,10 +14,10 @@ import type {
   SchoolTeachingLanguage,
 } from '@/lib/schoolOnboardingPolicy';
 import {
-  SCHOOL_CLOUD_EVALUATOR_TIMEOUT_MS,
   SCHOOL_CONTROL_TIMEOUT_MS,
   SCHOOL_READ_TIMEOUT_MS,
   isSchoolEvaluatorPendingResponse,
+  recoverSchoolCurriculumStart,
 } from '@/lib/schoolRequestPolicy.mjs';
 
 export type TeachingLanguage = SchoolTeachingLanguage;
@@ -173,6 +175,62 @@ export interface SchoolEvaluatorPendingResponse {
 
 export type SchoolEvaluatorAnswerResult<Resolved> = Resolved | SchoolEvaluatorPendingResponse;
 
+export type SchoolCurriculumAnswerStatus =
+  | {
+    status: 'awaiting_evaluation';
+    session_id: string;
+    activity_id: string;
+  }
+  | {
+    status: 'completed';
+    session: SchoolCurriculumSession;
+  }
+  | {
+    status: 'retry';
+  };
+
+export type SchoolPlacementAnswerStatus =
+  | {
+    status: 'awaiting_evaluation';
+    session_id: string;
+    activity_id: string;
+  }
+  | {
+    status: 'completed';
+    session: SchoolPlacementResponse;
+  }
+  | {
+    status: 'retry';
+  };
+
+export type SchoolRecapAnswerStatus =
+  | {
+    status: 'awaiting_evaluation';
+    session_id: string;
+    activity_id: string;
+  }
+  | {
+    status: 'completed';
+    session: SchoolRecapPath;
+  }
+  | {
+    status: 'retry';
+  };
+
+export type SchoolMasterclassAnswerStatus =
+  | {
+    status: 'awaiting_evaluation';
+    session_id: string;
+    activity_id: string;
+  }
+  | {
+    status: 'completed';
+    session: SchoolMasterclassSession;
+  }
+  | {
+    status: 'retry';
+  };
+
 export function isSchoolEvaluatorPendingAnswer(
   result: unknown,
 ): result is SchoolEvaluatorPendingResponse {
@@ -224,8 +282,8 @@ export interface SchoolPlacementReport extends SchoolCoachIdentity {
   placement_status: 'below_target' | 'target_ready' | 'insufficient_evidence' | 'abandoned';
   subject_id: string;
   target_class_no: number;
-  evaluated_class_no: number;
-  active_learning_class_no: number;
+  evaluated_class_no: number | null;
+  active_learning_class_no: number | null;
   unlock_state: 'locked' | 'recap_required' | 'target_unlocked';
   blocking_skills: Array<{
     label: string;
@@ -240,6 +298,7 @@ export interface SchoolPlacementReport extends SchoolCoachIdentity {
     source_class_no: number;
     status: string;
   }>;
+  deviation_note: string;
   evidence_summary: {
     total_attempts: number;
     correct_attempts: number;
@@ -364,6 +423,11 @@ export interface SchoolCurriculumLanding {
     title: string;
     status: 'complete' | 'ready' | 'locked_next' | 'ready_next_slice';
   }>;
+}
+
+export interface SchoolCurriculumWorkspace {
+  state: SchoolState;
+  session: SchoolCurriculumSession;
 }
 
 export interface SchoolSkillEvidenceSummary {
@@ -514,6 +578,9 @@ export interface SchoolMasterclassSession extends SchoolCoachIdentity {
   flow_type: 'masterclass';
   status: 'active' | 'complete' | 'abandoned';
   linked_curriculum_session_id: string;
+  // Returned on masterclass hydration when the backend has already loaded the
+  // public parent session to verify the child lineage.
+  linked_curriculum?: SchoolCurriculumSession | null;
   interrupt_id: string;
   level_id: string;
   focus: string;
@@ -646,13 +713,6 @@ const schoolControlFetch = (endpoint: string, options: SchoolApiFetchOptions = {
     : SCHOOL_CONTROL_TIMEOUT_MS,
 });
 
-const schoolEvaluatorFetch = (endpoint: string, options: SchoolApiFetchOptions = {}) => apiFetch(endpoint, {
-  ...options,
-  timeoutMs: SCHOOL_QWEN_REQUESTS_UNBOUNDED
-    ? null
-    : SCHOOL_CLOUD_EVALUATOR_TIMEOUT_MS,
-});
-
 export function invalidateSchoolRebuildCache() {
   stateRequestCache.invalidate();
 }
@@ -715,12 +775,21 @@ export async function getSchoolPlacement(sessionId: string): Promise<SchoolPlace
   return schoolReadFetch(`/school/placement/${sessionId}`);
 }
 
+export async function getSchoolPlacementAnswerStatus(
+  sessionId: string,
+  activityId: string,
+): Promise<SchoolPlacementAnswerStatus> {
+  return schoolReadFetch(
+    `/school/placement/${sessionId}/answers/${encodeURIComponent(activityId)}/status`,
+  );
+}
+
 export async function answerSchoolPlacement(
   sessionId: string,
   itemId: string,
   answer: string,
 ): Promise<SchoolEvaluatorAnswerResult<SchoolPlacementResponse>> {
-  const result = await schoolEvaluatorFetch(`/school/placement/${sessionId}/answer`, {
+  const result = await schoolControlFetch(`/school/placement/${sessionId}/answer`, {
     method: 'POST',
     body: JSON.stringify({ item_id: itemId, answer }),
   });
@@ -752,6 +821,15 @@ export async function getActiveSchoolRecap(): Promise<SchoolRecapPath> {
   return schoolReadFetch('/school/recap');
 }
 
+export async function getSchoolRecapAnswerStatus(
+  sessionId: string,
+  activityId: string,
+): Promise<SchoolRecapAnswerStatus> {
+  return schoolReadFetch(
+    `/school/recap/${sessionId}/answers/${encodeURIComponent(activityId)}/status`,
+  );
+}
+
 export async function getSchoolSupportPlan(sessionId: string): Promise<SchoolSupportPlan> {
   return schoolReadFetch(`/school/support/${sessionId}`);
 }
@@ -761,7 +839,7 @@ export async function answerSchoolRecap(
   activityId: string,
   answer: string,
 ): Promise<SchoolEvaluatorAnswerResult<SchoolRecapPath>> {
-  const result = await schoolEvaluatorFetch(`/school/recap/${sessionId}/answer`, {
+  const result = await schoolControlFetch(`/school/recap/${sessionId}/answer`, {
     method: 'POST',
     body: JSON.stringify({ activity_id: activityId, answer }),
   });
@@ -789,20 +867,85 @@ export async function getSchoolChapterMap(
   return schoolReadFetch(`/school/catalog/${subjectId}/classes/${classNo}/chapters/${chapterId}`);
 }
 
+export type SchoolCurriculumStartResult =
+  | { ok: true; data: SchoolCurriculumSession }
+  | { ok: false; paywall: PaywallDetail };
+
+function finalizeSchoolCurriculumStart(
+  result: SchoolCurriculumStartResult,
+): SchoolCurriculumStartResult {
+  if (!result.ok) return result;
+  invalidateSchoolRebuildCache();
+  invalidateBalanceCache();
+  return result;
+}
+
+async function requestSchoolCurriculumStart(
+  chapterId: string,
+  clientStartId: string,
+  options: { confirm?: boolean },
+): Promise<SchoolCurriculumStartResult> {
+  const result = await postJsonWithPaywall<SchoolCurriculumSession>('/school/curriculum/start', {
+    chapter_id: chapterId,
+    client_start_id: clientStartId,
+    ...(options.confirm ? { confirm: true } : {}),
+  }, { timeoutMs: SCHOOL_CONTROL_TIMEOUT_MS });
+  return result.ok ? { ok: true, data: result.data } : result;
+}
+
 export async function startSchoolCurriculum(
   chapterId: string,
   clientStartId: string,
-): Promise<SchoolCurriculumSession> {
-  const result = await schoolControlFetch('/school/curriculum/start', {
-    method: 'POST',
-    body: JSON.stringify({ chapter_id: chapterId, client_start_id: clientStartId }),
-  });
-  invalidateSchoolRebuildCache();
-  return result;
+  options: { confirm?: boolean } = {},
+): Promise<SchoolCurriculumStartResult> {
+  const requestStart = () => requestSchoolCurriculumStart(chapterId, clientStartId, options);
+  try {
+    return finalizeSchoolCurriculumStart(await requestStart());
+  } catch (error: unknown) {
+    const recovery = await recoverSchoolCurriculumStart({
+      error,
+      retryStart: requestStart,
+    });
+    if (recovery.kind === 'recovered') {
+      return finalizeSchoolCurriculumStart(recovery.result as SchoolCurriculumStartResult);
+    }
+    if (recovery.kind !== 'pending') throw error;
+
+    // The retry window can expire while the server is still completing the
+    // original durable request. An active session is authoritative only when
+    // it is for this requested chapter; otherwise preserve the real failure.
+    try {
+      const state = await getSchoolState({ force: true });
+      if (state.active_flow !== 'curriculum' || !state.active_session_id) {
+        throw recovery.error;
+      }
+      const activeSession = await getSchoolCurriculumSession(state.active_session_id);
+      if (activeSession.chapter.chapter_id !== chapterId) throw recovery.error;
+      return finalizeSchoolCurriculumStart({ ok: true, data: activeSession });
+    } catch (stateRecoveryError) {
+      if (stateRecoveryError === recovery.error) throw stateRecoveryError;
+      throw recovery.error;
+    }
+  }
 }
 
 export async function getSchoolCurriculumSession(sessionId: string): Promise<SchoolCurriculumSession> {
   return schoolReadFetch(`/school/curriculum/${sessionId}`);
+}
+
+export async function getSchoolCurriculumWorkspace(
+  sessionId: string,
+): Promise<SchoolCurriculumWorkspace> {
+  return schoolReadFetch(`/school/curriculum/${sessionId}/workspace`);
+}
+
+export async function getSchoolCurriculumAnswerStatus(
+  sessionId: string,
+  activityId: string,
+): Promise<SchoolCurriculumAnswerStatus> {
+  return schoolReadFetch(
+    `/school/curriculum/${sessionId}/answers/${encodeURIComponent(activityId)}/status`,
+  );
 }
 
 export async function answerSchoolCurriculum(
@@ -810,7 +953,7 @@ export async function answerSchoolCurriculum(
   activityId: string,
   answer: string,
 ): Promise<SchoolEvaluatorAnswerResult<SchoolCurriculumSession>> {
-  const result = await schoolEvaluatorFetch(`/school/curriculum/${sessionId}/answer`, {
+  const result = await schoolControlFetch(`/school/curriculum/${sessionId}/answer`, {
     method: 'POST',
     body: JSON.stringify({ activity_id: activityId, answer }),
   });
@@ -835,12 +978,21 @@ export async function getSchoolMasterclass(
   return schoolReadFetch(`/school/masterclass/${sessionId}`);
 }
 
+export async function getSchoolMasterclassAnswerStatus(
+  sessionId: string,
+  activityId: string,
+): Promise<SchoolMasterclassAnswerStatus> {
+  return schoolReadFetch(
+    `/school/masterclass/${sessionId}/answers/${encodeURIComponent(activityId)}/status`,
+  );
+}
+
 export async function answerSchoolMasterclass(
   sessionId: string,
   activityId: string,
   answer: string,
 ): Promise<SchoolEvaluatorAnswerResult<SchoolMasterclassSession>> {
-  const result = await schoolEvaluatorFetch(`/school/masterclass/${sessionId}/answer`, {
+  const result = await schoolControlFetch(`/school/masterclass/${sessionId}/answer`, {
     method: 'POST',
     body: JSON.stringify({ activity_id: activityId, answer }),
   });

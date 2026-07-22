@@ -1,14 +1,14 @@
 .surface {
-  --school-canvas: #fbfaf7;
-  --school-paper: #fffefb;
-  --school-surface: #fffefb;
-  --school-surface-soft: #f7f7f3;
-  --school-ink: #121a2d;
-  --school-navy: #10182d;
-  --school-muted: #5f6d83;
-  --school-faint: #657187;
-  --school-line: #e3e3de;
-  --school-line-strong: #d4d6d5;
+  --school-canvas: #f6f8fb;
+  --school-paper: #fcfdfe;
+  --school-surface: #fcfdfe;
+  --school-surface-soft: #f1f5f9;
+  --school-ink: #1e293b;
+  --school-navy: #111827;
+  --school-muted: #64748b;
+  --school-faint: #94a3b8;
+  --school-line: #dde3ea;
+  --school-line-strong: #cbd5e1;
   --school-accent: #555bd8;
   --school-accent-dark: #4248bb;
   --school-accent-deep: #4248bb;

@@ -27,7 +27,7 @@ test('placement report explains the backend-owned placement decision without raw
     'Target class',
     'Starting point evaluated',
     'Saved answers used',
-    'Skills to strengthen',
+    'Foundation skills to strengthen',
     'Skills to keep watching',
     'stage_counts',
     'scoring_source',

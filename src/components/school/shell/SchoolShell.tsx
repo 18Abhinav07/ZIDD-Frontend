@@ -54,7 +54,7 @@ export function SchoolShell({ children, coach_avatar_id, coach_palette_id }: Sch
       <AppHeader
         title="School Prep"
         appearance="school"
-        showCredits={false}
+        showCredits
         navigation={navigation}
         brandHref="/school"
         position="sticky"

@@ -5,7 +5,7 @@ import { LightningBoltIcon } from '@radix-ui/react-icons';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { useAppSession } from '@/components/shared/AppSessionProvider';
-import { isBetaBillingDisabled } from '@/lib/publicConfig.mjs';
+import { formatBetaExpiry } from '@/services/billing';
 import { PacksModal } from './PacksModal';
 
 function cn(...inputs: ClassValue[]) {
@@ -27,23 +27,20 @@ interface CreditsBadgeProps {
 export const CreditsBadge = forwardRef<CreditsBadgeHandle, CreditsBadgeProps>(
   function CreditsBadge({ className, refreshOnMount = false }, ref) {
     const { balance, loadingBalance, loadBalance } = useAppSession();
-    const billingDisabled = isBetaBillingDisabled();
     const [packsOpen, setPacksOpen] = useState(false);
     const [loadFailed, setLoadFailed] = useState(false);
     const hasLoadedOnMountRef = useRef(false);
 
     const refresh = useCallback(() => {
-      if (billingDisabled) return;
       setLoadFailed(false);
       loadBalance(true)
         .then(() => setLoadFailed(false))
         .catch(() => {
           setLoadFailed(true);
         });
-    }, [billingDisabled, loadBalance]);
+    }, [loadBalance]);
 
     useEffect(() => {
-      if (billingDisabled) return;
       const shouldForceRefresh = refreshOnMount && !hasLoadedOnMountRef.current;
       if (shouldForceRefresh) {
         hasLoadedOnMountRef.current = true;
@@ -56,14 +53,14 @@ export const CreditsBadge = forwardRef<CreditsBadgeHandle, CreditsBadgeProps>(
         .catch(() => {
           setLoadFailed(true);
         });
-    }, [balance, billingDisabled, loadBalance, refreshOnMount]);
+    }, [balance, loadBalance, refreshOnMount]);
 
     useImperativeHandle(ref, () => ({ refresh }), [refresh]);
 
-    if (billingDisabled) return null;
-
     const unlimited = balance?.demo_unlimited === true;
     const label = unlimited ? '∞' : balance ? String(balance.credits) : '';
+    const purchasesEnabled = balance?.purchases_enabled === true;
+    const betaExpiry = formatBetaExpiry(balance?.beta_expires_at);
     const unavailable = loadFailed && !balance;
     const loading = loadingBalance && !balance && !unavailable;
     return (
@@ -71,22 +68,29 @@ export const CreditsBadge = forwardRef<CreditsBadgeHandle, CreditsBadgeProps>(
         <button
           aria-label={unavailable
             ? 'Credit balance unavailable, retry'
-            : unlimited
-              ? 'Unlimited credits, open credit packs'
-              : `${label} credits, open credit packs`}
+            : purchasesEnabled
+              ? `${label} credits, open credit packs`
+              : `${label} credits${betaExpiry ? `, beta access ends ${betaExpiry}` : ''}, purchases unavailable`}
           onClick={() => {
             if (unavailable) {
               refresh();
               return;
             }
-            setPacksOpen(true);
+            if (purchasesEnabled) setPacksOpen(true);
           }}
+          disabled={!unavailable && !purchasesEnabled}
           className={cn(
             'px-2.5 py-2 sm:px-4 rounded-full bg-white/60 backdrop-blur border shadow-sm flex items-center gap-1.5 sm:gap-2 text-slate-800 transition-all hover:bg-white active:scale-95',
             unavailable ? 'border-amber-300/70' : 'border-slate-200/50',
             className
           )}
-          title={unavailable ? 'Credit balance unavailable — retry' : unlimited ? 'Unlimited credits (demo)' : 'Credit balance'}
+          title={unavailable
+            ? 'Credit balance unavailable — retry'
+            : betaExpiry
+              ? `Beta access ends ${betaExpiry}`
+              : purchasesEnabled
+                ? 'Credit balance'
+                : 'Purchases are unavailable'}
         >
           <LightningBoltIcon className="text-accent w-4 h-4" />
           {loading ? (
@@ -101,14 +105,21 @@ export const CreditsBadge = forwardRef<CreditsBadgeHandle, CreditsBadgeProps>(
               credits
             </span>
           )}
+          {betaExpiry && (
+            <span className="hidden text-[10px] font-semibold text-slate-500 sm:inline">
+              Beta until {betaExpiry}
+            </span>
+          )}
           <span className="sr-only">
             {unavailable
               ? ', credit balance unavailable, retry'
               : loading
-                ? ', loading credit balance, open credit packs'
+                ? ', loading credit balance'
                 : unlimited
-                  ? ', unlimited credits, open credit packs'
-                  : ', open credit packs'}
+                  ? ', unlimited credits'
+                  : purchasesEnabled
+                    ? ', open credit packs'
+                    : ', purchases unavailable'}
           </span>
         </button>
 
@@ -116,6 +127,7 @@ export const CreditsBadge = forwardRef<CreditsBadgeHandle, CreditsBadgeProps>(
           open={packsOpen}
           onClose={() => setPacksOpen(false)}
           onPurchased={refresh}
+          purchasesEnabled={purchasesEnabled}
         />
       </>
     );
