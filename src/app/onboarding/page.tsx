@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
   ArrowRight,
+  ArrowLeft,
   BriefcaseBusiness,
   Check,
   GraduationCap,
@@ -20,7 +21,7 @@ import {
   saveOnboardingDraft,
 } from '@/services/onboarding';
 import { COACH_AVATARS, getRandomAvatar, type AvatarData } from '@/lib/avatars';
-import { getAvatarDisplayPath, getAvatarScaleClass } from '@/lib/avatarRegistry';
+import { getAvatarDisplayPath } from '@/lib/avatarRegistry';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 
 function cn(...inputs: ClassValue[]) {
@@ -39,6 +40,34 @@ const GD_TOPICS = [
   { id: 'digital-payments', label: 'Digital payments' },
 ];
 
+const GUIDE_COPY: Record<Step, { eyebrow: string; title: string; body: string }> = {
+  welcome: {
+    eyebrow: 'Meet your coach',
+    title: 'A path built around you.',
+    body: 'One name is enough to begin.',
+  },
+  motive: {
+    eyebrow: 'Choose a direction',
+    title: 'Start with what matters now.',
+    body: 'Your other path stays available from Profile.',
+  },
+  school: {
+    eyebrow: 'School journey',
+    title: 'Begin at the right level.',
+    body: 'These details prepare the readiness check that comes next.',
+  },
+  career: {
+    eyebrow: 'Career journey',
+    title: 'Bring practice closer to real life.',
+    body: 'Your goals help us choose situations worth rehearsing.',
+  },
+};
+
+const FIELD_CLASS = 'mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-base text-slate-950 outline-none transition-colors placeholder:text-slate-300 hover:border-slate-300 focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-50';
+const FIELD_LABEL_CLASS = 'text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500';
+const PRIMARY_BUTTON_CLASS = 'inline-flex min-h-[52px] items-center justify-center gap-2 rounded-xl bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-40';
+const SECONDARY_BUTTON_CLASS = 'inline-flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3.5 text-sm font-semibold text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-indigo-600';
+
 function asString(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
@@ -52,6 +81,69 @@ function splitList(value: string): string[] {
     .split(/\n|,/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function OnboardingGuidePanel({ avatar, step }: { avatar: AvatarData; step: Step }) {
+  const copy = GUIDE_COPY[step];
+
+  return (
+    <aside
+      data-testid="onboarding-guide-panel"
+      className="grid min-h-[390px] grid-rows-[minmax(260px,1fr)_auto] bg-slate-950 lg:min-h-full"
+    >
+      <div
+        data-testid="onboarding-guide-image"
+        className="relative isolate min-h-[260px] overflow-hidden"
+        style={{ backgroundColor: avatar.bg }}
+      >
+        <motion.div
+          key={avatar.id}
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+          className="pointer-events-none absolute inset-0"
+        >
+          <Image
+            src={getAvatarDisplayPath(avatar.url)}
+            alt="A Zidd learning coach"
+            fill
+            sizes="(min-width: 1024px) 380px, 100vw"
+            className="object-contain object-center p-4 sm:p-5 lg:p-6"
+            priority
+          />
+        </motion.div>
+      </div>
+
+      <div data-testid="onboarding-guide-caption" className="border-t border-white/10 bg-slate-950 px-7 py-7 text-white sm:px-10 sm:py-8">
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/55">{copy.eyebrow}</p>
+        <h2 className="mt-3 max-w-[18rem] font-display text-[2rem] font-normal leading-[1.02] text-white sm:text-[2.35rem]">
+          {copy.title}
+        </h2>
+        <p className="mt-3 max-w-[20rem] text-sm font-medium leading-relaxed text-white/65">{copy.body}</p>
+      </div>
+    </aside>
+  );
+}
+
+function OnboardingStepFrame({
+  avatar,
+  step,
+  children,
+}: {
+  avatar: AvatarData;
+  step: Step;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      data-testid="onboarding-step-frame"
+      data-step={step}
+      className="grid min-h-[650px] lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]"
+    >
+      <OnboardingGuidePanel avatar={avatar} step={step} />
+      <div className="min-w-0 px-7 py-9 sm:px-10 sm:py-12 lg:px-16 lg:py-16">{children}</div>
+    </div>
+  );
 }
 
 export default function OnboardingPage() {
@@ -70,10 +162,10 @@ export default function OnboardingPage() {
   const [saving, setSaving] = useState(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
-  const [welcomeAvatar, setWelcomeAvatar] = useState<AvatarData>(COACH_AVATARS[0]);
+  const [onboardingAvatar, setOnboardingAvatar] = useState<AvatarData>(COACH_AVATARS[0]);
 
   useEffect(() => {
-    setWelcomeAvatar(getRandomAvatar());
+    setOnboardingAvatar(getRandomAvatar());
   }, []);
 
   useEffect(() => {
@@ -207,11 +299,17 @@ export default function OnboardingPage() {
           <div
             data-testid="onboarding-welcome-skeleton"
             aria-hidden="true"
-            className="mx-auto grid max-w-[1120px] overflow-hidden rounded-[1.25rem] border border-slate-200/80 bg-white lg:min-h-[610px] lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]"
+            className="mx-auto grid max-w-[1120px] overflow-hidden rounded-[1.25rem] border border-slate-200/80 bg-white lg:min-h-[650px] lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]"
           >
-            <div className="relative min-h-[244px] bg-slate-100 lg:min-h-0">
-              <span className="absolute left-7 top-8 h-3 w-28 animate-pulse rounded-full bg-slate-200 sm:left-10 sm:top-11" />
-              <span className="absolute bottom-0 left-1/2 h-52 w-52 -translate-x-1/2 rounded-t-full bg-slate-200/80" />
+            <div className="grid min-h-[390px] grid-rows-[minmax(260px,1fr)_auto] bg-slate-950 lg:min-h-0">
+              <div className="relative min-h-[260px] bg-slate-100">
+                <span className="absolute bottom-0 left-1/2 h-52 w-52 -translate-x-1/2 rounded-t-full bg-slate-200/80" />
+              </div>
+              <div className="space-y-3 border-t border-white/10 bg-slate-950 px-7 py-7 sm:px-10 sm:py-8">
+                <span className="block h-2.5 w-24 animate-pulse rounded-full bg-white/15" />
+                <span className="block h-8 w-4/5 animate-pulse rounded-md bg-white/15" />
+                <span className="block h-3 w-3/5 animate-pulse rounded-full bg-white/10" />
+              </div>
             </div>
             <div className="flex flex-col px-6 py-9 sm:px-10 lg:px-16 lg:py-16">
               <span className="h-3 w-20 animate-pulse rounded-full bg-slate-200" />
@@ -226,12 +324,7 @@ export default function OnboardingPage() {
     );
   }
 
-  const welcomePanelTextClass = welcomeAvatar.id === 'tech_black' || welcomeAvatar.id === 'casual_purple'
-    ? 'text-white'
-    : 'text-slate-950';
-  const welcomePanelMutedTextClass = welcomeAvatar.id === 'tech_black' || welcomeAvatar.id === 'casual_purple'
-    ? 'text-white/75'
-    : 'text-slate-800/75';
+  const activeStepIndex = step === 'welcome' ? 0 : step === 'motive' ? 1 : 2;
 
   return (
     <div className="min-h-[100dvh] overflow-x-hidden bg-[#FCFCFC] font-body text-slate-900">
@@ -239,13 +332,14 @@ export default function OnboardingPage() {
         <button onClick={() => router.push('/onboarding')} className="font-sans text-2xl font-black text-slate-900">
           ZIDD<span className="text-indigo-600">.</span>
         </button>
-        <nav className="flex items-center gap-2" aria-label={`Onboarding step ${step === 'welcome' ? 1 : step === 'motive' ? 2 : 3} of 3`}>
-          {(['welcome', 'motive', motive || 'school'] as string[]).map((item, index) => (
+        <nav className="flex items-center gap-2" aria-label={`Onboarding step ${activeStepIndex + 1} of 3`}>
+          {[0, 1, 2].map((item, index) => (
             <span
-              key={`${item}-${index}`}
+              key={item}
+              aria-hidden="true"
               className={cn(
                 "h-1.5 rounded-full transition-all",
-                index === 0 || (index === 1 && step !== 'welcome') || (index === 2 && (step === 'school' || step === 'career'))
+                index <= activeStepIndex
                   ? "w-10 bg-slate-900"
                   : "w-6 bg-slate-200"
               )}
@@ -261,64 +355,31 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        <div className={cn("mx-auto", step === 'welcome' ? "max-w-[1120px]" : "max-w-[760px]")}>
+        <div className="mx-auto max-w-[1120px]">
           <motion.section
             key={step}
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35 }}
-            className={cn(
-              "border border-slate-200/70 bg-white shadow-[0_16px_50px_rgba(15,23,42,0.06)]",
-              step === 'welcome' ? "overflow-hidden rounded-[1.25rem]" : "rounded-[2rem] p-6 lg:p-8"
-            )}
+            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-hidden rounded-[1.25rem] border border-slate-200/70 bg-white shadow-[0_16px_50px_rgba(15,23,42,0.06)]"
           >
             {step === 'welcome' && (
-              <div data-testid="onboarding-welcome-layout" className="grid min-h-[610px] lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
-                <aside
-                  data-testid="onboarding-welcome-guide"
-                  className={cn("relative isolate flex min-h-[250px] overflow-hidden px-7 py-8 sm:px-10 sm:py-11 lg:min-h-0", welcomePanelTextClass)}
-                  style={{ backgroundColor: welcomeAvatar.bg }}
-                >
-                  <div className="relative z-10 max-w-[14rem]">
-                    <p className={cn("text-[10px] font-bold uppercase tracking-[0.22em]", welcomePanelMutedTextClass)}>Your learning guide</p>
-                    <h2 className="mt-4 font-display text-4xl font-normal leading-[0.98] sm:text-5xl">A path built around you.</h2>
-                  </div>
-                  <motion.div
-                    key={welcomeAvatar.id}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-                    className="pointer-events-none absolute inset-x-0 bottom-0 top-[4.25rem] z-0"
-                  >
-                    <Image
-                      src={getAvatarDisplayPath(welcomeAvatar.url)}
-                      alt="A Zidd learning coach"
-                      fill
-                      sizes="(min-width: 1024px) 380px, 100vw"
-                      className={`object-contain object-bottom ${getAvatarScaleClass(welcomeAvatar.url)}`}
-                      priority
-                    />
-                  </motion.div>
-                  <p className={cn("relative z-10 mt-auto max-w-[15rem] text-sm font-medium leading-relaxed", welcomePanelMutedTextClass)}>
-                    One clear starting point is enough.
-                  </p>
-                </aside>
-
+              <OnboardingStepFrame avatar={onboardingAvatar} step="welcome">
                 <form
                   data-testid="onboarding-welcome-form"
                   onSubmit={handleWelcomeSubmit}
-                  className="flex min-h-[360px] flex-col px-7 py-9 sm:px-10 sm:py-12 lg:min-h-0 lg:px-16 lg:py-16"
+                  className="flex h-full flex-col"
                 >
-                  <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-indigo-600">Step 1 of 3</p>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-600">Step 1 of 3</p>
                   <h1 className="mt-5 max-w-[28rem] font-display text-[2.65rem] font-normal leading-[0.98] text-slate-950 sm:text-5xl">
                     What should I call you?
                   </h1>
                   <p className="mt-5 max-w-[32rem] text-sm leading-relaxed text-slate-500 sm:text-base">
-                    This is how your coach will address you. Your Google email stays attached to your account.
+                    This is how your coach will address you. Your Google email remains linked to the account.
                   </p>
 
                   <label htmlFor="display-name" className="mt-12 block max-w-[34rem]">
-                    <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Your name</span>
+                    <span className={FIELD_LABEL_CLASS}>Your name</span>
                     <span className="mt-3 flex items-center gap-3 border-b-2 border-slate-200 pb-3 transition-colors focus-within:border-indigo-600">
                       <UserRound aria-hidden="true" className="h-5 w-5 shrink-0 text-slate-400" />
                       <input
@@ -342,177 +403,233 @@ export default function OnboardingPage() {
                   <button
                     type="submit"
                     disabled={displayName.trim().length < 2}
-                    className="mt-auto inline-flex min-h-14 w-full max-w-[34rem] items-center justify-center gap-2 rounded-xl bg-slate-950 px-6 py-4 text-sm font-semibold text-white transition-colors hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-40"
+                    className={cn(PRIMARY_BUTTON_CLASS, "mt-auto w-full max-w-[34rem]")}
                   >
                     Continue <ArrowRight className="h-4 w-4" />
                   </button>
                 </form>
-              </div>
+              </OnboardingStepFrame>
             )}
 
             {step === 'motive' && (
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-indigo-500">Step 2</span>
-                <h2 className="mt-3 font-display text-4xl leading-tight">What are you here for?</h2>
-                <p className="mt-3 text-sm leading-relaxed text-slate-500">
-                  Pick the primary reason. You can still explore the other side later from your profile.
-                </p>
-                <div className="mt-8 grid grid-cols-1 gap-4">
-                  <button
-                    onClick={() => chooseMotive('school')}
-                    className="group rounded-[1.5rem] border border-slate-200 bg-white p-5 text-left hover:border-indigo-200 hover:bg-indigo-50/30 transition-all"
-                  >
-                    <div className="flex items-start gap-4">
-                      <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
-                        <GraduationCap className="h-6 w-6" />
+              <OnboardingStepFrame avatar={onboardingAvatar} step="motive">
+                <div data-testid="onboarding-path-step" className="flex h-full flex-col">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-600">Step 2 of 3</p>
+                  <h1 className="mt-5 max-w-[30rem] font-display text-[2.65rem] font-normal leading-[0.98] text-slate-950 sm:text-5xl">
+                    Choose what you want to work on.
+                  </h1>
+                  <p className="mt-5 max-w-[31rem] text-sm leading-relaxed text-slate-500 sm:text-base">
+                    You can add the other path later from Profile.
+                  </p>
+
+                  <div className="mt-10 divide-y divide-slate-200 border-y border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => chooseMotive('school')}
+                      className="group flex w-full items-center gap-4 py-6 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-indigo-600"
+                    >
+                      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 transition-colors group-hover:bg-indigo-100">
+                        <GraduationCap aria-hidden="true" className="h-6 w-6" />
                       </span>
-                      <div>
-                        <h3 className="font-bold text-xl">School English</h3>
-                        <p className="mt-1 text-sm leading-relaxed text-slate-500">
-                          English chapters, readiness checks, and focused skill practice.
-                        </p>
-                      </div>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => chooseMotive('career')}
-                    className="group rounded-[1.5rem] border border-slate-200 bg-white p-5 text-left hover:border-indigo-200 hover:bg-indigo-50/30 transition-all"
-                  >
-                    <div className="flex items-start gap-4">
-                      <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
-                        <BriefcaseBusiness className="h-6 w-6" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-lg font-semibold text-slate-950">School English</span>
+                        <span className="mt-1 block text-sm leading-relaxed text-slate-500">
+                          Chapters, readiness checks, and focused skill support.
+                        </span>
                       </span>
-                      <div>
-                        <h3 className="font-bold text-xl">Interview and GD prep</h3>
-                        <p className="mt-1 text-sm leading-relaxed text-slate-500">
-                          Practice interviews, pressure answers, and group discussion topics.
-                        </p>
-                      </div>
-                    </div>
+                      <ArrowRight aria-hidden="true" className="h-5 w-5 shrink-0 text-slate-300 transition-transform group-hover:translate-x-1 group-hover:text-slate-600" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => chooseMotive('career')}
+                      className="group flex w-full items-center gap-4 py-6 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-600"
+                    >
+                      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 transition-colors group-hover:bg-emerald-100">
+                        <BriefcaseBusiness aria-hidden="true" className="h-6 w-6" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-lg font-semibold text-slate-950">Interview and GD prep</span>
+                        <span className="mt-1 block text-sm leading-relaxed text-slate-500">
+                          Targeted interview practice and group discussions.
+                        </span>
+                      </span>
+                      <ArrowRight aria-hidden="true" className="h-5 w-5 shrink-0 text-slate-300 transition-transform group-hover:translate-x-1 group-hover:text-slate-600" />
+                    </button>
+                  </div>
+
+                  <button type="button" onClick={() => setStep('welcome')} className={cn(SECONDARY_BUTTON_CLASS, "mt-auto self-start")}>
+                    <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+                    Back to name
                   </button>
                 </div>
-              </div>
+              </OnboardingStepFrame>
             )}
 
             {step === 'school' && (
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-indigo-500">School profile</span>
-                <h2 className="mt-3 font-display text-4xl leading-tight">Set up your school learning profile.</h2>
-                <p className="mt-3 text-sm leading-relaxed text-slate-500">
-                  We do not store your class as identity. You can open any available class from the curriculum.
-                </p>
-                <div className="mt-8 space-y-5">
-                  <label className="block">
-                    <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">School name</span>
-                    <input
-                      value={schoolName}
-                      onChange={(event) => setSchoolName(event.target.value)}
-                      placeholder="City Public School"
-                      className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-base font-semibold outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Learning goal</span>
-                    <textarea
-                      value={learningGoal}
-                      onChange={(event) => setLearningGoal(event.target.value)}
-                      rows={4}
-                      placeholder="I want to read chapters better and write stronger answers."
-                      className="mt-2 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-base outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50"
-                    />
-                  </label>
-                </div>
-                <div className="mt-8 flex flex-col sm:flex-row gap-3">
-                  <button onClick={() => setStep('motive')} className="rounded-2xl border border-slate-200 px-6 py-4 text-sm font-bold text-slate-600 hover:bg-slate-50">
-                    Back
-                  </button>
-                  <button
-                    disabled={!canCompleteSchool || saving}
-                    onClick={finish}
-                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-slate-900 px-6 py-4 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-40"
-                  >
-                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                    Open curriculum
-                  </button>
-                </div>
-              </div>
+              <OnboardingStepFrame avatar={onboardingAvatar} step="school">
+                <form
+                  data-testid="onboarding-school-details"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void finish();
+                  }}
+                  className="flex h-full flex-col"
+                >
+                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-600">Step 3 of 3</p>
+                  <h1 className="mt-5 max-w-[30rem] font-display text-[2.65rem] font-normal leading-[0.98] text-slate-950 sm:text-5xl">
+                    Tell us about school.
+                  </h1>
+                  <p className="mt-5 max-w-[31rem] text-sm leading-relaxed text-slate-500 sm:text-base">
+                    We only need enough context to prepare your starting-point check.
+                  </p>
+
+                  <div className="mt-10 space-y-6">
+                    <label htmlFor="school-name" className="block">
+                      <span className={FIELD_LABEL_CLASS}>School name</span>
+                      <input
+                        id="school-name"
+                        value={schoolName}
+                        onChange={(event) => setSchoolName(event.target.value)}
+                        placeholder="City Public School"
+                        autoComplete="organization"
+                        minLength={2}
+                        required
+                        className={cn(FIELD_CLASS, "font-semibold")}
+                      />
+                    </label>
+                    <label htmlFor="learning-goal" className="block">
+                      <span className={FIELD_LABEL_CLASS}>Learning goal <span className="font-medium normal-case tracking-normal text-slate-400">(optional)</span></span>
+                      <textarea
+                        id="learning-goal"
+                        value={learningGoal}
+                        onChange={(event) => setLearningGoal(event.target.value)}
+                        rows={4}
+                        placeholder="I want to read chapters better and write stronger answers."
+                        className={cn(FIELD_CLASS, "resize-none")}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="mt-auto flex flex-col gap-3 pt-10 sm:flex-row">
+                    <button type="button" onClick={() => setStep('motive')} className={SECONDARY_BUTTON_CLASS}>
+                      <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+                      Back
+                    </button>
+                    <button type="submit" disabled={!canCompleteSchool || saving} className={cn(PRIMARY_BUTTON_CLASS, "flex-1")}>
+                      {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                      Continue to school setup
+                    </button>
+                  </div>
+                </form>
+              </OnboardingStepFrame>
             )}
 
             {step === 'career' && (
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-indigo-500">Career profile</span>
-                <h2 className="mt-3 font-display text-4xl leading-tight">Add context for focused practice.</h2>
-                <p className="mt-3 text-sm leading-relaxed text-slate-500">
-                  Resume details are optional, but they make interview and GD practice much sharper.
-                </p>
-                <div className="mt-7 space-y-4">
-                  <textarea
-                    value={resumeText}
-                    onChange={(event) => setResumeText(event.target.value)}
-                    rows={5}
-                    placeholder="Paste resume summary, projects, internships, or achievements..."
-                    className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50"
-                  />
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <textarea
-                      value={targetRoles}
-                      onChange={(event) => setTargetRoles(event.target.value)}
-                      rows={4}
-                      placeholder="Target roles, one per line"
-                      className="resize-none rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50"
-                    />
-                    <textarea
-                      value={interviewGoals}
-                      onChange={(event) => setInterviewGoals(event.target.value)}
-                      rows={4}
-                      placeholder="Interview goals, one per line"
-                      className="resize-none rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50"
-                    />
-                  </div>
-                  <div>
-                    <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">GD topics</span>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {GD_TOPICS.map((topic) => {
-                        const selected = selectedTopics.includes(topic.id);
-                        return (
-                          <button
-                            key={topic.id}
-                            onClick={() => toggleTopic(topic.id)}
-                            className={cn(
-                              "rounded-full border px-4 py-2 text-sm font-semibold transition-all",
-                              selected
-                                ? "border-indigo-600 bg-indigo-600 text-white"
-                                : "border-slate-200 bg-white text-slate-600 hover:border-indigo-200"
-                            )}
-                          >
-                            {topic.label}
-                          </button>
-                        );
-                      })}
+              <OnboardingStepFrame avatar={onboardingAvatar} step="career">
+                <form
+                  data-testid="onboarding-career-details"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void finish();
+                  }}
+                  className="flex h-full flex-col"
+                >
+                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-600">Step 3 of 3</p>
+                  <h1 className="mt-5 max-w-[32rem] font-display text-[2.65rem] font-normal leading-[0.98] text-slate-950 sm:text-5xl">
+                    Add useful career context.
+                  </h1>
+                  <p className="mt-5 max-w-[32rem] text-sm leading-relaxed text-slate-500 sm:text-base">
+                    Add at least one detail so practice can reflect your goals.
+                  </p>
+
+                  <div className="mt-10 space-y-6">
+                    <label htmlFor="resume-context" className="block">
+                      <span className={FIELD_LABEL_CLASS}>Resume or background</span>
+                      <textarea
+                        id="resume-context"
+                        value={resumeText}
+                        onChange={(event) => setResumeText(event.target.value)}
+                        rows={4}
+                        placeholder="Projects, internships, achievements, or a short resume summary"
+                        className={cn(FIELD_CLASS, "resize-none text-sm")}
+                      />
+                    </label>
+
+                    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                      <label htmlFor="target-roles" className="block">
+                        <span className={FIELD_LABEL_CLASS}>Target roles</span>
+                        <textarea
+                          id="target-roles"
+                          value={targetRoles}
+                          onChange={(event) => setTargetRoles(event.target.value)}
+                          rows={3}
+                          placeholder="Backend engineer"
+                          className={cn(FIELD_CLASS, "resize-none text-sm")}
+                        />
+                      </label>
+                      <label htmlFor="interview-goals" className="block">
+                        <span className={FIELD_LABEL_CLASS}>Interview goals</span>
+                        <textarea
+                          id="interview-goals"
+                          value={interviewGoals}
+                          onChange={(event) => setInterviewGoals(event.target.value)}
+                          rows={3}
+                          placeholder="Explain projects clearly"
+                          className={cn(FIELD_CLASS, "resize-none text-sm")}
+                        />
+                      </label>
                     </div>
+
+                    <fieldset>
+                      <legend className={FIELD_LABEL_CLASS}>GD topics</legend>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {GD_TOPICS.map((topic) => {
+                          const selected = selectedTopics.includes(topic.id);
+                          return (
+                            <button
+                              key={topic.id}
+                              type="button"
+                              aria-pressed={selected}
+                              onClick={() => toggleTopic(topic.id)}
+                              className={cn(
+                                "min-h-11 rounded-full border px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600",
+                                selected
+                                  ? "border-indigo-600 bg-indigo-600 text-white"
+                                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                              )}
+                            >
+                              {topic.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </fieldset>
+
+                    <label htmlFor="custom-topics" className="block">
+                      <span className={FIELD_LABEL_CLASS}>Other GD topics <span className="font-medium normal-case tracking-normal text-slate-400">(optional)</span></span>
+                      <textarea
+                        id="custom-topics"
+                        value={customTopics}
+                        onChange={(event) => setCustomTopics(event.target.value)}
+                        rows={2}
+                        placeholder="One topic per line"
+                        className={cn(FIELD_CLASS, "resize-none text-sm")}
+                      />
+                    </label>
                   </div>
-                  <textarea
-                    value={customTopics}
-                    onChange={(event) => setCustomTopics(event.target.value)}
-                    rows={3}
-                    placeholder="Custom GD topics, one per line"
-                    className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50"
-                  />
-                </div>
-                <div className="mt-8 flex flex-col sm:flex-row gap-3">
-                  <button onClick={() => setStep('motive')} className="rounded-2xl border border-slate-200 px-6 py-4 text-sm font-bold text-slate-600 hover:bg-slate-50">
-                    Back
-                  </button>
-                  <button
-                    disabled={!canCompleteCareer || saving}
-                    onClick={finish}
-                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-slate-900 px-6 py-4 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-40"
-                  >
-                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                    Open career prep
-                  </button>
-                </div>
-              </div>
+
+                  <div className="mt-10 flex flex-col gap-3 sm:flex-row">
+                    <button type="button" onClick={() => setStep('motive')} className={SECONDARY_BUTTON_CLASS}>
+                      <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+                      Back
+                    </button>
+                    <button type="submit" disabled={!canCompleteCareer || saving} className={cn(PRIMARY_BUTTON_CLASS, "flex-1")}>
+                      {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                      Open career prep
+                    </button>
+                  </div>
+                </form>
+              </OnboardingStepFrame>
             )}
           </motion.section>
         </div>
