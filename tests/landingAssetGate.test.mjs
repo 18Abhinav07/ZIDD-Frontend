@@ -46,3 +46,26 @@ test('landing blocks only until its critical media settles or the timeout expire
   assert.match(loader, /reveal0/);
   assert.doesNotMatch(loader, /(?:localStorage|sessionStorage)/);
 });
+
+test('login renders and warms display-sized static coach avatars', () => {
+  const login = read('src/app/auth/login/page.tsx');
+  const registry = read('src/lib/avatarRegistry.ts');
+
+  assert.match(login, /getAvatarDisplayPath/);
+  assert.match(login, /preloadAvatarDisplayAssets/);
+  assert.match(registry, /AVATAR_DISPLAY_PATHS/);
+
+  for (const file of [
+    'public/avatars/display/coach_pink.png',
+    'public/avatars/display/coach_orange.png',
+    'public/avatars/display/coach_green.png',
+    'public/avatars/display/coach_blue.png',
+    'public/avatars/display/casual_male.png',
+    'public/avatars/display/casual_female.png',
+    'public/avatars/display/tech_black.png',
+    'public/avatars/display/casual_blue.png',
+    'public/avatars/display/casual_purple.png',
+  ]) {
+    assert.equal(fs.existsSync(path.join(root, file)), true, `${file} should be a committed display avatar`);
+  }
+});

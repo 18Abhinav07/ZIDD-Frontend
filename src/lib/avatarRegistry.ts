@@ -33,6 +33,63 @@ export const AVATAR_PATHS: Record<AvatarType, string> = {
   interviewer_suit:'/avatars/coach_orange.png', // female orange hoodie — not the blue boy
 };
 
+// The original coach files are 2160x2880 PNGs. They are retained for the few
+// full-resolution compositions that need them, while sign-in and other compact
+// identity surfaces use these committed, display-sized assets directly. This
+// avoids putting Next's image optimizer back on a 512 MB Render instance.
+export const AVATAR_DISPLAY_PATHS: Record<string, string> = {
+  [AVATAR_PATHS.coach_pink]: '/avatars/display/coach_pink.png',
+  [AVATAR_PATHS.coach_blue]: '/avatars/display/coach_blue.png',
+  [AVATAR_PATHS.coach_green]: '/avatars/display/coach_green.png',
+  [AVATAR_PATHS.coach_orange]: '/avatars/display/coach_orange.png',
+  [AVATAR_PATHS.casual_male]: '/avatars/display/casual_male.png',
+  [AVATAR_PATHS.casual_female]: '/avatars/display/casual_female.png',
+  [AVATAR_PATHS.tech_black]: '/avatars/display/tech_black.png',
+  [AVATAR_PATHS.casual_blue]: '/avatars/display/casual_blue.png',
+  [AVATAR_PATHS.casual_purple]: '/avatars/display/casual_purple.png',
+};
+
+export const AVATAR_DISPLAY_ASSET_PATHS = Array.from(new Set(Object.values(AVATAR_DISPLAY_PATHS)));
+
+export function getAvatarDisplayPath(avatarPath: string): string {
+  return AVATAR_DISPLAY_PATHS[avatarPath] ?? avatarPath;
+}
+
+let avatarPreloadStarted = false;
+
+export function preloadAvatarDisplayAssets(): void {
+  if (typeof window === 'undefined' || avatarPreloadStarted) return;
+  avatarPreloadStarted = true;
+
+  const pending = [...AVATAR_DISPLAY_ASSET_PATHS];
+  let cursor = 0;
+  const preload = (src: string) => new Promise<void>((resolve) => {
+    const image = new window.Image();
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    image.addEventListener('load', settle, { once: true });
+    image.addEventListener('error', settle, { once: true });
+    image.src = src;
+    if (image.complete) settle();
+  });
+
+  const worker = async () => {
+    while (true) {
+      const src = pending[cursor];
+      cursor += 1;
+      if (!src) return;
+      await preload(src);
+    }
+  };
+
+  // Keep the first paint and the backend warm-up responsive on slower links.
+  void Promise.all([worker(), worker(), worker()]);
+}
+
 // ─── Avatar card background colors ──────────────────────────────────────────
 // Must match the dominant clothing/background color of each avatar asset so
 // the card looks cohesive. Verified against the actual PNG files.

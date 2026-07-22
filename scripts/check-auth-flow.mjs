@@ -73,6 +73,18 @@ for (const [label, source] of [
   }
 }
 
+for (const token of ['90_000', '502, 503, 504', 'backend_warming_retry', 'backend_rejected_${res.status}']) {
+  if (!nextAuthRoute.includes(token)) {
+    failures.push(`NextAuth Google token exchange must retry only transient backend wake-up failures; missing ${token}.`);
+  }
+}
+
+for (const token of ["fetch('/api/health'", 'warmBackend']) {
+  if (!login.includes(token)) {
+    failures.push(`login must warm the backend before Google sign-in; missing ${token}.`);
+  }
+}
+
 if (nextConfig.includes("?? 'http://127.0.0.1:8000'") || nextConfig.includes('?? "http://127.0.0.1:8000"')) {
   failures.push('next.config.mjs must not silently fall back API rewrites to localhost; BACKEND_INTERNAL_URL should be required like auth/session routes.');
 }

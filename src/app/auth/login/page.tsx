@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import { getRandomAvatar, AvatarData } from '@/lib/avatars';
-import { getAvatarScaleClass } from '@/lib/avatarRegistry';
+import { getAvatarDisplayPath, getAvatarScaleClass, preloadAvatarDisplayAssets } from '@/lib/avatarRegistry';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 import { getMe, homeForMe } from '@/services/me';
 
@@ -41,6 +41,12 @@ function LoginContent() {
 
   useEffect(() => {
     setAvatar(getRandomAvatar());
+    preloadAvatarDisplayAssets();
+
+    // A free Render backend may be asleep. Start waking it while the learner
+    // chooses an account instead of turning the OAuth callback into a failure.
+    const warmBackend = () => fetch('/api/health', { cache: 'no-store' }).catch(() => null);
+    void warmBackend();
   }, []);
 
   useEffect(() => {
@@ -240,7 +246,7 @@ function LoginContent() {
                  className="relative z-10 w-[90%] h-[105%] mb-[-2%]"
                >
                  <Image
-                   src={avatar.url}
+                   src={getAvatarDisplayPath(avatar.url)}
                    alt={`${avatar.id} 3D Avatar`}
                    fill
                    sizes="(max-width: 1024px) 50vw, 33vw"
