@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
@@ -19,7 +19,7 @@ import {
   getOnboardingState,
   saveOnboardingDraft,
 } from '@/services/onboarding';
-import { getRandomAvatar, AvatarData } from '@/lib/avatars';
+import { COACH_AVATARS, getRandomAvatar, type AvatarData } from '@/lib/avatars';
 import { getAvatarDisplayPath, getAvatarScaleClass } from '@/lib/avatarRegistry';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 
@@ -70,7 +70,7 @@ export default function OnboardingPage() {
   const [saving, setSaving] = useState(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
-  const [welcomeAvatar, setWelcomeAvatar] = useState<AvatarData | null>(null);
+  const [welcomeAvatar, setWelcomeAvatar] = useState<AvatarData>(COACH_AVATARS[0]);
 
   useEffect(() => {
     setWelcomeAvatar(getRandomAvatar());
@@ -153,6 +153,12 @@ export default function OnboardingPage() {
     );
   };
 
+  const handleWelcomeSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (displayName.trim().length < 2) return;
+    setStep('motive');
+  };
+
   const canCompleteSchool = displayName.trim().length > 1 && schoolName.trim().length > 1;
   const careerDetails = Boolean(
     resumeText.trim() ||
@@ -192,22 +198,48 @@ export default function OnboardingPage() {
 
   if (loading) {
     return (
-      <div className="min-h-[100dvh] bg-[#FCFCFC] text-slate-900 flex items-center justify-center">
-        <div className="flex items-center gap-3 text-slate-400 text-sm font-bold uppercase tracking-[0.18em]">
-          <Loader2 className="h-5 w-5 animate-spin" />
-          Loading
-        </div>
+      <div className="min-h-[100dvh] bg-[#FCFCFC] font-body text-slate-900">
+        <header className="flex h-16 items-center justify-between border-b border-slate-200/70 bg-white px-6 lg:px-12">
+          <span className="font-sans text-2xl font-black text-slate-900">ZIDD<span className="text-indigo-600">.</span></span>
+          <span className="h-1.5 w-20 animate-pulse rounded-full bg-slate-200" />
+        </header>
+        <main className="mx-auto max-w-[1120px] px-6 py-12 lg:px-12 lg:py-16">
+          <div
+            data-testid="onboarding-welcome-skeleton"
+            aria-hidden="true"
+            className="mx-auto grid max-w-[1120px] overflow-hidden rounded-[1.25rem] border border-slate-200/80 bg-white lg:min-h-[610px] lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]"
+          >
+            <div className="relative min-h-[244px] bg-slate-100 lg:min-h-0">
+              <span className="absolute left-7 top-8 h-3 w-28 animate-pulse rounded-full bg-slate-200 sm:left-10 sm:top-11" />
+              <span className="absolute bottom-0 left-1/2 h-52 w-52 -translate-x-1/2 rounded-t-full bg-slate-200/80" />
+            </div>
+            <div className="flex flex-col px-6 py-9 sm:px-10 lg:px-16 lg:py-16">
+              <span className="h-3 w-20 animate-pulse rounded-full bg-slate-200" />
+              <span className="mt-6 h-12 w-3/4 animate-pulse rounded-md bg-slate-200" />
+              <span className="mt-5 h-4 w-full max-w-[31rem] animate-pulse rounded-full bg-slate-100" />
+              <span className="mt-2 h-4 w-4/5 max-w-[25rem] animate-pulse rounded-full bg-slate-100" />
+              <span className="mt-auto h-14 w-full animate-pulse rounded-xl bg-slate-100" />
+            </div>
+          </div>
+        </main>
       </div>
     );
   }
 
+  const welcomePanelTextClass = welcomeAvatar.id === 'tech_black' || welcomeAvatar.id === 'casual_purple'
+    ? 'text-white'
+    : 'text-slate-950';
+  const welcomePanelMutedTextClass = welcomeAvatar.id === 'tech_black' || welcomeAvatar.id === 'casual_purple'
+    ? 'text-white/75'
+    : 'text-slate-800/75';
+
   return (
-    <div className="min-h-[100dvh] bg-[#FCFCFC] text-slate-900 font-body overflow-hidden">
-      <header className="px-6 lg:px-12 h-16 flex items-center justify-between border-b border-slate-200/70 bg-white/80 backdrop-blur-xl">
-        <button onClick={() => router.push('/onboarding')} className="font-sans font-black text-2xl text-slate-900">
+    <div className="min-h-[100dvh] overflow-x-hidden bg-[#FCFCFC] font-body text-slate-900">
+      <header className="flex h-16 items-center justify-between border-b border-slate-200/70 bg-white px-6 lg:px-12">
+        <button onClick={() => router.push('/onboarding')} className="font-sans text-2xl font-black text-slate-900">
           ZIDD<span className="text-indigo-600">.</span>
         </button>
-        <div className="flex items-center gap-2">
+        <nav className="flex items-center gap-2" aria-label={`Onboarding step ${step === 'welcome' ? 1 : step === 'motive' ? 2 : 3} of 3`}>
           {(['welcome', 'motive', motive || 'school'] as string[]).map((item, index) => (
             <span
               key={`${item}-${index}`}
@@ -219,7 +251,7 @@ export default function OnboardingPage() {
               )}
             />
           ))}
-        </div>
+        </nav>
       </header>
 
       <main className="max-w-[1120px] mx-auto px-6 lg:px-12 py-12 lg:py-16">
@@ -229,60 +261,92 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        <div className="mx-auto max-w-[760px]">
+        <div className={cn("mx-auto", step === 'welcome' ? "max-w-[1120px]" : "max-w-[760px]")}>
           <motion.section
             key={step}
-            initial={{ opacity: 0, x: 16 }}
-            animate={{ opacity: 1, x: 0 }}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35 }}
-            className="rounded-[2rem] border border-slate-200/70 bg-white p-6 lg:p-8 shadow-[0_16px_50px_rgba(15,23,42,0.06)]"
+            className={cn(
+              "border border-slate-200/70 bg-white shadow-[0_16px_50px_rgba(15,23,42,0.06)]",
+              step === 'welcome' ? "overflow-hidden rounded-[1.25rem]" : "rounded-[2rem] p-6 lg:p-8"
+            )}
           >
             {step === 'welcome' && (
-              <div className="h-full flex flex-col">
-                <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-indigo-500">Step 1</span>
-                <h2 className="mt-3 font-display text-4xl leading-tight">What should I call you?</h2>
-                <p className="mt-3 text-sm leading-relaxed text-slate-500">
-                  This name appears across your dashboard and profile. Your Google email stays attached to the account.
-                </p>
-                {welcomeAvatar ? (
-                  <div className="relative mt-7 h-32 overflow-hidden rounded-xl" style={{ backgroundColor: welcomeAvatar.bg }}>
-                    <motion.div
-                      key={welcomeAvatar.id}
-                      initial={{ opacity: 0, y: 12 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.3 }}
-                      className="absolute inset-0"
-                    >
-                      <Image
-                        src={getAvatarDisplayPath(welcomeAvatar.url)}
-                        alt="A Zidd learning coach"
-                        fill
-                        sizes="160px"
-                        className={`object-contain object-bottom ${getAvatarScaleClass(welcomeAvatar.url)}`}
-                        priority
-                      />
-                    </motion.div>
-                  </div>
-                ) : <div aria-hidden="true" className="mt-7 h-32 rounded-xl bg-slate-200" />}
-                <label className="mt-10 block">
-                  <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Username</span>
-                  <div className="mt-3 flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 focus-within:border-indigo-300 focus-within:ring-4 focus-within:ring-indigo-50">
-                    <UserRound className="h-5 w-5 text-slate-400" />
-                    <input
-                      value={displayName}
-                      onChange={(event) => setDisplayName(event.target.value)}
-                      placeholder="Asha"
-                      className="w-full bg-transparent outline-none text-lg font-semibold text-slate-900 placeholder:text-slate-300"
-                    />
-                  </div>
-                </label>
-                <button
-                  disabled={displayName.trim().length < 2}
-                  onClick={() => setStep('motive')}
-                  className="mt-auto inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-6 py-4 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-40"
+              <div data-testid="onboarding-welcome-layout" className="grid min-h-[610px] lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
+                <aside
+                  data-testid="onboarding-welcome-guide"
+                  className={cn("relative isolate flex min-h-[250px] overflow-hidden px-7 py-8 sm:px-10 sm:py-11 lg:min-h-0", welcomePanelTextClass)}
+                  style={{ backgroundColor: welcomeAvatar.bg }}
                 >
-                  Continue <ArrowRight className="h-4 w-4" />
-                </button>
+                  <div className="relative z-10 max-w-[14rem]">
+                    <p className={cn("text-[10px] font-bold uppercase tracking-[0.22em]", welcomePanelMutedTextClass)}>Your learning guide</p>
+                    <h2 className="mt-4 font-display text-4xl font-normal leading-[0.98] sm:text-5xl">A path built around you.</h2>
+                  </div>
+                  <motion.div
+                    key={welcomeAvatar.id}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                    className="pointer-events-none absolute inset-x-0 bottom-0 top-[4.25rem] z-0"
+                  >
+                    <Image
+                      src={getAvatarDisplayPath(welcomeAvatar.url)}
+                      alt="A Zidd learning coach"
+                      fill
+                      sizes="(min-width: 1024px) 380px, 100vw"
+                      className={`object-contain object-bottom ${getAvatarScaleClass(welcomeAvatar.url)}`}
+                      priority
+                    />
+                  </motion.div>
+                  <p className={cn("relative z-10 mt-auto max-w-[15rem] text-sm font-medium leading-relaxed", welcomePanelMutedTextClass)}>
+                    One clear starting point is enough.
+                  </p>
+                </aside>
+
+                <form
+                  data-testid="onboarding-welcome-form"
+                  onSubmit={handleWelcomeSubmit}
+                  className="flex min-h-[360px] flex-col px-7 py-9 sm:px-10 sm:py-12 lg:min-h-0 lg:px-16 lg:py-16"
+                >
+                  <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-indigo-600">Step 1 of 3</p>
+                  <h1 className="mt-5 max-w-[28rem] font-display text-[2.65rem] font-normal leading-[0.98] text-slate-950 sm:text-5xl">
+                    What should I call you?
+                  </h1>
+                  <p className="mt-5 max-w-[32rem] text-sm leading-relaxed text-slate-500 sm:text-base">
+                    This is how your coach will address you. Your Google email stays attached to your account.
+                  </p>
+
+                  <label htmlFor="display-name" className="mt-12 block max-w-[34rem]">
+                    <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Your name</span>
+                    <span className="mt-3 flex items-center gap-3 border-b-2 border-slate-200 pb-3 transition-colors focus-within:border-indigo-600">
+                      <UserRound aria-hidden="true" className="h-5 w-5 shrink-0 text-slate-400" />
+                      <input
+                        id="display-name"
+                        name="display-name"
+                        value={displayName}
+                        onChange={(event) => setDisplayName(event.target.value)}
+                        placeholder="Asha"
+                        autoComplete="name"
+                        minLength={2}
+                        required
+                        aria-describedby="display-name-helper"
+                        className="min-w-0 flex-1 bg-transparent text-xl font-semibold text-slate-950 outline-none placeholder:text-slate-300"
+                      />
+                    </span>
+                  </label>
+                  <p id="display-name-helper" className="mt-3 text-xs leading-relaxed text-slate-400">
+                    You can change this later from Profile.
+                  </p>
+
+                  <button
+                    type="submit"
+                    disabled={displayName.trim().length < 2}
+                    className="mt-auto inline-flex min-h-14 w-full max-w-[34rem] items-center justify-center gap-2 rounded-xl bg-slate-950 px-6 py-4 text-sm font-semibold text-white transition-colors hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Continue <ArrowRight className="h-4 w-4" />
+                  </button>
+                </form>
               </div>
             )}
 
