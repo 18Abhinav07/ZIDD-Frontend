@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import Image from 'next/image';
 import { AVATAR_PATHS, getAvatarScaleClass } from '@/lib/avatarRegistry';
-import { TOONHUB_AVATAR_PATHS } from '@/lib/landingAssets';
+import { getToonHubAvatarPath, TOONHUB_AVATAR_PATHS } from '@/lib/landingAssets';
 
 import { motion } from 'framer-motion';
 
@@ -225,7 +225,7 @@ export const ToonHub = () => {
               style={{ ...styles, aspectRatio: '0.6 / 1' }}
             >
               <Image
-                src={img.src}
+                src={getToonHubAvatarPath(img.src)}
                 alt={img.label}
                 fill
                 sizes="(max-width: 768px) 70vw, 40vw"

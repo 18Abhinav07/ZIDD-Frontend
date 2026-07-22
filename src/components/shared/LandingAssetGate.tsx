@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react';
 import { LANDING_HERO_VIDEO, TOONHUB_AVATAR_PATHS } from '@/lib/landingAssets';
 import styles from './LandingAssetGate.module.css';
 
-const MAX_WAIT_MS = 8_500;
+// The normal exit is every critical asset settling. This is only a failsafe
+// for a browser request that never resolves, not the standard reveal path.
+const MAX_WAIT_MS = 30_000;
 
 function loadImage(src: string): Promise<void> {
   return new Promise((resolve) => {
@@ -45,7 +47,10 @@ export function LandingAssetGate() {
     void Promise.allSettled([
       loadVideo(LANDING_HERO_VIDEO),
       ...TOONHUB_AVATAR_PATHS.map(loadImage),
-    ]).then(finish);
+    ]).then(() => {
+      window.clearTimeout(timeout);
+      finish();
+    });
 
     return () => {
       active = false;
