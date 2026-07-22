@@ -91,7 +91,9 @@ export const ToonHub = () => {
   const [activeIndex, setActiveIndex] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const [loadedAssets, setLoadedAssets] = useState<Record<string, true>>({});
+  const [loadedAssets, setLoadedAssets] = useState<Record<string, true>>({
+    [TOONHUB_INITIAL_AVATAR_PATH]: true,
+  });
 
   const markAssetLoaded = useCallback((src: string) => {
     setLoadedAssets((current) => current[src]
@@ -266,21 +268,23 @@ export const ToonHub = () => {
         {IMAGES.map((img, idx) => {
           const role = getRole(idx);
           const styles = getRoleStyles(role);
+          const assetSrc = getToonHubAvatarPath(img.src);
+          const assetReady = Boolean(loadedAssets[assetSrc]);
           
           return (
             <div
               key={idx}
               className="absolute transition-all duration-[650ms] ease-[cubic-bezier(0.4,0,0.2,1)] will-change-[transform,filter,opacity]"
-              style={{ ...styles, aspectRatio: '0.6 / 1' }}
+              style={{ ...styles, aspectRatio: '0.6 / 1', opacity: assetReady ? styles.opacity : 0 }}
             >
               <Image
-                src={getToonHubAvatarPath(img.src)}
+                src={assetSrc}
                 alt={img.label}
                 fill
                 sizes="(max-width: 768px) 70vw, 40vw"
                 priority={idx === activeIndex}
                 unoptimized
-                onLoad={() => markAssetLoaded(getToonHubAvatarPath(img.src))}
+                onLoad={() => markAssetLoaded(assetSrc)}
                 className={`object-contain object-bottom pointer-events-none select-none ${getAvatarScaleClass(img.src)}`}
                 draggable={false}
               />
