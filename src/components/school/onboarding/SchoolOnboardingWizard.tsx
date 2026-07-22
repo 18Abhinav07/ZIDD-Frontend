@@ -43,7 +43,7 @@ import {
 import { resolveSchoolStateDestination } from '@/lib/schoolActivityPolicy';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 import { COACH_AVATARS, getRandomAvatar } from '@/lib/avatars';
-import { getAvatarScaleClass } from '@/lib/avatarRegistry';
+import { getAvatarDisplayPath, getAvatarScaleClass } from '@/lib/avatarRegistry';
 import { getSchoolAvatarThemeForAvatar } from '@/lib/schoolTheme';
 import {
   activateSchoolOnboarding,
@@ -761,7 +761,7 @@ export function SchoolOnboardingWizard() {
                 >
                   <div className="relative min-h-48 overflow-hidden bg-[var(--school-coach-surface)] lg:min-h-[10.5rem]">
                     <Image
-                      src={coachAvatar.url}
+                      src={getAvatarDisplayPath(coachAvatar.url)}
                       alt=""
                       fill
                       sizes="(max-width: 1024px) 100vw, 216px"

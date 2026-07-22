@@ -14,7 +14,7 @@ import {
 import Image from 'next/image';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { getAvatarForCharacter, getBgColorForAvatar, getAvatarScaleClass } from '@/lib/avatarRegistry';
+import { getAvatarDisplayPath, getAvatarForCharacter, getBgColorForAvatar, getAvatarScaleClass } from '@/lib/avatarRegistry';
 import type { AssessmentClientAction } from '@/types';
 
 function cn(...inputs: ClassValue[]) {
@@ -107,7 +107,7 @@ const GDAvatarCard = memo(function GDAvatarCard({ participant }: { participant: 
       {/* Avatar fills card */}
       <div className="relative flex-1">
         <Image
-          src={config.src}
+          src={getAvatarDisplayPath(config.src)}
           alt={participant.name}
           fill
           sizes="(max-width: 768px) 100vw, 50vw"
@@ -172,7 +172,7 @@ const InterviewAvatar = memo(function InterviewAvatar({
           className="absolute inset-0"
         >
           <Image
-            src={config.src}
+            src={getAvatarDisplayPath(config.src)}
             alt={participant.name}
             fill
             sizes="(max-width: 768px) 100vw, 50vw"
@@ -216,7 +216,7 @@ const InterviewAvatar = memo(function InterviewAvatar({
             className="w-10 h-10 rounded-xl shrink-0 overflow-hidden relative shadow-inner"
             style={{ backgroundColor: config.bg }}
           >
-            <Image src={config.src} alt={participant.name} fill sizes="40px" className="object-cover object-top" unoptimized />
+            <Image src={getAvatarDisplayPath(config.src)} alt={participant.name} fill sizes="40px" className="object-cover object-top" unoptimized />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[14px] font-bold text-slate-900 tracking-tight">{participant.name}</p>
@@ -261,7 +261,7 @@ const GDMobileAvatarCircle = memo(function GDMobileAvatarCircle({ participant }:
         style={{ backgroundColor: config.bg }}
       >
         <Image
-          src={config.src}
+          src={getAvatarDisplayPath(config.src)}
           alt={participant.name}
           fill
           sizes="28px"
@@ -309,7 +309,7 @@ const InterviewAvatarMobile = memo(function InterviewAvatarMobile({
           className="w-10 h-10 rounded-xl shrink-0 overflow-hidden relative shadow-inner border border-white/40"
           style={{ backgroundColor: config.bg }}
         >
-          <Image src={config.src} alt={participant.name} fill sizes="40px" className="object-cover object-top scale-110" unoptimized />
+          <Image src={getAvatarDisplayPath(config.src)} alt={participant.name} fill sizes="40px" className="object-cover object-top scale-110" unoptimized />
         </div>
         <div>
           <p className="text-[13px] font-bold text-slate-900 tracking-tight leading-tight">{participant.name}</p>
@@ -324,7 +324,7 @@ const InterviewAvatarMobile = memo(function InterviewAvatarMobile({
           className="relative w-full h-[90%]"
         >
           <Image
-            src={config.src}
+            src={getAvatarDisplayPath(config.src)}
             alt={participant.name}
             fill
             sizes="96px"

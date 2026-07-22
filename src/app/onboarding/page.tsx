@@ -20,7 +20,7 @@ import {
   saveOnboardingDraft,
 } from '@/services/onboarding';
 import { getRandomAvatar, AvatarData } from '@/lib/avatars';
-import { getAvatarScaleClass } from '@/lib/avatarRegistry';
+import { getAvatarDisplayPath, getAvatarScaleClass } from '@/lib/avatarRegistry';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 
 function cn(...inputs: ClassValue[]) {
@@ -254,7 +254,7 @@ export default function OnboardingPage() {
                       className="absolute inset-0"
                     >
                       <Image
-                        src={welcomeAvatar.url}
+                        src={getAvatarDisplayPath(welcomeAvatar.url)}
                         alt="A Zidd learning coach"
                         fill
                         sizes="160px"

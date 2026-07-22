@@ -12,6 +12,7 @@ import { CreditsBadge } from '@/components/billing/CreditsBadge';
 import Image from 'next/image';
 import { homeForMe, myPathForMe, type MeResponse } from '@/services/me';
 import { useAppSession } from '@/components/shared/AppSessionProvider';
+import { getAvatarDisplayPath } from '@/lib/avatarRegistry';
 
 interface AppHeaderProps {
   title?: string;
@@ -198,7 +199,7 @@ export function AppHeader({
             ) : (
               profileImage ? (
                 <Image
-                  src={profileImage}
+                  src={getAvatarDisplayPath(profileImage)}
                   alt="Profile"
                   fill
                   sizes="36px"

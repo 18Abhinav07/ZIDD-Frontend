@@ -10,7 +10,7 @@ import { signOut } from 'next-auth/react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { getRandomAvatar, type AvatarData } from '@/lib/avatars';
-import { getAvatarScaleClass } from '@/lib/avatarRegistry';
+import { getAvatarDisplayPath, getAvatarScaleClass } from '@/lib/avatarRegistry';
 import { getMe, homeForMe, updatePreferences, type ModuleId } from '@/services/me';
 import { ModeCommitSkeleton } from '@/components/shared/RouteSkeletons';
 
@@ -131,7 +131,7 @@ export default function ModeSelectionPage() {
                   
                   <div className="absolute -bottom-10 right-0 w-72 md:w-96 h-[120%] z-0 pointer-events-none transition-transform duration-[800ms] ease-out group-hover:scale-[1.03]">
                     <Image 
-                      src={avatars[0].url}
+                      src={getAvatarDisplayPath(avatars[0].url)}
                       alt="Preparation Mode Avatar"
                       fill
                       sizes="(max-width: 768px) 288px, 384px"
@@ -179,7 +179,7 @@ export default function ModeSelectionPage() {
                   
                   <div className="absolute -bottom-10 right-0 w-72 md:w-96 h-[120%] z-0 pointer-events-none transition-transform duration-[800ms] ease-out group-hover:scale-[1.03]">
                     <Image 
-                      src={avatars[1].url}
+                      src={getAvatarDisplayPath(avatars[1].url)}
                       alt="Test Mode Avatar"
                       fill
                       sizes="(max-width: 768px) 288px, 384px"

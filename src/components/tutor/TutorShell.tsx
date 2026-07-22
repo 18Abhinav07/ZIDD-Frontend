@@ -2,7 +2,7 @@
 
 import React, { memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getAvatarScaleClass } from '@/lib/avatarRegistry';
+import { getAvatarDisplayPath, getAvatarScaleClass } from '@/lib/avatarRegistry';
 import { getEmotionTreatment, getAffectSupportNote } from '@/lib/emotion';
 import type { DoneFrame } from '@/types';
 import {
@@ -103,7 +103,7 @@ const AvatarTile = memo(function AvatarTile({ characterImg, mode, characterBg, e
           >
             <div className="relative w-full h-full flex items-center justify-center">
               <Image 
-                src={characterImg}
+                src={getAvatarDisplayPath(characterImg)}
                 alt="Coach"
                 fill
                 sizes="(max-width: 1024px) 100vw, 50vw"
@@ -259,7 +259,7 @@ export const TutorShell: React.FC<TutorShellProps> = ({
              className="hidden sm:block relative w-10 h-10 rounded-full bg-indigo-50 border border-indigo-100 shadow-sm overflow-hidden hover:scale-105 active:scale-95 transition-all"
            >
              <Image
-               src={profileImage}
+               src={getAvatarDisplayPath(profileImage)}
                alt="Profile"
                fill
                sizes="40px"

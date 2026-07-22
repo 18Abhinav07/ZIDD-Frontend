@@ -12,7 +12,7 @@ import { CreditsBadge, type CreditsBadgeHandle } from '@/components/billing/Cred
 import { PaywallModal } from '@/components/billing/PaywallModal';
 import { PathMapSkeleton } from '@/components/shared/RouteSkeletons';
 import Image from 'next/image';
-import { AVATAR_PATHS } from '@/lib/avatarRegistry';
+import { AVATAR_PATHS, getAvatarDisplayPath } from '@/lib/avatarRegistry';
 import type { PaywallDetail, SimulationScenarioConfig } from '@/types';
 import { ExitIcon } from '@radix-ui/react-icons';
 import { careerCompetenceLabel, mergeCareerMemoryIntoPath } from '@/lib/careerPathPresentation.mjs';
@@ -452,7 +452,7 @@ export default function MapPage() {
               className="relative w-10 h-10 rounded-full bg-indigo-50 border border-indigo-100 shadow-sm overflow-hidden hover:scale-105 active:scale-95 transition-all"
             >
               <Image
-                src={profileImage}
+                src={getAvatarDisplayPath(profileImage)}
                 alt="Profile"
                 fill
                 sizes="40px"

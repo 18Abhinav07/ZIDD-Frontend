@@ -26,7 +26,7 @@ import Image from 'next/image';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { getRandomAvatar, COACH_AVATARS, type AvatarData } from '@/lib/avatars';
-import { getAvatarScaleClass } from '@/lib/avatarRegistry';
+import { getAvatarDisplayPath, getAvatarScaleClass } from '@/lib/avatarRegistry';
 import { careerCompetenceLabel, careerPracticeHref } from '@/lib/careerPathPresentation.mjs';
 
 function cn(...inputs: ClassValue[]) {
@@ -504,7 +504,7 @@ function CareerPageContent() {
                   {/* Avatar Graphic */}
                   <div className="absolute -bottom-10 -right-4 w-44 h-56 sm:w-64 sm:h-80 z-0 pointer-events-none transition-transform duration-700 ease-out group-hover:scale-105 group-hover:-translate-y-4">
                      <Image
-                        src={avatar.url}
+                        src={getAvatarDisplayPath(avatar.url)}
                         alt="Module Avatar"
                         fill
                         sizes="(max-width: 640px) 176px, 256px"

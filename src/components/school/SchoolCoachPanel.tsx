@@ -4,7 +4,7 @@ import { useEffect, useState, type CSSProperties } from 'react';
 import Image from 'next/image';
 import { Lightbulb, X } from 'lucide-react';
 import { motion, useReducedMotion } from 'framer-motion';
-import { getAvatarScaleFactor } from '@/lib/avatarRegistry';
+import { getAvatarDisplayPath, getAvatarScaleFactor } from '@/lib/avatarRegistry';
 import { getSchoolAvatarTheme } from '@/lib/schoolTheme';
 import type { SchoolCoachHint, SchoolCoachTone } from '@/lib/schoolTeachingPresentation';
 import { useResolvedSchoolCoachIdentity } from '@/components/school/shell/SchoolCoachIdentityContext';
@@ -56,7 +56,7 @@ export function SchoolCoachPanel({
       <div className={styles.inline} style={theme.style}>
         <div className={styles.inlinePortrait}>
           <Image
-            src={avatar.url}
+            src={getAvatarDisplayPath(avatar.url)}
             alt="Zidd school coach"
             fill
             sizes="72px"
@@ -80,7 +80,7 @@ export function SchoolCoachPanel({
         aria-label={`Coach status: ${status}. ${note}`}
       >
         <Image
-          src={avatar.url}
+          src={getAvatarDisplayPath(avatar.url)}
           alt="Zidd school coach"
           fill
           sizes="44px"
@@ -110,7 +110,7 @@ export function SchoolCoachPanel({
         </div>
         <span className={styles.coachGhost} aria-hidden="true">COACH</span>
         <Image
-          src={avatar.url}
+          src={getAvatarDisplayPath(avatar.url)}
           alt="Your Zidd School coach"
           fill
           sizes="(max-width: 820px) 132px, 320px"

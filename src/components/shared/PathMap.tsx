@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { LockClosedIcon, CheckIcon } from '@radix-ui/react-icons';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { AVATAR_PATHS, getAvatarScaleClass } from '@/lib/avatarRegistry';
+import { AVATAR_PATHS, getAvatarDisplayPath, getAvatarScaleClass } from '@/lib/avatarRegistry';
 import { careerCompetenceLabel, deriveCareerPathPresentation } from '@/lib/careerPathPresentation.mjs';
 
 function cn(...inputs: ClassValue[]) {
@@ -248,7 +248,7 @@ export const PathMap: React.FC<PathMapProps> = ({ nodes, focusNodeId, onNodeClic
                     )}
 
                     <Image
-                      src={avatarUrl}
+                      src={getAvatarDisplayPath(avatarUrl)}
                       alt={`Agent ${index + 1}`}
                       fill
                       sizes="200px"

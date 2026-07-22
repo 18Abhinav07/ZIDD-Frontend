@@ -4,7 +4,7 @@ import Image from 'next/image';
 import { motion, useReducedMotion } from 'framer-motion';
 import { Check, CircleDot, LockKeyhole, Play, Sparkles } from 'lucide-react';
 import { getAvatarForSeed } from '@/lib/avatars';
-import { getAvatarScaleClass } from '@/lib/avatarRegistry';
+import { getAvatarDisplayPath, getAvatarScaleClass } from '@/lib/avatarRegistry';
 
 export type JourneyNodeStatus = 'complete' | 'active' | 'ready' | 'support' | 'locked';
 
@@ -169,7 +169,7 @@ export function JourneyMap({
                     : undefined}
                 >
                   <Image
-                    src={avatar.url}
+                    src={getAvatarDisplayPath(avatar.url)}
                     alt=""
                     fill
                     sizes="(max-width: 640px) 96px, 176px"

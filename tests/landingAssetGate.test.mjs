@@ -69,3 +69,32 @@ test('login renders and warms display-sized static coach avatars', () => {
     assert.equal(fs.existsSync(path.join(root, file)), true, `${file} should be a committed display avatar`);
   }
 });
+
+test('avatar-driven product surfaces use display assets instead of full-resolution originals', () => {
+  for (const file of [
+    'src/app/auth/login/page.tsx',
+    'src/app/career/page.tsx',
+    'src/app/(gamified)/mode/page.tsx',
+    'src/app/(gamified)/map/page.tsx',
+    'src/app/onboarding/page.tsx',
+    'src/components/simulator/SimulatorShell.tsx',
+    'src/components/learning/JourneyMap.tsx',
+    'src/components/shared/PathMap.tsx',
+    'src/components/shared/AppHeader.tsx',
+    'src/components/tutor/TutorShell.tsx',
+    'src/components/school/SchoolCoachPanel.tsx',
+    'src/components/school/onboarding/SchoolOnboardingWizard.tsx',
+  ]) {
+    assert.match(read(file), /getAvatarDisplayPath/, `${file} should render its avatar through the display asset registry`);
+  }
+});
+
+test('app shell warms the shared avatar cache without delaying initial render', () => {
+  const providers = read('src/app/providers.tsx');
+  const preloaderPath = 'src/components/shared/AvatarAssetPreloader.tsx';
+
+  assert.equal(fs.existsSync(path.join(root, preloaderPath)), true, 'the app shell should own one shared avatar preloader');
+  assert.match(providers, /AvatarAssetPreloader/);
+  assert.match(read(preloaderPath), /preloadAvatarDisplayAssets/);
+  assert.match(read(preloaderPath), /requestIdleCallback/);
+});
