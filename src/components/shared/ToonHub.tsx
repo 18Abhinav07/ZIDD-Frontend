@@ -253,7 +253,7 @@ export const ToonHub = () => {
       </motion.div>
 
       {/* Brand Label */}
-      <div className="absolute top-6 left-4 sm:left-8 z-[60] text-xs font-semibold uppercase text-white opacity-90 tracking-[0.18em]">
+      <div className="absolute top-[5.5rem] left-4 sm:left-8 z-[60] text-xs font-semibold uppercase text-white opacity-90 tracking-[0.18em]">
         ZIDD TOONHUB
       </div>
 

@@ -18,6 +18,7 @@ test('Render landing avoids the Next image optimizer for Toonhub avatars', () =>
   assert.match(toonHub, /preloadWorker/);
   assert.match(toonHub, /loadedAssets/);
   assert.match(toonHub, /opacity:\s*assetReady\s*\?\s*styles\.opacity\s*:\s*0/);
+  assert.match(toonHub, /top-\[5\.5rem\]/);
   assert.doesNotMatch(toonHub, /image\.addEventListener\('error', settle/);
   assert.match(assets, /\/avatars\/toonhub\/coach_pink\.png/);
 
