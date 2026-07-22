@@ -43,3 +43,25 @@ test('random onboarding coaches stay fully inside the image frame', () => {
   assert.match(guidePanel[0], /p-4 sm:p-5 lg:p-6/);
   assert.doesNotMatch(guidePanel[0], /getAvatarScaleClass/);
 });
+
+test('saved back-navigation state and accessible step transitions are preserved', () => {
+  assert.match(page, /const restoredStep = restoreOnboardingStep\(draft\.step, draftMotive\)/);
+  assert.match(page, /setStep\(restoredStep\)/);
+  assert.match(page, /stepHeadingRef\.current\?\.focus\(\)/);
+  assert.match(page, /aria-live="polite"/);
+  assert.match(page, /role="alert"/);
+});
+
+test('all onboarding detail controls retain native form names', () => {
+  for (const name of [
+    'display-name',
+    'school-name',
+    'learning-goal',
+    'resume-context',
+    'target-roles',
+    'interview-goals',
+    'custom-topics',
+  ]) {
+    assert.match(page, new RegExp(`name="${name}"`));
+  }
+});

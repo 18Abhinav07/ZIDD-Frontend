@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
@@ -83,6 +83,12 @@ function splitList(value: string): string[] {
     .filter(Boolean);
 }
 
+function restoreOnboardingStep(value: unknown, motive: Motive): Step {
+  if (value === 'welcome' || value === 'motive') return value;
+  if ((value === 'school' || value === 'career') && value === motive) return value;
+  return motive ?? 'welcome';
+}
+
 function OnboardingGuidePanel({ avatar, step }: { avatar: AvatarData; step: Step }) {
   const copy = GUIDE_COPY[step];
 
@@ -148,6 +154,8 @@ function OnboardingStepFrame({
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const stepHeadingRef = useRef<HTMLHeadingElement>(null);
+  const previousStepRef = useRef<Step | null>(null);
   const [step, setStep] = useState<Step>('welcome');
   const [motive, setMotive] = useState<Motive>(null);
   const [displayName, setDisplayName] = useState('');
@@ -190,7 +198,8 @@ export default function OnboardingPage() {
         setInterviewGoals(asStringArray(draft.interview_goals).join('\n'));
         setSelectedTopics(asStringArray(draft.gd_topic_ids));
         setCustomTopics(asStringArray(draft.custom_gd_topics).join('\n'));
-        setStep(draftMotive ? draftMotive : 'welcome');
+        const restoredStep = restoreOnboardingStep(draft.step, draftMotive);
+        setStep(restoredStep);
         setReady(true);
       })
       .catch(() => setError('Could not load onboarding. Please refresh and try again.'))
@@ -201,6 +210,16 @@ export default function OnboardingPage() {
       cancelled = true;
     };
   }, [router]);
+
+  useEffect(() => {
+    if (loading) return;
+    const previousStep = previousStepRef.current;
+    previousStepRef.current = step;
+    if (previousStep === null || previousStep === step) return;
+
+    const frame = window.requestAnimationFrame(() => stepHeadingRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [loading, step]);
 
   const draft = useMemo(() => ({
     step,
@@ -333,6 +352,9 @@ export default function OnboardingPage() {
           ZIDD<span className="text-indigo-600">.</span>
         </button>
         <nav className="flex items-center gap-2" aria-label={`Onboarding step ${activeStepIndex + 1} of 3`}>
+          <span className="sr-only" aria-live="polite" aria-atomic="true">
+            Step {activeStepIndex + 1} of 3
+          </span>
           {[0, 1, 2].map((item, index) => (
             <span
               key={item}
@@ -350,7 +372,7 @@ export default function OnboardingPage() {
 
       <main className="max-w-[1120px] mx-auto px-6 lg:px-12 py-12 lg:py-16">
         {error && (
-          <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-3 text-sm font-semibold text-rose-700">
+          <div role="alert" className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-3 text-sm font-semibold text-rose-700">
             {error}
           </div>
         )}
@@ -371,7 +393,7 @@ export default function OnboardingPage() {
                   className="flex h-full flex-col"
                 >
                   <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-600">Step 1 of 3</p>
-                  <h1 className="mt-5 max-w-[28rem] font-display text-[2.65rem] font-normal leading-[0.98] text-slate-950 sm:text-5xl">
+                  <h1 ref={stepHeadingRef} tabIndex={-1} className="mt-5 max-w-[28rem] font-display text-[2.65rem] font-normal leading-[0.98] text-slate-950 outline-none sm:text-5xl">
                     What should I call you?
                   </h1>
                   <p className="mt-5 max-w-[32rem] text-sm leading-relaxed text-slate-500 sm:text-base">
@@ -415,7 +437,7 @@ export default function OnboardingPage() {
               <OnboardingStepFrame avatar={onboardingAvatar} step="motive">
                 <div data-testid="onboarding-path-step" className="flex h-full flex-col">
                   <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-600">Step 2 of 3</p>
-                  <h1 className="mt-5 max-w-[30rem] font-display text-[2.65rem] font-normal leading-[0.98] text-slate-950 sm:text-5xl">
+                  <h1 ref={stepHeadingRef} tabIndex={-1} className="mt-5 max-w-[30rem] font-display text-[2.65rem] font-normal leading-[0.98] text-slate-950 outline-none sm:text-5xl">
                     Choose what you want to work on.
                   </h1>
                   <p className="mt-5 max-w-[31rem] text-sm leading-relaxed text-slate-500 sm:text-base">
@@ -476,7 +498,7 @@ export default function OnboardingPage() {
                   className="flex h-full flex-col"
                 >
                   <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-600">Step 3 of 3</p>
-                  <h1 className="mt-5 max-w-[30rem] font-display text-[2.65rem] font-normal leading-[0.98] text-slate-950 sm:text-5xl">
+                  <h1 ref={stepHeadingRef} tabIndex={-1} className="mt-5 max-w-[30rem] font-display text-[2.65rem] font-normal leading-[0.98] text-slate-950 outline-none sm:text-5xl">
                     Tell us about school.
                   </h1>
                   <p className="mt-5 max-w-[31rem] text-sm leading-relaxed text-slate-500 sm:text-base">
@@ -488,6 +510,7 @@ export default function OnboardingPage() {
                       <span className={FIELD_LABEL_CLASS}>School name</span>
                       <input
                         id="school-name"
+                        name="school-name"
                         value={schoolName}
                         onChange={(event) => setSchoolName(event.target.value)}
                         placeholder="City Public School"
@@ -501,6 +524,7 @@ export default function OnboardingPage() {
                       <span className={FIELD_LABEL_CLASS}>Learning goal <span className="font-medium normal-case tracking-normal text-slate-400">(optional)</span></span>
                       <textarea
                         id="learning-goal"
+                        name="learning-goal"
                         value={learningGoal}
                         onChange={(event) => setLearningGoal(event.target.value)}
                         rows={4}
@@ -535,7 +559,7 @@ export default function OnboardingPage() {
                   className="flex h-full flex-col"
                 >
                   <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-600">Step 3 of 3</p>
-                  <h1 className="mt-5 max-w-[32rem] font-display text-[2.65rem] font-normal leading-[0.98] text-slate-950 sm:text-5xl">
+                  <h1 ref={stepHeadingRef} tabIndex={-1} className="mt-5 max-w-[32rem] font-display text-[2.65rem] font-normal leading-[0.98] text-slate-950 outline-none sm:text-5xl">
                     Add useful career context.
                   </h1>
                   <p className="mt-5 max-w-[32rem] text-sm leading-relaxed text-slate-500 sm:text-base">
@@ -547,6 +571,7 @@ export default function OnboardingPage() {
                       <span className={FIELD_LABEL_CLASS}>Resume or background</span>
                       <textarea
                         id="resume-context"
+                        name="resume-context"
                         value={resumeText}
                         onChange={(event) => setResumeText(event.target.value)}
                         rows={4}
@@ -560,6 +585,7 @@ export default function OnboardingPage() {
                         <span className={FIELD_LABEL_CLASS}>Target roles</span>
                         <textarea
                           id="target-roles"
+                          name="target-roles"
                           value={targetRoles}
                           onChange={(event) => setTargetRoles(event.target.value)}
                           rows={3}
@@ -571,6 +597,7 @@ export default function OnboardingPage() {
                         <span className={FIELD_LABEL_CLASS}>Interview goals</span>
                         <textarea
                           id="interview-goals"
+                          name="interview-goals"
                           value={interviewGoals}
                           onChange={(event) => setInterviewGoals(event.target.value)}
                           rows={3}
@@ -609,6 +636,7 @@ export default function OnboardingPage() {
                       <span className={FIELD_LABEL_CLASS}>Other GD topics <span className="font-medium normal-case tracking-normal text-slate-400">(optional)</span></span>
                       <textarea
                         id="custom-topics"
+                        name="custom-topics"
                         value={customTopics}
                         onChange={(event) => setCustomTopics(event.target.value)}
                         rows={2}
