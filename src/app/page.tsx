@@ -3,6 +3,7 @@
 import React, { useRef, useState } from 'react';
 import Image from 'next/image';
 import { ToonHub } from '@/components/shared/ToonHub';
+import { LandingAssetGate } from '@/components/shared/LandingAssetGate';
 import { ArrowRight, Loader2 } from 'lucide-react';
 import { AVATAR_PATHS, needsPaddingCompensation, getAvatarScaleClass } from "@/lib/avatarRegistry";
 import { motion, useInView, type Variants } from 'framer-motion';
@@ -59,6 +60,7 @@ export default function LandingPage() {
   return (
     <SmoothScroll>
       <main className="relative bg-slate-950 selection:bg-accent selection:text-white">
+        <LandingAssetGate />
         
       {/* Foreground Content Layer */}
       <div className="relative z-10 bg-[#FCFCFC] rounded-b-[2.5rem] md:rounded-b-[4rem] shadow-[0_30px_80px_rgba(0,0,0,0.6)] mb-[85vh] overflow-x-hidden">
@@ -129,6 +131,7 @@ export default function LandingPage() {
               loop
               muted
               playsInline
+              preload="auto"
               className="absolute inset-0 w-full h-full object-cover scale-105"
             >
               <source 

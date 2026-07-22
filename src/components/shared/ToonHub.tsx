@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import Image from 'next/image';
 import { AVATAR_PATHS, getAvatarScaleClass } from '@/lib/avatarRegistry';
+import { TOONHUB_AVATAR_PATHS } from '@/lib/landingAssets';
 
 import { motion } from 'framer-motion';
 
@@ -95,9 +96,9 @@ export const ToonHub = () => {
     window.addEventListener('resize', handleResize);
     
     // Preload images
-    IMAGES.forEach((img) => {
+    TOONHUB_AVATAR_PATHS.forEach((src) => {
       const i = new window.Image();
-      i.src = img.src;
+      i.src = src;
     });
 
     return () => window.removeEventListener('resize', handleResize);
@@ -229,6 +230,7 @@ export const ToonHub = () => {
                 fill
                 sizes="(max-width: 768px) 70vw, 40vw"
                 priority={idx === activeIndex}
+                unoptimized
                 className={`object-contain object-bottom pointer-events-none select-none ${getAvatarScaleClass(img.src)}`}
                 draggable={false}
               />

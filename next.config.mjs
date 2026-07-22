@@ -26,6 +26,10 @@ const nextConfig = {
     ]
   },
   images: {
+    // Render's free 512 MB instances cannot safely run Next's production
+    // optimizer for the Toonhub's large transparent PNG set. These assets are
+    // already versioned static files, so deliver them directly for this app.
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: 'https',
