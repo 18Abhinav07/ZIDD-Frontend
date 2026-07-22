@@ -31,3 +31,4 @@ export function getToonHubAvatarPath(sourcePath: string): string {
 // The carousel can surface any coach immediately, so preload the complete set
 // instead of showing an unloaded slide after the opening transition.
 export const TOONHUB_AVATAR_PATHS = TOONHUB_SOURCE_PATHS.map(getToonHubAvatarPath);
+export const TOONHUB_INITIAL_AVATAR_PATH = getToonHubAvatarPath(AVATAR_PATHS.coach_pink);

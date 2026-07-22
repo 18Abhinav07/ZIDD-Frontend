@@ -15,6 +15,9 @@ test('Render landing avoids the Next image optimizer for Toonhub avatars', () =>
   assert.match(config, /unoptimized:\s*true/);
   assert.match(toonHub, /\bunoptimized\b/);
   assert.match(toonHub, /getToonHubAvatarPath/);
+  assert.match(toonHub, /preloadWorker/);
+  assert.match(toonHub, /loadedAssets/);
+  assert.doesNotMatch(toonHub, /image\.addEventListener\('error', settle/);
   assert.match(assets, /\/avatars\/toonhub\/coach_pink\.png/);
 
   for (const file of [
@@ -34,9 +37,10 @@ test('landing blocks only until its critical media settles or the timeout expire
 
   assert.match(page, /LandingAssetGate/);
   assert.match(assets, /Zidd-hero\.mp4/);
-  assert.match(loader, /TOONHUB_AVATAR_PATHS/);
+  assert.match(loader, /TOONHUB_INITIAL_AVATAR_PATH/);
+  assert.doesNotMatch(loader, /TOONHUB_AVATAR_PATHS\.map\(loadImage\)/);
   assert.match(loader, /setTimeout/);
-  assert.match(loader, /30_000/);
+  assert.match(loader, /12_000/);
   assert.match(loader, /reveal0/);
   assert.doesNotMatch(loader, /(?:localStorage|sessionStorage)/);
 });

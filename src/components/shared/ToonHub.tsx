@@ -4,7 +4,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import Image from 'next/image';
 import { AVATAR_PATHS, getAvatarScaleClass } from '@/lib/avatarRegistry';
-import { getToonHubAvatarPath, TOONHUB_AVATAR_PATHS } from '@/lib/landingAssets';
+import {
+  getToonHubAvatarPath,
+  TOONHUB_AVATAR_PATHS,
+  TOONHUB_INITIAL_AVATAR_PATH,
+} from '@/lib/landingAssets';
 
 import { motion } from 'framer-motion';
 
@@ -87,6 +91,13 @@ export const ToonHub = () => {
   const [activeIndex, setActiveIndex] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [loadedAssets, setLoadedAssets] = useState<Record<string, true>>({});
+
+  const markAssetLoaded = useCallback((src: string) => {
+    setLoadedAssets((current) => current[src]
+      ? current
+      : { ...current, [src]: true });
+  }, []);
 
   useEffect(() => {
     const handleResize = () => {
@@ -95,26 +106,64 @@ export const ToonHub = () => {
     handleResize();
     window.addEventListener('resize', handleResize);
     
-    // Preload images
-    TOONHUB_AVATAR_PATHS.forEach((src) => {
-      const i = new window.Image();
-      i.src = src;
+    const pending = TOONHUB_AVATAR_PATHS.filter((src) => src !== TOONHUB_INITIAL_AVATAR_PATH);
+    let cursor = 0;
+    let active = true;
+
+    const loadAsset = (src: string) => new Promise<void>((resolve) => {
+      const image = new window.Image();
+      const settle = () => {
+        if (active) markAssetLoaded(src);
+        resolve();
+      };
+      const fail = () => resolve();
+      image.addEventListener('load', settle, { once: true });
+      image.addEventListener('error', fail, { once: true });
+      image.src = src;
+      if (image.complete) {
+        if (image.naturalWidth > 0) settle();
+        else fail();
+      }
     });
 
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+    const preloadWorker = async () => {
+      while (active) {
+        const src = pending[cursor];
+        cursor += 1;
+        if (!src) return;
+        await loadAsset(src);
+      }
+    };
+
+    // Two workers avoid starving the hero video while still warming the next
+    // portraits before the carousel is allowed to navigate to them.
+    void Promise.all([preloadWorker(), preloadWorker()]);
+
+    return () => {
+      active = false;
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [markAssetLoaded]);
+
+  const targetIndex = useCallback((direction: 'next' | 'prev') => (
+    direction === 'next'
+      ? (activeIndex + 1) % IMAGES.length
+      : (activeIndex + IMAGES.length - 1) % IMAGES.length
+  ), [activeIndex]);
+
+  const canNavigate = useCallback((direction: 'next' | 'prev') => (
+    Boolean(loadedAssets[getToonHubAvatarPath(IMAGES[targetIndex(direction)].src)])
+  ), [loadedAssets, targetIndex]);
 
   const navigate = useCallback((direction: 'next' | 'prev') => {
-    if (isAnimating) return;
+    const nextIndex = targetIndex(direction);
+    const nextAsset = getToonHubAvatarPath(IMAGES[nextIndex].src);
+    if (isAnimating || !loadedAssets[nextAsset]) return;
     setIsAnimating(true);
-    
-    setActiveIndex((prev) => {
-      if (direction === 'next') return (prev + 1) % 9;
-      return (prev + 8) % 9;
-    });
+    setActiveIndex(nextIndex);
 
     setTimeout(() => setIsAnimating(false), 650);
-  }, [isAnimating]);
+  }, [isAnimating, loadedAssets, targetIndex]);
 
   // Auto-play feature
   useEffect(() => {
@@ -231,6 +280,7 @@ export const ToonHub = () => {
                 sizes="(max-width: 768px) 70vw, 40vw"
                 priority={idx === activeIndex}
                 unoptimized
+                onLoad={() => markAssetLoaded(getToonHubAvatarPath(img.src))}
                 className={`object-contain object-bottom pointer-events-none select-none ${getAvatarScaleClass(img.src)}`}
                 draggable={false}
               />
@@ -263,15 +313,15 @@ export const ToonHub = () => {
         <div className="flex gap-4">
           <button 
             onClick={() => navigate('prev')}
-            className="w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center rounded-full border-2 border-white text-white transition-all hover:scale-[1.08] hover:bg-white/10 active:scale-95"
-            disabled={isAnimating}
+            className="w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center rounded-full border-2 border-white text-white transition-all hover:scale-[1.08] hover:bg-white/10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={isAnimating || !canNavigate('prev')}
           >
             <ArrowLeft size={isMobile ? 22 : 26} strokeWidth={2.25} />
           </button>
           <button 
             onClick={() => navigate('next')}
-            className="w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center rounded-full border-2 border-white text-white transition-all hover:scale-[1.08] hover:bg-white/10 active:scale-95"
-            disabled={isAnimating}
+            className="w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center rounded-full border-2 border-white text-white transition-all hover:scale-[1.08] hover:bg-white/10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={isAnimating || !canNavigate('next')}
           >
             <ArrowRight size={isMobile ? 22 : 26} strokeWidth={2.25} />
           </button>

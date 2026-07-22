@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { LANDING_HERO_VIDEO, TOONHUB_AVATAR_PATHS } from '@/lib/landingAssets';
+import { LANDING_HERO_VIDEO, TOONHUB_INITIAL_AVATAR_PATH } from '@/lib/landingAssets';
 import styles from './LandingAssetGate.module.css';
 
-// The normal exit is every critical asset settling. This is only a failsafe
-// for a browser request that never resolves, not the standard reveal path.
-const MAX_WAIT_MS = 30_000;
+// The normal exit is the above-the-fold media settling. This is only a
+// failsafe for a browser request that never resolves, not the standard reveal.
+const MAX_WAIT_MS = 12_000;
 
 function loadImage(src: string): Promise<void> {
   return new Promise((resolve) => {
@@ -46,7 +46,7 @@ export function LandingAssetGate() {
     const timeout = window.setTimeout(finish, MAX_WAIT_MS);
     void Promise.allSettled([
       loadVideo(LANDING_HERO_VIDEO),
-      ...TOONHUB_AVATAR_PATHS.map(loadImage),
+      loadImage(TOONHUB_INITIAL_AVATAR_PATH),
     ]).then(() => {
       window.clearTimeout(timeout);
       finish();
