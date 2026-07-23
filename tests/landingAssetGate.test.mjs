@@ -35,6 +35,7 @@ test('Render landing avoids the Next image optimizer for Toonhub avatars', () =>
 test('landing blocks only until its critical media settles or the timeout expires', () => {
   const page = read('src/app/page.tsx');
   const loader = read('src/components/shared/LandingAssetGate.tsx');
+  const overlay = read('src/components/shared/ZiddLoaderOverlay.tsx');
   const assets = read('src/lib/landingAssets.ts');
 
   assert.match(page, /LandingAssetGate/);
@@ -43,7 +44,7 @@ test('landing blocks only until its critical media settles or the timeout expire
   assert.doesNotMatch(loader, /TOONHUB_AVATAR_PATHS\.map\(loadImage\)/);
   assert.match(loader, /setTimeout/);
   assert.match(loader, /12_000/);
-  assert.match(loader, /reveal0/);
+  assert.match(overlay, /reveal0/);
   assert.doesNotMatch(loader, /(?:localStorage|sessionStorage)/);
 });
 
@@ -97,4 +98,22 @@ test('app shell warms the shared avatar cache without delaying initial render', 
   assert.match(providers, /AvatarAssetPreloader/);
   assert.match(read(preloaderPath), /preloadAvatarDisplayAssets/);
   assert.match(read(preloaderPath), /requestIdleCallback/);
+});
+
+test('entry actions wait for backend readiness behind the branded loader', () => {
+  const page = read('src/app/page.tsx');
+  const login = read('src/app/auth/login/page.tsx');
+  const toonHub = read('src/components/shared/ToonHub.tsx');
+  const loaderPath = 'src/components/shared/ZiddLoaderOverlay.tsx';
+
+  assert.equal(fs.existsSync(path.join(root, loaderPath)), true, 'the shared Zidd loader should exist');
+  assert.match(page, /await waitForBackendReady\(\)/);
+  assert.match(page, /<ZiddLoaderOverlay/);
+  assert.match(login, /warmBackend\(\)/);
+  assert.match(login, /await waitForBackendReady\(\)/);
+  assert.match(login, /<ZiddLoaderOverlay/);
+  assert.match(page, /<ToonHub onBegin=\{begin\}/);
+  assert.match(toonHub, /onBegin/);
+  assert.doesNotMatch(toonHub, /href="\/auth\/login"/);
+  assert.match(read(loaderPath), /role="status"/);
 });

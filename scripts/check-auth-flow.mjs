@@ -10,6 +10,7 @@ const appHeader = readFileSync(join(process.cwd(), 'src/components/shared/AppHea
 const mapPage = readFileSync(join(process.cwd(), 'src/app/(gamified)/map/page.tsx'), 'utf8');
 const onboardingService = readFileSync(join(process.cwd(), 'src/services/onboarding.ts'), 'utf8');
 const login = readFileSync(join(process.cwd(), 'src/app/auth/login/page.tsx'), 'utf8');
+const backendReadiness = readFileSync(join(process.cwd(), 'src/lib/backendReadiness.ts'), 'utf8');
 const providers = readFileSync(join(process.cwd(), 'src/app/providers.tsx'), 'utf8');
 const appSessionProvider = readFileSync(join(process.cwd(), 'src/components/shared/AppSessionProvider.tsx'), 'utf8');
 const middleware = readFileSync(join(process.cwd(), 'src/middleware.ts'), 'utf8');
@@ -79,9 +80,14 @@ for (const token of ['90_000', '502, 503, 504', 'backend_warming_retry', 'backen
   }
 }
 
-for (const token of ["fetch('/api/health'", 'warmBackend']) {
+for (const token of ['warmBackend', 'await waitForBackendReady()']) {
   if (!login.includes(token)) {
     failures.push(`login must warm the backend before Google sign-in; missing ${token}.`);
+  }
+}
+for (const token of ["'/api/health'", 'cache: \'no-store\'', "status === 'ok'", 'BackendUnavailableError']) {
+  if (!backendReadiness.includes(token)) {
+    failures.push(`shared backend readiness gate is missing ${token}.`);
   }
 }
 

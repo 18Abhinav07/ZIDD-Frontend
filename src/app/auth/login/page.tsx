@@ -9,8 +9,10 @@ import { ArrowRight, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import { getRandomAvatar, AvatarData } from '@/lib/avatars';
 import { getAvatarDisplayPath, getAvatarScaleClass, preloadAvatarDisplayAssets } from '@/lib/avatarRegistry';
+import { waitForBackendReady, warmBackend } from '@/lib/backendReadiness';
 import { learnerSafeErrorMessage } from '@/lib/errorCopy';
 import { getMe, homeForMe } from '@/services/me';
+import { ZiddLoaderOverlay } from '@/components/shared/ZiddLoaderOverlay';
 
 function GoogleIcon() {
   return (
@@ -42,10 +44,6 @@ function LoginContent() {
   useEffect(() => {
     setAvatar(getRandomAvatar());
     preloadAvatarDisplayAssets();
-
-    // A free Render backend may be asleep. Start waking it while the learner
-    // chooses an account instead of turning the OAuth callback into a failure.
-    const warmBackend = () => fetch('/api/health', { cache: 'no-store' }).catch(() => null);
     void warmBackend();
   }, []);
 
@@ -60,6 +58,7 @@ function LoginContent() {
     setLoadingAction('account');
     setRouting(true);
     try {
+      await waitForBackendReady();
       const me = await getMe();
       router.replace(homeForMe(me));
     } catch (err: unknown) {
@@ -76,6 +75,7 @@ function LoginContent() {
     setError('');
     setLoadingAction('google');
     try {
+      await waitForBackendReady();
       await signIn(
         'google',
         { callbackUrl: safePostSignInDestination(searchParams.get('callbackUrl')) },
@@ -98,6 +98,7 @@ function LoginContent() {
 
   return (
     <div className="flex min-h-screen bg-white text-slate-900 overflow-hidden">
+      {busy && <ZiddLoaderOverlay label="Preparing Zidd" />}
       {/* Left Panel: Form */}
       <div className="w-full lg:w-1/2 flex flex-col justify-center px-8 sm:px-16 lg:px-24 xl:px-32 relative z-30">
         <motion.div

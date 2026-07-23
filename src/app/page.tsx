@@ -1,11 +1,13 @@
 "use client";
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { ToonHub } from '@/components/shared/ToonHub';
 import { LandingAssetGate } from '@/components/shared/LandingAssetGate';
+import { ZiddLoaderOverlay } from '@/components/shared/ZiddLoaderOverlay';
 import { ArrowRight, Loader2 } from 'lucide-react';
 import { AVATAR_PATHS, needsPaddingCompensation, getAvatarScaleClass } from "@/lib/avatarRegistry";
+import { waitForBackendReady, warmBackend } from '@/lib/backendReadiness';
 import { motion, useInView, type Variants } from 'framer-motion';
 import { SmoothScroll } from '@/components/shared/SmoothScroll';
 
@@ -16,14 +18,26 @@ export default function LandingPage() {
   const router = useRouter();
   const { data: session } = useSession();
   const [opening, setOpening] = useState(false);
+  const [backendError, setBackendError] = useState('');
   const footerTriggerRef = useRef(null);
   const isFooterVisible = useInView(footerTriggerRef, { once: false, amount: 0.1 });
 
+  useEffect(() => {
+    void warmBackend();
+  }, []);
+
   // Automatic redirect removed to allow logged-in users to see the landing page
-  const begin = () => {
+  const begin = async () => {
     if (opening) return;
+    setBackendError('');
     setOpening(true);
-    router.push(session ? '/dashboard' : '/auth/login');
+    try {
+      await waitForBackendReady();
+      router.push(session ? '/dashboard' : '/auth/login');
+    } catch {
+      setBackendError('Zidd is taking longer than expected to wake. Please try again.');
+      setOpening(false);
+    }
   };
 
   const avatarVariants: Variants = {
@@ -61,6 +75,15 @@ export default function LandingPage() {
     <SmoothScroll>
       <main className="relative bg-slate-950 selection:bg-accent selection:text-white">
         <LandingAssetGate />
+        {opening && <ZiddLoaderOverlay label="Preparing Zidd" />}
+        {backendError && (
+          <div
+            role="alert"
+            className="fixed left-1/2 top-24 z-[110] w-[min(90vw,32rem)] -translate-x-1/2 rounded-xl border border-rose-200 bg-white px-5 py-4 text-center text-sm font-semibold text-rose-700 shadow-xl"
+          >
+            {backendError}
+          </div>
+        )}
         
       {/* Foreground Content Layer */}
       <div className="relative z-10 bg-[#FCFCFC] rounded-b-[2.5rem] md:rounded-b-[4rem] shadow-[0_30px_80px_rgba(0,0,0,0.6)] mb-[85vh] overflow-x-hidden">
@@ -147,7 +170,7 @@ export default function LandingPage() {
 
       {/* 2. TOONHUB Carousel Section */}
       <section id="carousel" className="relative h-screen w-full">
-        <ToonHub />
+        <ToonHub onBegin={begin} />
       </section>
 
       {/* 3. CTA */}

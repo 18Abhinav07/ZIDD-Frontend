@@ -12,6 +12,10 @@ import {
 
 import { motion } from 'framer-motion';
 
+type ToonHubProps = {
+  onBegin: () => void | Promise<void>;
+};
+
 const IMAGES = [
   { 
     src: AVATAR_PATHS.coach_pink, 
@@ -87,7 +91,7 @@ const IMAGES = [
   },
 ];
 
-export const ToonHub = () => {
+export const ToonHub = ({ onBegin }: ToonHubProps) => {
   const [activeIndex, setActiveIndex] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -340,14 +344,15 @@ export const ToonHub = () => {
         transition={{ duration: 0.8, delay: 0.7, type: "spring" }}
         className="absolute bottom-6 right-4 sm:bottom-20 sm:right-10 z-[60]"
       >
-        <a 
-          href="/auth/login" 
-          className="flex items-center gap-2 font-anton text-white opacity-95 hover:opacity-100 transition-opacity uppercase tracking-[-0.02em] leading-none"
+        <button
+          type="button"
+          onClick={() => void onBegin()}
+          className="flex cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left font-anton text-white opacity-95 hover:opacity-100 transition-opacity uppercase tracking-[-0.02em] leading-none"
           style={{ fontSize: 'clamp(20px, 4vw, 56px)' }}
         >
           BEGIN JOURNEY
           <ArrowRight className="w-5 h-5 sm:w-8 sm:h-8" strokeWidth={2.25} />
-        </a>
+        </button>
       </motion.div>
     </div>
   );
